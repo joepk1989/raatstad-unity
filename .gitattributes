@@ -39,3 +39,7 @@
 # Video
 *.mp4 filter=lfs diff=lfs merge=lfs -text
 *.mov filter=lfs diff=lfs merge=lfs -text
+
+# Uitzonderingen: kleine bestanden die gewoon in Git staan (geen LFS)
+Assets/Resources/vogels.mp3 -filter -diff -merge
+Assets/TutorialInfo/Icons/URP.png -filter -diff -merge
