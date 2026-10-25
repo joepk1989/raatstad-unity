@@ -44,6 +44,7 @@ public class PlanetBuilder : MonoBehaviour
         if (Blocks.Tools[tool] == "weg") { if (Inp.Down(K.B)) CycleStyle(); if (Inp.Down(K.O)) ToggleOneWay(); }
         if (Inp.Down(K.L)) ToggleLights();
         if (Inp.Down(K.H)) { CityCentre(); if (hasCentre) { focus = centre; Say("Naar het midden van de stad (H)"); } }
+        if (Inp.Down(K.P)) { bool north = Vector3.Dot(focus, Planet.Cells[Planet.North].dir) < 0.999f; focus = Planet.Cells[north ? Planet.North : Planet.South].dir; Say(north ? "Naar de noordpool (P, nog een keer: zuidpool)" : "Naar de zuidpool (P)"); }
         if (Inp.Down(K.Z) && Inp.Held(K.Ctrl) && undo.Count > 0) { PlanetCity.Cells = undo[undo.Count - 1]; undo.RemoveAt(undo.Count - 1); PlanetCity.TouchAll(); Changed(); Say("Ongedaan gemaakt"); }
 
         // aanwijzen: het vak onder de muis
@@ -131,7 +132,8 @@ public class PlanetBuilder : MonoBehaviour
     void ShowOutline(int i)
     {
         var c = Planet.Cells[i]; float h = PlanetCity.StackHeight(i) + 0.3f;
-        if (c.corners.Length == 5 && Time.time > msgT) Say("Dit is een van de 12 vijfhoeken (oranje): op een bol passen niet alleen zeshoeken");
+        if (Planet.IsPole(i) && Time.time > msgT) Say(i == Planet.North ? "De noordpool: hier gaat de as van de planeet doorheen" : "De zuidpool: hier gaat de as van de planeet doorheen");
+        else if (c.corners.Length == 5 && Time.time > msgT) Say("Dit is een van de 12 vijfhoeken (oranje): op een bol passen niet alleen zeshoeken");
         else if (Time.time > msgT && System.Array.IndexOf(Planet.Starts, i) >= 0) Say("Startplek (een van de 20): zo ver mogelijk van de vijfhoeken, hier is het raster het netst");
         if (outline.positionCount != c.corners.Length) outline.positionCount = c.corners.Length;
         for (int k = 0; k < c.corners.Length; k++) outline.SetPosition(k, c.corners[k] * (Planet.R + h));
@@ -240,10 +242,10 @@ public class PlanetBuilder : MonoBehaviour
                 "<b>Wegtypes</b>  bij de weg kies je met B gewone weg, brede weg of laan (met bomen), met O eenrichtingsverkeer (in de sleeprichting; pijlen op het asfalt) en met L verkeerslichten. Sleep een weg over water of een uitgraving: dan wordt het een brug. Een weg in een tussenrichting laat de helft van de vakken ernaast vrij voor gebouwen.\n" +
                 "<b>Wegen en paden</b>  zijn ook blokken: zet ze op aangrenzende vakken en ze sluiten vanzelf aan\n" +
                 "<b>Winkel, plein, toren, molen</b>  etalages lichten 's avonds op (zet er gerust woningen bovenop), een plein heeft een fontein en bankjes, en de molenwieken draaien harder als het stormt\n" +
-                "<b>Camera</b>  WASD schuiven (Shift sneller) · rechtermuis draaien · scroll zoomen · H naar het midden van je stad\n" +
+                "<b>Camera</b>  WASD schuiven (Shift sneller) · rechtermuis draaien · scroll zoomen · H naar het midden van je stad · P naar de noord- of zuidpool\n" +
                 "<b>Wandelen</b>  Tab · WASD · Shift rennen · Spatie springen · Esc muis los\n" +
                 "<b>Weer en tijd</b>  R volgend weer (vast) · N zon stilzetten · M geluid aan/uit · G raster aan/uit\n" +
-                "<b>Planeet</b>  21.162 vakken, omtrek 3,8 km. Oranje: de 12 vijfhoeken. Lichtblauw: de 20 startplekken.");
+                "<b>Planeet</b>  21.162 vakken, omtrek 3,8 km. Oranje: de 12 vijfhoeken. Lichtblauw: de 20 startplekken. Rood-wit gestreepte paal met vlag: de noord- en zuidpool.");
         }
 
         // ---- pijl naar het midden van de stad als je er ver vandaan bent

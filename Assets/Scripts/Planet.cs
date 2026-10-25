@@ -23,6 +23,8 @@ public static class Planet
     }
     public static Cell[] Cells;
     public static int[] Starts;   // 20 startplekken: de vakken het verst van alle vijfhoeken (het midden van elk icosaëdervlak)
+    public static int North = -1, South = -1;   // de polen: de y-as gaat door het midden van een icosaëderrand, daar ligt (M is even) een gewoon zeshoekig vak
+    public static bool IsPole(int i) => i >= 0 && (i == North || i == South);
     public static bool Ready => Cells != null;
 
     static Dictionary<int, List<int>> buckets;
@@ -129,6 +131,7 @@ public static class Planet
         // opzoektabel op breedte- en lengtegraad
         buckets = new Dictionary<int, List<int>>();
         for (int v = 0; v < nV; v++) { int key = BucketKey(Cells[v].dir); if (!buckets.TryGetValue(key, out var l)) { l = new List<int>(2); buckets[key] = l; } l.Add(v); }
+        North = Nearest(Vector3.up); South = Nearest(Vector3.down);
     }
 
     static void AddTri(List<int> tris, List<Vector3> verts, int a, int b, int c)

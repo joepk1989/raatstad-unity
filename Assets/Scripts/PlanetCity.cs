@@ -319,15 +319,18 @@ public static class PlanetCity
             const int Steps = 8; var ms = new MeshBuilder[Steps]; for (int k = 0; k < Steps; k++) ms[k] = new MeshBuilder();
             var pm = new MeshBuilder();   // de vijfhoeken zelf
             var sm = new MeshBuilder();   // de startplekken
+            var polar = new Dictionary<string, MeshBuilder>();   // de polen, per kleur
+            System.Func<string, MeshBuilder> PM = k => { if (!polar.TryGetValue(k, out var x)) { x = new MeshBuilder(); polar[k] = x; } return x; };
             for (int i = c0; i < Mathf.Min(n, c0 + ChunkN); i++)
             {
                 if (Cells.TryGetValue(i, out var stack) && stack.Count > 0 && (stack[0] == "meer" || stack[0] == "kuil")) continue;
                 if (Under.TryGetValue(i, out var und) && (und == "meer" || und == "kuil")) continue;   // brug over een meer of uitgraving: geen bodem
                 var c = Planet.Cells[i]; Vector3 mid = c.dir * Planet.R; bool pent = c.corners.Length == 5;
                 float kk = Mathf.Pow(Mathf.Clamp01((c.distort - 0.04f) / 0.125f), 1.4f);
-                bool start = System.Array.IndexOf(Planet.Starts, i) >= 0;
-                var mb0 = pent ? pm : start ? sm : ms[Mathf.Clamp(Mathf.RoundToInt(kk * (Steps - 1)), 0, Steps - 1)];
+                bool start = System.Array.IndexOf(Planet.Starts, i) >= 0, pole = Planet.IsPole(i);
+                var mb0 = pole ? PM("ijs") : pent ? pm : start ? sm : ms[Mathf.Clamp(Mathf.RoundToInt(kk * (Steps - 1)), 0, Steps - 1)];
                 for (int k = 0; k < c.corners.Length; k++) mb0.Tri(mid, c.corners[k] * Planet.R, c.corners[(k + 1) % c.corners.Length] * Planet.R, c.dir);
+                if (pole) PoleMarker(PM, c);
                 if (start)   // startplek: lichtblauw vak met een witte paal van 30 m en een vlaggetje
                 {
                     Vector3 top = c.dir * (Planet.R + 30f);
@@ -356,6 +359,12 @@ public static class PlanetCity
                 var smesh = sm.Build(); sg.AddComponent<MeshFilter>().sharedMesh = smesh; sg.AddComponent<MeshRenderer>().sharedMaterial = Mats.Get("p_start", new Color(0.55f, 0.8f, 1f));
                 sg.AddComponent<MeshCollider>().sharedMesh = smesh;
             }
+            foreach (var kv in polar)
+            {
+                var g = new GameObject("Pool " + kv.Key); g.transform.SetParent(groundRoot, false); made.Add(g); g.layer = Layers.Bodem;
+                var mesh = kv.Value.Build(); g.AddComponent<MeshFilter>().sharedMesh = mesh; g.AddComponent<MeshRenderer>().sharedMaterial = Mats.Get("p_pool_" + kv.Key, PoleColor(kv.Key));
+                if (!kv.Key.StartsWith("vlag")) g.AddComponent<MeshCollider>().sharedMesh = mesh;
+            }
             Color grass = new Color(0.64f, 0.78f, 0.45f), hot = new Color(1f, 0.6f, 0.2f);
             for (int k = 0; k < Steps; k++)
             {
@@ -364,6 +373,42 @@ public static class PlanetCity
                 var mesh = ms[k].Build(); go.AddComponent<MeshFilter>().sharedMesh = mesh; go.AddComponent<MeshRenderer>().sharedMaterial = Mats.Get("p_bodem" + k, Color.Lerp(grass, hot, k / (float)(Steps - 1)));
                 go.AddComponent<MeshCollider>().sharedMesh = mesh;
             }
+        }
+    }
+
+    // Poolmarkering: ijswit vak met een rood-wit gestreepte paal van 40 m, een gouden knop en een Nederlandse vlag die naar het oosten wappert
+    const float PoleH = 40f;
+    static void PoleMarker(System.Func<string, MeshBuilder> M, Planet.Cell c)
+    {
+        Vector3 o = c.dir * Planet.R, u = c.dir, e = c.east, n = c.north;
+        System.Func<float, float, Vector3> ring = (ang, r) => e * (Mathf.Cos(ang) * r) + n * (Mathf.Sin(ang) * r);
+        // voet: een lage ijsrand rondom
+        for (int k = 0; k < c.corners.Length; k++) { Vector3 a = c.corners[k], b = c.corners[(k + 1) % c.corners.Length], am = (a + b) * 0.5f, ai = Vector3.Lerp(a, c.dir, 0.08f), bi = Vector3.Lerp(b, c.dir, 0.08f); M("ijs").Quad(a * Planet.R, b * Planet.R, bi * (Planet.R + 0.25f), ai * (Planet.R + 0.25f), am - c.dir); }
+        // paal: zeshoekig, in tien banden rood en wit
+        const float r0 = 0.45f; const int Bands = 10;
+        for (int s = 0; s < Bands; s++)
+        {
+            float y0 = s * PoleH / Bands, y1 = (s + 1) * PoleH / Bands; var mb = M(s % 2 == 0 ? "rood" : "wit");
+            for (int k = 0; k < 6; k++) { float a0 = k * Mathf.PI / 3f, a1 = (k + 1) * Mathf.PI / 3f; Vector3 p0 = ring(a0, r0), p1 = ring(a1, r0); mb.Quad(o + p0 + u * y0, o + p1 + u * y0, o + p1 + u * y1, o + p0 + u * y1, p0 + p1); }
+        }
+        // gouden knop: twee zeshoekige punten tegen elkaar
+        Vector3 kc = o + u * (PoleH + 0.8f);
+        for (int k = 0; k < 6; k++) { float a0 = k * Mathf.PI / 3f, a1 = (k + 1) * Mathf.PI / 3f; Vector3 p0 = kc + ring(a0, 0.9f), p1 = kc + ring(a1, 0.9f); M("goud").Tri(p0, p1, kc + u * 0.9f, (p0 + p1) * 0.5f - kc + u * 0.5f); M("goud").Tri(p0, p1, kc - u * 0.9f, (p0 + p1) * 0.5f - kc - u * 0.5f); }
+        // vlag: rood, wit, blauw (van boven naar beneden), van beide kanten zichtbaar
+        const float fl = 9f, fh = 6f; float top = PoleH - 0.6f; string[] st = { "vlagrood", "vlagwit", "vlagblauw" };
+        for (int s = 0; s < 3; s++)
+        {
+            float y1 = top - s * fh / 3f, y0 = y1 - fh / 3f; Vector3 a = o + u * y0 + e * r0, b = o + u * y0 + e * (r0 + fl), cc = o + u * y1 + e * (r0 + fl), d = o + u * y1 + e * r0;
+            M(st[s]).Quad(a, b, cc, d, n); M(st[s]).Quad(a, b, cc, d, -n);
+        }
+    }
+    static Color PoleColor(string k)
+    {
+        switch (k)
+        {
+            case "ijs": return new Color(0.92f, 0.96f, 1f); case "rood": return new Color(0.8f, 0.15f, 0.15f); case "wit": return new Color(0.97f, 0.97f, 0.95f);
+            case "goud": return new Color(0.9f, 0.72f, 0.25f); case "vlagrood": return new Color(0.68f, 0.11f, 0.16f); case "vlagwit": return Color.white; case "vlagblauw": return new Color(0.13f, 0.27f, 0.55f);
+            default: return Color.gray;
         }
     }
 
@@ -528,8 +573,24 @@ public static class PlanetCity
 
     // ---------- wegen ----------
     // Afmetingen per stijl: halve breedte van het asfalt en van asfalt + stoep (m). 0 = gewone weg, 1 = brede weg, 2 = laan (met middenberm)
-    static float hwA = 2.5f, hwS = 4.6f; static byte styleNow; static bool bridgeNow;
-    static void Dims(byte style, out float a, out float s) { if (style == 1) { a = 4.2f; s = 6.2f; } else if (style == 2) { a = 4.4f; s = 6.0f; } else { a = 2.5f; s = 4.6f; } }
+    static float hwA = 2.5f, hwS = 4.5f; static byte styleNow; static bool bridgeNow;
+    static void Dims(byte style, out float a, out float s) { if (style == 1) { a = 4.2f; s = 6.2f; } else if (style == 2) { a = 4.4f; s = 6.0f; } else { a = 2.5f; s = 4.5f; } }
+    // Profiel zoals in de webversie: asfalt net boven de grond, een schuine stoeprand van 30 cm en de stoep 25 cm hoog,
+    // met een rand die tot onder de grond doorloopt. De kern van een kruising ligt 5 mm lager dan de armen.
+    const float AY = 0.10f, ACY = 0.095f, SY = 0.25f, KW = 0.3f, LY = 0.11f, SKB = -0.35f;
+    // schuine stoeprand van de rand van het asfalt (a0-a1, hoogte ya) naar de stoep (b0-b1, hoogte SY)
+    static void Kerb(MeshBuilder m, Frame fr, Vector2 a0, Vector2 a1, Vector2 b0, Vector2 b1, float ya)
+    {
+        Vector2 o = (b0 + b1 - a0 - a1) * 0.5f;
+        m.Quad(fr.P(a0.x, ya, a0.y), fr.P(a1.x, ya, a1.y), fr.P(b1.x, SY, b1.y), fr.P(b0.x, SY, b0.y), fr.D(-o.x, KW, -o.y));
+    }
+    // stuk stoep tussen een binnenlijn (i0-i1) en een buitenlijn (o0-o1), met een zijkant omlaag langs de buitenlijn
+    static void Walk(MeshBuilder m, Frame fr, Vector2 i0, Vector2 i1, Vector2 o0, Vector2 o1)
+    {
+        m.Quad(fr.P(i0.x, SY, i0.y), fr.P(i1.x, SY, i1.y), fr.P(o1.x, SY, o1.y), fr.P(o0.x, SY, o0.y), fr.u);
+        Vector2 w = (o0 + o1 - i0 - i1) * 0.5f;
+        m.Quad(fr.P(o0.x, SKB, o0.y), fr.P(o1.x, SKB, o1.y), fr.P(o1.x, SY, o1.y), fr.P(o0.x, SY, o0.y), fr.D(w.x, 0, w.y));
+    }
     public static float LaneOffset(int i) { byte s = StyleOf(i); return s == 1 ? 2.5f : s == 2 ? 2.9f : 1.25f; }   // rijbaan van de auto, rechts van het midden
     public static float WalkOffset(int i) { byte s = StyleOf(i); return s == 0 ? 3.5f : 5.2f; }                       // looplijn van voetgangers op de stoep
     static Vector2 PoleAt(Vector2 e, Vector2 d) { Vector2 r = new Vector2(d.y, -d.x); return e + d * 3.2f + r * (hwS - 0.7f); }   // verkeerslicht: rechts van de arm, na het zebrapad
@@ -545,7 +606,7 @@ public static class PlanetCity
     // pijl op het asfalt die langs d wijst (eenrichtingsverkeer)
     static void Arrow(System.Func<string, MeshBuilder> M, Frame fr, Vector2 c, Vector2 d, float len)
     {
-        d = d.normalized; Vector2 r = new Vector2(d.y, -d.x); const float y = 0.166f;
+        d = d.normalized; Vector2 r = new Vector2(d.y, -d.x); const float y = LY + 0.001f;
         Vector2 b0 = c - d * len * 0.5f, b1 = c + d * len * 0.1f, tip = c + d * len * 0.5f;
         M("lijn").Quad(fr.P(b0.x - r.x * 0.14f, y, b0.y - r.y * 0.14f), fr.P(b0.x + r.x * 0.14f, y, b0.y + r.y * 0.14f), fr.P(b1.x + r.x * 0.14f, y, b1.y + r.y * 0.14f), fr.P(b1.x - r.x * 0.14f, y, b1.y - r.y * 0.14f), fr.u);
         M("lijn").Tri(fr.P(b1.x - r.x * 0.55f, y, b1.y - r.y * 0.55f), fr.P(b1.x + r.x * 0.55f, y, b1.y + r.y * 0.55f), fr.P(tip.x, y, tip.y), fr.u);
@@ -564,7 +625,7 @@ public static class PlanetCity
     // balustrade langs een brug van a naar b (twee kanten, zodat je haar ook van binnen ziet)
     static void Parapet(System.Func<string, MeshBuilder> M, Frame fr, Vector2 a, Vector2 b, Vector2 outward)
     {
-        Vector3 pa = fr.P(a.x, 0.095f, a.y), pb = fr.P(b.x, 0.095f, b.y), ta = fr.P(a.x, 1.05f, a.y), tb = fr.P(b.x, 1.05f, b.y);
+        Vector3 pa = fr.P(a.x, SY, a.y), pb = fr.P(b.x, SY, b.y), ta = fr.P(a.x, 1.05f, a.y), tb = fr.P(b.x, 1.05f, b.y);
         M("rand").Quad(pa, pb, tb, ta, fr.D(outward.x, 0, outward.y)); M("rand").Quad(pa, pb, tb, ta, fr.D(-outward.x, 0, -outward.y));
         Vector2 d = (b - a).normalized, r = new Vector2(d.y, -d.x) * 0.12f;
         M("rand").Quad(fr.P(a.x - r.x, 1.05f, a.y - r.y), fr.P(a.x + r.x, 1.05f, a.y + r.y), fr.P(b.x + r.x, 1.05f, b.y + r.y), fr.P(b.x - r.x, 1.05f, b.y - r.y), fr.u);
@@ -628,10 +689,17 @@ public static class PlanetCity
         float coreS = coreA + (hwS - hwA);
         // armen
         var armLen = new float[na]; bool signals = Lights && na >= 3;
+        for (int a = 0; a < na; a++) { float along = Vector2.Dot(-ends[a], dirs[a]); float perp = (ends[a] + dirs[a] * along).magnitude; armLen[a] = along + Mathf.Sqrt(Mathf.Max(0f, coreA * coreA - perp * perp)) - 0.3f; }
+        // ligt punt p op het asfalt (plus marge) van een andere arm dan arm 'skip'? Dan geen stoep of stoeprand van deze arm daar.
+        System.Func<Vector2, int, float, bool> onArm = (p, skip, margin) =>
+        {
+            for (int b = 0; b < na; b++) { if (b == skip) continue; Vector2 db = dirs[b]; float al = Vector2.Dot(p - ends[b], db), pe = Mathf.Abs(Vector2.Dot(p - ends[b], new Vector2(db.y, -db.x))); if (al > -0.5f && al < armLen[b] + 0.5f && pe < hwA + margin) return true; }
+            return false;
+        };
         for (int a = 0; a < na; a++)
         {
             Vector2 e = ends[a], d = dirs[a], r = new Vector2(d.y, -d.x), en = e.normalized; float den = Vector2.Dot(d, en);
-            float along = Vector2.Dot(-e, d); float perp = (e + d * along).magnitude; float L = along + Mathf.Sqrt(Mathf.Max(0f, coreA * coreA - perp * perp)) - 0.3f; armLen[a] = L;
+            float L = armLen[a];
             System.Func<float, float, Vector2[]> quad = (hw, len) =>
             {
                 var q = new Vector2[4];
@@ -639,43 +707,45 @@ public static class PlanetCity
                 return q;
             };
             var st = quad(hwS, L + 1.2f); var asf = quad(hwA, L);
-            M("stoep").Quad(fr.P(st[0].x, 0.095f, st[0].y), fr.P(st[1].x, 0.095f, st[1].y), fr.P(st[3].x, 0.095f, st[3].y), fr.P(st[2].x, 0.095f, st[2].y), fr.u);
-            M("stoep").Quad(fr.P(st[0].x, -0.35f, st[0].y), fr.P(st[2].x, -0.35f, st[2].y), fr.P(st[2].x, 0.095f, st[2].y), fr.P(st[0].x, 0.095f, st[0].y), fr.D(-r.x, 0, -r.y));
-            M("stoep").Quad(fr.P(st[1].x, -0.35f, st[1].y), fr.P(st[3].x, -0.35f, st[3].y), fr.P(st[3].x, 0.095f, st[3].y), fr.P(st[1].x, 0.095f, st[1].y), fr.D(r.x, 0, r.y));
-            M("asfalt").Quad(fr.P(asf[0].x, 0.155f, asf[0].y), fr.P(asf[1].x, 0.155f, asf[1].y), fr.P(asf[3].x, 0.155f, asf[3].y), fr.P(asf[2].x, 0.155f, asf[2].y), fr.u);
+            M("asfalt").Quad(fr.P(asf[0].x, AY, asf[0].y), fr.P(asf[1].x, AY, asf[1].y), fr.P(asf[3].x, AY, asf[3].y), fr.P(asf[2].x, AY, asf[2].y), fr.u);
             if (bridgeNow) { Parapet(M, fr, st[0], st[2], -r); Parapet(M, fr, st[1], st[3], r); }
-            // stoeprand langs de zijkanten, alleen buiten de kern
+            // langs beide zijkanten, in stukjes van 0,5 m: schuine stoeprand en stoep, niet in de kern en niet over een andere arm
             for (int sd = 0; sd < 2; sd++)
             {
-                Vector2 p = asf[sd], q2 = asf[2 + sd], o = r * (sd == 0 ? -0.22f : 0.22f); float len = Vector2.Distance(p, q2); Vector2 dd = (q2 - p) / Mathf.Max(0.01f, len);
-                for (float s0 = 0f; s0 < len; s0 += 0.5f)
+                float sg = sd == 0 ? -1f : 1f;
+                System.Func<float, float, Vector2> at = (lat, s) => { Vector2 p0 = e + r * (sg * lat); float t = Mathf.Abs(den) < 1e-4f ? 0f : Vector2.Dot(e - p0, en) / den; return p0 + d * (t + s); };
+                for (float s0 = 0f; s0 < L + 1.2f; s0 += 0.5f)
                 {
-                    float s1 = Mathf.Min(len, s0 + 0.5f); Vector2 a0 = p + dd * s0, a1 = p + dd * s1; if (((a0 + a1) * 0.5f).magnitude < coreA - 0.2f) continue;
-                    M("rand").Quad(fr.P(a0.x, 0.155f, a0.y), fr.P(a1.x, 0.155f, a1.y), fr.P(a1.x + o.x, 0.23f, a1.y + o.y), fr.P(a0.x + o.x, 0.23f, a0.y + o.y), fr.D(-o.x, 1f, -o.y));
+                    float s1 = Mathf.Min(L + 1.2f, s0 + 0.5f);
+                    if (s0 < L)
+                    {
+                        float k1 = Mathf.Min(s1, L); Vector2 a0 = at(hwA, s0), a1 = at(hwA, k1), b0 = at(hwA + KW, s0), b1 = at(hwA + KW, k1), km = (a0 + a1 + b0 + b1) * 0.25f;
+                        if (km.magnitude >= coreA - 0.2f && !onArm(km, a, 0.1f)) Kerb(M("rand"), fr, a0, a1, b0, b1, AY);
+                    }
+                    Vector2 i0 = at(hwA + KW, s0), i1 = at(hwA + KW, s1), o0 = at(hwS, s0), o1 = at(hwS, s1), wm = (i0 + i1 + o0 + o1) * 0.25f;
+                    if ((i0 + i1).magnitude * 0.5f >= coreA + KW - 0.1f && !onArm(wm, a, KW)) Walk(M("stoep"), fr, i0, i1, o0, o1);
                 }
             }
             int flow = Flow(i, ids[a]);   // +1: verkeer verlaat dit vak langs deze arm, -1: komt erlangs binnen
             // middenstreepjes op de arm (niet bij een kruising), pijlen bij eenrichtingsverkeer, en een zebrapad vlak voor een kruising
             if (flow != 0) Arrow(M, fr, e + d * Mathf.Min(L * 0.5f, 4.5f), flow > 0 ? -d : d, 2.2f);
-            else if (na <= 2 && styleNow != 2) for (float s0 = 0.6f; s0 + 1.2f < L - 0.5f; s0 += 2.6f) { Vector2 a0 = e + d * s0, a1 = e + d * (s0 + 1.4f); M("lijn").Quad(fr.P(a0.x - r.x * 0.07f, 0.165f, a0.y - r.y * 0.07f), fr.P(a0.x + r.x * 0.07f, 0.165f, a0.y + r.y * 0.07f), fr.P(a1.x + r.x * 0.07f, 0.165f, a1.y + r.y * 0.07f), fr.P(a1.x - r.x * 0.07f, 0.165f, a1.y - r.y * 0.07f), fr.u); }
-            if (styleNow == 1 && na <= 2) for (int ln = -1; ln <= 1; ln += 2) for (float s0 = 0.6f; s0 + 1.2f < L - 0.5f; s0 += 2.6f) { Vector2 off = r * (ln * hwA * 0.5f); Vector2 a0 = e + d * s0 + off, a1 = e + d * (s0 + 1.4f) + off; M("lijn").Quad(fr.P(a0.x - r.x * 0.05f, 0.165f, a0.y - r.y * 0.05f), fr.P(a0.x + r.x * 0.05f, 0.165f, a0.y + r.y * 0.05f), fr.P(a1.x + r.x * 0.05f, 0.165f, a1.y + r.y * 0.05f), fr.P(a1.x - r.x * 0.05f, 0.165f, a1.y - r.y * 0.05f), fr.u); }
+            else if (na <= 2 && styleNow != 2) for (float s0 = 0.6f; s0 + 1.2f < L - 0.5f; s0 += 2.6f) { Vector2 a0 = e + d * s0, a1 = e + d * (s0 + 1.4f); M("lijn").Quad(fr.P(a0.x - r.x * 0.07f, LY, a0.y - r.y * 0.07f), fr.P(a0.x + r.x * 0.07f, LY, a0.y + r.y * 0.07f), fr.P(a1.x + r.x * 0.07f, LY, a1.y + r.y * 0.07f), fr.P(a1.x - r.x * 0.07f, LY, a1.y - r.y * 0.07f), fr.u); }
+            if (styleNow == 1 && na <= 2) for (int ln = -1; ln <= 1; ln += 2) for (float s0 = 0.6f; s0 + 1.2f < L - 0.5f; s0 += 2.6f) { Vector2 off = r * (ln * hwA * 0.5f); Vector2 a0 = e + d * s0 + off, a1 = e + d * (s0 + 1.4f) + off; M("lijn").Quad(fr.P(a0.x - r.x * 0.05f, LY, a0.y - r.y * 0.05f), fr.P(a0.x + r.x * 0.05f, LY, a0.y + r.y * 0.05f), fr.P(a1.x + r.x * 0.05f, LY, a1.y + r.y * 0.05f), fr.P(a1.x - r.x * 0.05f, LY, a1.y - r.y * 0.05f), fr.u); }
             if (styleNow == 2 && (na == 1 || na >= 3)) Median(M, fr, e + d * 0.2f, e + d * Mathf.Max(0.2f, L - (na >= 3 ? 4.5f : 3.2f)));
-            if (na >= 3 && L > 4.5f) { int zm = Mathf.FloorToInt((hwA - 0.5f) / 0.95f); for (int z = -zm; z <= zm; z++) { Vector2 off = r * (z * 0.95f); Vector2 a0 = e + d * 0.6f + off - r * 0.28f, b0 = e + d * 0.6f + off + r * 0.28f, c0 = e + d * 2.6f + off + r * 0.28f, e0 = e + d * 2.6f + off - r * 0.28f; M("lijn").Quad(fr.P(a0.x, 0.165f, a0.y), fr.P(b0.x, 0.165f, b0.y), fr.P(c0.x, 0.165f, c0.y), fr.P(e0.x, 0.165f, e0.y), fr.u); } }
-            if (signals && CanDrive(ids[a], i)) { Vector2 pp = PoleAt(e, d); Cone(M("paal"), fr, pp.x, pp.y, 0.08f, 0.1f, 3.9f, 0.06f); Cone(M("paal"), fr, pp.x, pp.y, 0.24f, 3.3f, 3.95f, 0.24f); }
+            if (na >= 3 && L > 4.5f) { int zm = Mathf.FloorToInt((hwA - 0.5f) / 0.95f); for (int z = -zm; z <= zm; z++) { Vector2 off = r * (z * 0.95f); Vector2 a0 = e + d * 0.6f + off - r * 0.28f, b0 = e + d * 0.6f + off + r * 0.28f, c0 = e + d * 2.6f + off + r * 0.28f, e0 = e + d * 2.6f + off - r * 0.28f; M("lijn").Quad(fr.P(a0.x, LY, a0.y), fr.P(b0.x, LY, b0.y), fr.P(c0.x, LY, c0.y), fr.P(e0.x, LY, e0.y), fr.u); } }
+            if (signals && CanDrive(ids[a], i)) { Vector2 pp = PoleAt(e, d); Cone(M("paal"), fr, pp.x, pp.y, 0.08f, SY, 3.9f, 0.06f); Cone(M("paal"), fr, pp.x, pp.y, 0.24f, 3.3f, 3.95f, 0.24f); }
         }
-        // kern: stoepschijf met schuine rand, asfaltschijf, stoeprand alleen waar geen arm zit
+        // kern: asfaltschijf; waar geen arm zit een schuine stoeprand en een ring stoep, zodat de hoeken tussen de armen rond zijn
         const int S = 48;
-        Disc(M("stoep"), fr, coreS, 0.085f); Skirt(M("stoep"), fr, coreS, -0.35f, 0.085f);
         for (int k = 0; k < S; k++)
         {
             float a0 = k * Mathf.PI * 2f / S, a1 = (k + 1) * Mathf.PI * 2f / S, am = (a0 + a1) * 0.5f;
-            Vector2 p0 = new Vector2(Mathf.Cos(a0), Mathf.Sin(a0)) * coreA, p1 = new Vector2(Mathf.Cos(a1), Mathf.Sin(a1)) * coreA, pm = new Vector2(Mathf.Cos(am), Mathf.Sin(am)) * coreA;
-            M("asfalt").Tri(fr.P(0, 0.150f, 0), fr.P(p0.x, 0.150f, p0.y), fr.P(p1.x, 0.150f, p1.y), fr.u);
-            bool covered = false;
-            for (int a = 0; a < na && !covered; a++) { Vector2 e = ends[a], d = dirs[a]; float along = Vector2.Dot(pm - e, d); float perp = Mathf.Abs(Vector2.Dot(pm - e, new Vector2(d.y, -d.x))); if (along > -0.5f && along < armLen[a] + 0.5f && perp < hwA + 0.3f) covered = true; }
-            if (!covered) { Vector2 o0 = p0.normalized * 0.22f, o1 = p1.normalized * 0.22f; M("rand").Quad(fr.P(p0.x, 0.150f, p0.y), fr.P(p1.x, 0.150f, p1.y), fr.P(p1.x + o1.x, 0.23f, p1.y + o1.y), fr.P(p0.x + o0.x, 0.23f, p0.y + o0.y), fr.D(-pm.x, coreA, -pm.y)); }
+            Vector2 u0 = new Vector2(Mathf.Cos(a0), Mathf.Sin(a0)), u1 = new Vector2(Mathf.Cos(a1), Mathf.Sin(a1)), um = new Vector2(Mathf.Cos(am), Mathf.Sin(am));
+            M("asfalt").Tri(fr.P(0, ACY, 0), fr.P(u0.x * coreA, ACY, u0.y * coreA), fr.P(u1.x * coreA, ACY, u1.y * coreA), fr.u);
+            if (!onArm(um * (coreA + 0.15f), -1, 0.3f)) Kerb(M("rand"), fr, u0 * coreA, u1 * coreA, u0 * (coreA + KW), u1 * (coreA + KW), ACY);
+            if (!onArm(um * ((coreA + KW + coreS) * 0.5f), -1, KW) && !onArm(um * (coreA + KW + 0.1f), -1, KW)) Walk(M("stoep"), fr, u0 * (coreA + KW), u1 * (coreA + KW), u0 * coreS, u1 * coreS);
         }
-        if (na >= 3) { Disc(M("gras"), fr, 1.3f, 0.21f); Skirt(M("rand"), fr, 1.4f, 0.155f, 0.21f); }
+        if (na >= 3) { Disc(M("gras"), fr, 1.3f, 0.21f); Skirt(M("rand"), fr, 1.4f, ACY, 0.21f); }
         LampAt(M, fr, freeBest, freeDir);
     }
 
@@ -699,25 +769,22 @@ public static class PlanetCity
         {
             int m = n + 1;
             Vector2 sL0 = at(n, hwS, -1), sR0 = at(n, hwS, 1), sL1 = at(m, hwS, -1), sR1 = at(m, hwS, 1);
-            M("stoep").Quad(fr.P(sL0.x, 0.095f, sL0.y), fr.P(sR0.x, 0.095f, sR0.y), fr.P(sR1.x, 0.095f, sR1.y), fr.P(sL1.x, 0.095f, sL1.y), fr.u);
-            M("stoep").Quad(fr.P(sL0.x, -0.35f, sL0.y), fr.P(sL1.x, -0.35f, sL1.y), fr.P(sL1.x, 0.095f, sL1.y), fr.P(sL0.x, 0.095f, sL0.y), fr.D(-rr[n].x, 0, -rr[n].y));
-            M("stoep").Quad(fr.P(sR0.x, -0.35f, sR0.y), fr.P(sR1.x, -0.35f, sR1.y), fr.P(sR1.x, 0.095f, sR1.y), fr.P(sR0.x, 0.095f, sR0.y), fr.D(rr[n].x, 0, rr[n].y));
             Vector2 aL0 = at(n, hwA, -1), aR0 = at(n, hwA, 1), aL1 = at(m, hwA, -1), aR1 = at(m, hwA, 1);
-            M("asfalt").Quad(fr.P(aL0.x, 0.155f, aL0.y), fr.P(aR0.x, 0.155f, aR0.y), fr.P(aR1.x, 0.155f, aR1.y), fr.P(aL1.x, 0.155f, aL1.y), fr.u);
-            Vector2 oL0 = -rr[n] * 0.22f, oL1 = -rr[m] * 0.22f, oR0 = rr[n] * 0.22f, oR1 = rr[m] * 0.22f;   // stoeprand langs beide kanten van het asfalt
-            M("rand").Quad(fr.P(aL0.x, 0.155f, aL0.y), fr.P(aL1.x, 0.155f, aL1.y), fr.P(aL1.x + oL1.x, 0.23f, aL1.y + oL1.y), fr.P(aL0.x + oL0.x, 0.23f, aL0.y + oL0.y), fr.D(-oL0.x, 1f, -oL0.y));
-            M("rand").Quad(fr.P(aR0.x, 0.155f, aR0.y), fr.P(aR1.x, 0.155f, aR1.y), fr.P(aR1.x + oR1.x, 0.23f, aR1.y + oR1.y), fr.P(aR0.x + oR0.x, 0.23f, aR0.y + oR0.y), fr.D(-oR0.x, 1f, -oR0.y));
+            Vector2 kL0 = at(n, hwA + KW, -1), kR0 = at(n, hwA + KW, 1), kL1 = at(m, hwA + KW, -1), kR1 = at(m, hwA + KW, 1);
+            M("asfalt").Quad(fr.P(aL0.x, AY, aL0.y), fr.P(aR0.x, AY, aR0.y), fr.P(aR1.x, AY, aR1.y), fr.P(aL1.x, AY, aL1.y), fr.u);
+            Kerb(M("rand"), fr, aL0, aL1, kL0, kL1, AY); Kerb(M("rand"), fr, aR0, aR1, kR0, kR1, AY);   // schuine stoeprand aan beide kanten
+            Walk(M("stoep"), fr, kL0, kL1, sL0, sL1); Walk(M("stoep"), fr, kR0, kR1, sR0, sR1);
             if (bridgeNow) { Parapet(M, fr, sL0, sL1, -rr[n]); Parapet(M, fr, sR0, sR1, rr[n]); }
         }
         int flow = Flow(i, p1) != 0 ? Flow(i, p1) : -Flow(i, p0);   // +1: van het begin naar het eind van de bocht
         if (flow != 0) { Vector2 T = (pos[N / 2 + 1] - pos[N / 2 - 1]).normalized; Arrow(M, fr, pos[N / 2], flow > 0 ? T : -T, 2.2f); }
-        else if (styleNow != 2) for (int n = 1; n < N - 1; n += 2) { Vector2 a = pos[n], b = pos[n + 1], r = rr[n]; M("lijn").Quad(fr.P(a.x - r.x * 0.07f, 0.165f, a.y - r.y * 0.07f), fr.P(a.x + r.x * 0.07f, 0.165f, a.y + r.y * 0.07f), fr.P(b.x + r.x * 0.07f, 0.165f, b.y + r.y * 0.07f), fr.P(b.x - r.x * 0.07f, 0.165f, b.y - r.y * 0.07f), fr.u); }
+        else if (styleNow != 2) for (int n = 1; n < N - 1; n += 2) { Vector2 a = pos[n], b = pos[n + 1], r = rr[n]; M("lijn").Quad(fr.P(a.x - r.x * 0.07f, LY, a.y - r.y * 0.07f), fr.P(a.x + r.x * 0.07f, LY, a.y + r.y * 0.07f), fr.P(b.x + r.x * 0.07f, LY, b.y + r.y * 0.07f), fr.P(b.x - r.x * 0.07f, LY, b.y - r.y * 0.07f), fr.u); }
     }
 
     static void LampAt(System.Func<string, MeshBuilder> M, Frame fr, float freeBest, Vector2 freeDir)
     {
         if (freeBest <= -1f) return; Vector2 lp = freeDir * (hwS - 0.6f);
-        Cone(M("paal"), fr, lp.x, lp.y, 0.08f, 0.09f, 5.2f, 0.06f);
+        Cone(M("paal"), fr, lp.x, lp.y, 0.08f, SY, 5.2f, 0.06f);
         Cone(M("lamp"), fr, lp.x, lp.y, 0.28f, 4.9f, 5.35f, 0.2f); Cap6(M("lamp"), fr, 0.2f, 5.35f);
     }
 
@@ -742,18 +809,10 @@ public static class PlanetCity
             }
             return q;
         };
-        var st = quad(hwS); var asf = quad(hwA);
-        // stoep: vlak (als twee driehoeken) + schuine randen omlaag aan de zijkanten
-        M("stoep").Quad(fr.P(st[0].x, 0.095f, st[0].y), fr.P(st[1].x, 0.095f, st[1].y), fr.P(st[3].x, 0.095f, st[3].y), fr.P(st[2].x, 0.095f, st[2].y), fr.u);
-        M("stoep").Quad(fr.P(st[0].x, -0.35f, st[0].y), fr.P(st[2].x, -0.35f, st[2].y), fr.P(st[2].x, 0.095f, st[2].y), fr.P(st[0].x, 0.095f, st[0].y), fr.D(-r.x, 0, -r.y));
-        M("stoep").Quad(fr.P(st[1].x, -0.35f, st[1].y), fr.P(st[3].x, -0.35f, st[3].y), fr.P(st[3].x, 0.095f, st[3].y), fr.P(st[1].x, 0.095f, st[1].y), fr.D(r.x, 0, r.y));
-        // asfalt + stoeprand
-        M("asfalt").Quad(fr.P(asf[0].x, 0.155f, asf[0].y), fr.P(asf[1].x, 0.155f, asf[1].y), fr.P(asf[3].x, 0.155f, asf[3].y), fr.P(asf[2].x, 0.155f, asf[2].y), fr.u);
-        for (int sd = 0; sd < 2; sd++)
-        {
-            Vector2 a = asf[sd], b = asf[2 + sd], o = r * (sd == 0 ? -0.22f : 0.22f);
-            M("rand").Quad(fr.P(a.x, 0.155f, a.y), fr.P(b.x, 0.155f, b.y), fr.P(b.x + o.x, 0.23f, b.y + o.y), fr.P(a.x + o.x, 0.23f, a.y + o.y), fr.D(-o.x, 1f, -o.y));
-        }
+        var st = quad(hwS); var asf = quad(hwA); var kb = quad(hwA + KW);
+        // asfalt, dan aan beide kanten een schuine stoeprand en de stoep
+        M("asfalt").Quad(fr.P(asf[0].x, AY, asf[0].y), fr.P(asf[1].x, AY, asf[1].y), fr.P(asf[3].x, AY, asf[3].y), fr.P(asf[2].x, AY, asf[2].y), fr.u);
+        for (int sd = 0; sd < 2; sd++) { Kerb(M("rand"), fr, asf[sd], asf[2 + sd], kb[sd], kb[2 + sd], AY); Walk(M("stoep"), fr, kb[sd], kb[2 + sd], st[sd], st[2 + sd]); }
         if (bridgeNow) { Parapet(M, fr, st[0], st[2], -r); Parapet(M, fr, st[1], st[3], r); }
         float len = Vector2.Distance(e0, e1);
         int flow = Flow(i, p1) != 0 ? Flow(i, p1) : -Flow(i, p0);   // +1: van e0 naar e1
@@ -761,8 +820,8 @@ public static class PlanetCity
         else if (styleNow != 2)
         {
             // middenstreepjes (bij een brede weg ook de rijstrookstrepen)
-            for (float s0 = -len / 2f + 0.6f; s0 + 1.2f < len / 2f; s0 += 2.6f) { Vector2 a = mid + d * s0, b = mid + d * (s0 + 1.4f); M("lijn").Quad(fr.P(a.x - r.x * 0.07f, 0.165f, a.y - r.y * 0.07f), fr.P(a.x + r.x * 0.07f, 0.165f, a.y + r.y * 0.07f), fr.P(b.x + r.x * 0.07f, 0.165f, b.y + r.y * 0.07f), fr.P(b.x - r.x * 0.07f, 0.165f, b.y - r.y * 0.07f), fr.u); }
-            if (styleNow == 1) for (int ln = -1; ln <= 1; ln += 2) for (float s0 = -len / 2f + 0.6f; s0 + 1.2f < len / 2f; s0 += 2.6f) { Vector2 off = r * (ln * hwA * 0.5f); Vector2 a = mid + d * s0 + off, b = mid + d * (s0 + 1.4f) + off; M("lijn").Quad(fr.P(a.x - r.x * 0.05f, 0.165f, a.y - r.y * 0.05f), fr.P(a.x + r.x * 0.05f, 0.165f, a.y + r.y * 0.05f), fr.P(b.x + r.x * 0.05f, 0.165f, b.y + r.y * 0.05f), fr.P(b.x - r.x * 0.05f, 0.165f, b.y - r.y * 0.05f), fr.u); }
+            for (float s0 = -len / 2f + 0.6f; s0 + 1.2f < len / 2f; s0 += 2.6f) { Vector2 a = mid + d * s0, b = mid + d * (s0 + 1.4f); M("lijn").Quad(fr.P(a.x - r.x * 0.07f, LY, a.y - r.y * 0.07f), fr.P(a.x + r.x * 0.07f, LY, a.y + r.y * 0.07f), fr.P(b.x + r.x * 0.07f, LY, b.y + r.y * 0.07f), fr.P(b.x - r.x * 0.07f, LY, b.y - r.y * 0.07f), fr.u); }
+            if (styleNow == 1) for (int ln = -1; ln <= 1; ln += 2) for (float s0 = -len / 2f + 0.6f; s0 + 1.2f < len / 2f; s0 += 2.6f) { Vector2 off = r * (ln * hwA * 0.5f); Vector2 a = mid + d * s0 + off, b = mid + d * (s0 + 1.4f) + off; M("lijn").Quad(fr.P(a.x - r.x * 0.05f, LY, a.y - r.y * 0.05f), fr.P(a.x + r.x * 0.05f, LY, a.y + r.y * 0.05f), fr.P(b.x + r.x * 0.05f, LY, b.y + r.y * 0.05f), fr.P(b.x - r.x * 0.05f, LY, b.y - r.y * 0.05f), fr.u); }
         }
         if (styleNow == 2) Median(M, fr, mid - d * (len * 0.5f) * 0.98f, mid + d * (len * 0.5f) * 0.98f);
     }
