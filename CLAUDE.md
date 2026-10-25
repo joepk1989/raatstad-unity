@@ -12,6 +12,7 @@ De wereld is een bol (planeet). Alles is gebaseerd op hexagons en driehoeken.
 ## Referentie
 - De browserversie (repo `joepk1989/hexstad`, JavaScript) is de referentie voor hoe dingen moeten werken.
 - Neem regels en data over (module-JSON, edge-codes, wegregels), vertaal de JS-code niet regel voor regel.
+- `docs/overdracht-webversie.md` beschrijft wat er in de webversie is bijgekomen (maten, regels, formules): stadsgenerator, wenteltrap, voertuigen, geluid. Lees dat voordat je een van die onderdelen in Unity bouwt.
 
 ## Ontwerpregels
 - Ware schaal: 1 Unity-eenheid = 1 meter.
