@@ -7,8 +7,8 @@ using UnityEngine;
 public static class Blocks
 {
     // volgorde = toetsen 1-9 in de bouwmodus
-    public static readonly string[] Tools = { "weg", "woning", "kantoor", "park", "water", "meer", "pad", "dak", "heuvel", "kuil", "blok", "winkel", "plein", "toren", "molen", "gum" };
-    public static readonly string[] Names = { "Weg", "Woning", "Kantoor", "Park", "Gracht", "Meer", "Pad", "Dak", "Heuvel", "Uitgraving", "Blok", "Winkel", "Plein", "Toren", "Molen", "Gum" };
+    public static readonly string[] Tools = { "weg", "woning", "kantoor", "park", "water", "meer", "pad", "dak", "terrein", "kuil", "blok", "winkel", "plein", "toren", "molen", "gum" };   // terrein: geen blok maar het boetseergereedschap (zie PlanetBuilder)
+    public static readonly string[] Names = { "Weg", "Woning", "Kantoor", "Park", "Gracht", "Meer", "Pad", "Dak", "Terrein", "Uitgraving", "Blok", "Winkel", "Plein", "Toren", "Molen", "Gum" };
     public static float Height(string t)
     {
         switch (t) { case "woning": case "kantoor": case "heuvel": case "blok": case "winkel": return 3f; case "toren": return 9f; case "molen": return 8f; case "plein": return 0.1f; case "dak": return 2.5f; case "kuil": return -3f; case "pad": return 0.15f; case "park": return 0.05f; default: return 0f; }

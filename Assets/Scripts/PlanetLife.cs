@@ -63,6 +63,7 @@ public class PlanetLife : MonoBehaviour
         float side = PlanetCity.IsRoad(a.cellA) && PlanetCity.IsRoad(a.cellB) ? (PlanetCity.WalkOffset(a.cellA) + PlanetCity.WalkOffset(a.cellB)) * 0.5f : PlanetCity.IsRoad(a.cellA) ? PlanetCity.WalkOffset(a.cellA) * 0.5f : PlanetCity.IsRoad(a.cellB) ? PlanetCity.WalkOffset(a.cellB) * 0.5f : 0.35f;
         float hgt = Mathf.Lerp(PlanetCity.IsRoad(a.cellA) ? 0.25f : 0.11f, PlanetCity.IsRoad(a.cellB) ? 0.25f : 0.11f, a.ct);   // op de stoep (25 cm) of op een pad
         Where(a.cellA, a.cellB, a.ct, side, hgt, out Vector3 pos, out Vector3 fwd, out Vector3 up);
+        pos += up * PlanetCity.SurfaceH(a.ct < 0.5f ? a.cellA : a.cellB, pos);   // terreinhoogte en de helling van de weg
         a.root.position = pos;
         if (a.paused && a.partner != null) { Vector3 to = a.partner.root.position - pos; to -= up * Vector3.Dot(to, up); if (to.sqrMagnitude > 1e-6f) fwd = to.normalized; }
         Quaternion target = Geo.Look(fwd, up);
@@ -141,6 +142,8 @@ public class PlanetLife : MonoBehaviour
     void PlaceCar(Car c, float dt)
     {
         Arc(c.a, c.b, c.c, c.s, Mathf.Lerp(Lane(c.a, c.b), Lane(c.b, c.c), c.s), 0.10f, out Vector3 pos, out Vector3 fwd, out Vector3 up);
+        float hs = PlanetCity.SurfaceH(c.b, pos), ha = PlanetCity.SurfaceH(c.b, pos + fwd * 1.5f);   // op het hellende asfalt, met de neus mee omhoog of omlaag
+        pos += up * hs; fwd = (fwd + up * ((ha - hs) / 1.5f)).normalized;
         c.root.position = pos; c.fwd = fwd; Quaternion target = Geo.Look(fwd, up);
         c.root.rotation = dt <= 0f ? target : Quaternion.Slerp(c.root.rotation, target, Mathf.Min(1f, dt * 10f));
     }
