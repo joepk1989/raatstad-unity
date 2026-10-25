@@ -35,8 +35,14 @@ De wereld is een bol (planeet). Alles is gebaseerd op hexagons en driehoeken.
 ## Stand van zaken (25 oktober 2026)
 Al aanwezig in `Assets/Scripts/`: de planeet (`Planet`, `PlanetBuilder`, `PlanetCity`, `PlanetLife`, `PlanetWalker`), het platte raster (`Hex`, `City`, `Builder`), wegen (`RoadMesher`, `RoadRules`), verkeer (`Cars`, `Traffic`), mensen (`People`, `Chatter`, `Babble`), weer en dag/nacht, geluid (`Ambience`) en interface (`Ui`, `Beauty`).
 
+Erbij gekomen op 25 oktober 2026:
+- Bouwblokken winkel, plein, toren en molen (draaiende `Wieken`), ook in de schoonheidsscore en de praatjes. Bloktypes staan in `Blocks` (`City.cs`), tekenen per blok in `PlanetCity.BuildChunk`.
+- Polen gemarkeerd: `Planet.North`/`South`/`IsPole`, gestreepte paal met vlag op een ijswit vak; toets P springt ernaartoe.
+- Wegprofiel van de webversie: asfalt 10 cm, schuine stoeprand 30 cm, stoep 25 cm; geen stoep over het asfalt van een andere arm, ronde stoephoeken op kruisingen.
+- Terrein (low poly, als `07b-terrein.js`): hoogte per vak 0–30 m in `PlanetCity.Terr`, bebouwde vakken op een sokkel, wegen hellen mee (`Frame.H`, `PlanetCity.SurfaceH`). Boetseren met het gereedschap Terrein (toets 9): ophogen, afgraven, egaliseren, gladstrijken, helling; penseel 1/7/19/37 vakken.
+
 Nog te doen:
-1. Polen markeren (paal met vlag op de twee polvakken)
-2. Modules als JSON met edge-codes (nu nog in code)
-3. Onderdelen uit `docs/overdracht-webversie.md` bouwen: stadsgenerator, wenteltrap, low-poly voertuigen, roekeloos rijgedrag, geluiden
-4. Laadscherm (`Assets/Scripts/UI/HexLoadingScreen.cs`) in de startscène hangen
+1. Modules als JSON met edge-codes (nu nog in code)
+2. Onderdelen uit `docs/overdracht-webversie.md` bouwen: stadsgenerator, wenteltrap, low-poly voertuigen, roekeloos rijgedrag, geluiden
+3. Laadscherm (`Assets/Scripts/UI/HexLoadingScreen.cs`) in de startscène hangen
+4. Terrein: hoogtelijnen tijdens het boetseren; een weg tussen twee vakken met een groot hoogteverschil ligt nog in een kom
