@@ -13,7 +13,7 @@ public class Chatter : MonoBehaviour
     const int MaxB = 6; const float Range = 38f;
     readonly List<string> recent = new List<string>();
 
-    class Review { public int woning, kantoor, park, water, meer, pad, hoog, cellen, wegen, fiets, rotonde, bouw, autos, mensen; }
+    class Review { public int woning, kantoor, park, water, meer, pad, hoog, cellen, wegen, fiets, rotonde, bouw, autos, mensen, winkel, plein, toren, molen; }
     Review rv; float rvT = -99f;
 
     struct Line { public string text; public Func<Review, bool> ok; public Line(string t, Func<Review, bool> f) { text = t; ok = f; } }
@@ -23,16 +23,19 @@ public class Chatter : MonoBehaviour
         new Line("Dat park is prachtig.", n => n.park > 0), new Line("Kijk, een meertje! Mooi.", n => n.meer > 0), new Line("Fijn dat het water hier door de stad loopt.", n => n.water > 0),
         new Line("Wat een mooie huizen.", n => n.woning > 6), new Line("Mooi, die hoge gebouwen.", n => n.hoog > 2), new Line("Je kunt hier lekker fietsen.", n => n.fiets > 0),
         new Line("Fijne wandelpaden hier.", n => n.pad > 2), new Line("Wat een mooie ronde weg.", n => n.rotonde > 0), new Line("Het is hier lekker rustig.", n => n.autos < 3 && n.cellen > 8),
+        new Line("Fijn, een winkel om de hoek!", n => n.winkel > 0), new Line("Wat een gezellig plein.", n => n.plein > 0),
+        new Line("Die molen! Echt Hollands.", n => n.molen > 0), new Line("Die toren zie je van heinde en verre.", n => n.toren > 0),
         // gemis
         new Line("Hier mist wel wat groen...", n => n.park < n.bouw * 0.25f && n.bouw > 4), new Line("Een park zou mooi zijn.", n => n.park == 0 && n.cellen > 6),
         new Line("Waarom is er geen water?", n => n.water + n.meer == 0 && n.cellen > 10), new Line("Een meertje zou hier mooi staan.", n => n.meer == 0 && n.park > 1),
         new Line("Waar moet ik eigenlijk werken? Geen kantoren!", n => n.kantoor == 0 && n.woning > 4), new Line("Er wonen hier te weinig mensen.", n => n.kantoor > 3 && n.woning < n.kantoor),
         new Line("Ik mis fietspaden.", n => n.fiets == 0 && n.wegen > 6), new Line("Ik mis wandelpaden in het groen.", n => n.pad == 0 && n.park > 2),
         new Line("Wat is het hier leeg, bouw er nog wat bij!", n => n.cellen < 10), new Line("Meer woningen graag!", n => n.woning < 4 && n.cellen > 6),
-        new Line("Heel veel verkeer hier.", n => n.autos > 12), new Line("Geen winkels... ik moet ver lopen voor brood.", n => n.woning > 8),
-        new Line("Een rotonde zou het verkeer verbeteren.", n => n.rotonde == 0 && n.wegen > 10), new Line("Waar zijn de bankjes?", n => n.park > 2 || n.cellen > 15),
+        new Line("Heel veel verkeer hier.", n => n.autos > 12), new Line("Geen winkels... ik moet ver lopen voor brood.", n => n.winkel == 0 && n.woning > 8),
+        new Line("Een rotonde zou het verkeer verbeteren.", n => n.rotonde == 0 && n.wegen > 10), new Line("Waar zijn de bankjes?", n => n.plein == 0 && (n.park > 2 || n.cellen > 15)),
+        new Line("Hier mag best een plein met een fontein komen.", n => n.plein == 0 && n.bouw > 10), new Line("Er staat geen enkele toren, alles is zo plat...", n => n.toren + n.molen == 0 && n.cellen > 25),
     };
-    const int GoodLines = 12;
+    const int GoodLines = 16;
 
     static readonly Func<string, string>[] GenBlunt = {
         x => "Geen " + Mass(x) + "?! Wie heeft deze stad bedacht?", x => "Een stad zonder " + Mass(x) + "? Dat is toch geen stad.", x => "Jullie vergaten " + Mass(x) + ". Weer.",
@@ -54,10 +57,10 @@ public class Chatter : MonoBehaviour
             {
                 if (kv.Value.Count > 0 && kv.Value[0] == "weg") { n.wegen++; continue; }
                 n.cellen++;
-                foreach (var t in kv.Value) switch (t) { case "woning": n.woning++; break; case "kantoor": n.kantoor++; break; case "park": n.park++; break; case "water": n.water++; break; case "meer": n.meer++; break; case "pad": n.pad++; break; }
+                foreach (var t in kv.Value) switch (t) { case "woning": n.woning++; break; case "kantoor": n.kantoor++; break; case "park": n.park++; break; case "water": n.water++; break; case "meer": n.meer++; break; case "pad": n.pad++; break; case "winkel": n.winkel++; break; case "plein": n.plein++; break; case "toren": n.toren++; break; case "molen": n.molen++; break; }
                 if (kv.Value.Count >= 4) n.hoog++;
             }
-            n.bouw = n.woning + n.kantoor; n.autos = PlanetLife.I != null ? PlanetLife.I.CarCount : 0; n.mensen = PlanetLife.I != null ? PlanetLife.I.People.Count : 0;
+            n.bouw = n.woning + n.kantoor + n.winkel; n.autos = PlanetLife.I != null ? PlanetLife.I.CarCount : 0; n.mensen = PlanetLife.I != null ? PlanetLife.I.People.Count : 0;
             return n;
         }
         foreach (var kv in City.Cells)
@@ -65,12 +68,12 @@ public class Chatter : MonoBehaviour
             n.cellen++;
             foreach (var t in kv.Value)
             {
-                switch (t) { case "woning": n.woning++; break; case "kantoor": n.kantoor++; break; case "park": n.park++; break; case "water": n.water++; break; case "meer": n.meer++; break; case "pad": n.pad++; break; }
+                switch (t) { case "woning": n.woning++; break; case "kantoor": n.kantoor++; break; case "park": n.park++; break; case "water": n.water++; break; case "meer": n.meer++; break; case "pad": n.pad++; break; case "winkel": n.winkel++; break; case "plein": n.plein++; break; case "toren": n.toren++; break; case "molen": n.molen++; break; }
             }
             if (kv.Value.Count >= 4) n.hoog++;
         }
         foreach (var p in City.Paths) n.wegen++;
-        n.bouw = n.woning + n.kantoor;
+        n.bouw = n.woning + n.kantoor + n.winkel;
         var cars = FindAnyObjectByType<Cars>(); n.autos = cars != null ? cars.Count : 0;
         n.mensen = People.I != null ? People.I.List.Count : 0;
         return n;

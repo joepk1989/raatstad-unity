@@ -28,6 +28,7 @@ public class DayNight : MonoBehaviour
         Color sky = Color.Lerp(Color.Lerp(dusk, day, Mathf.Clamp01(elev * 3f)), night, Night);
         sky = Color.Lerp(sky, new Color(0.6f, 0.63f, 0.68f) * (1f - 0.85f * Night), Weather.Cloud * 0.7f);
         Mats.Get("p_lamp", Color.white).color = Color.Lerp(new Color(0.85f, 0.85f, 0.8f), new Color(1f, 0.88f, 0.5f), Mathf.Clamp01(Night * 1.5f + Weather.Cloud * 0.3f));   // lantaarns gaan aan
+        Mats.GetUnlit("p_etalage", Color.white).color = Color.Lerp(new Color(0.55f, 0.68f, 0.75f), new Color(1f, 0.85f, 0.55f), Mathf.Clamp01(Night * 1.6f + Weather.Cloud * 0.2f));   // etalages lichten op
         if (cam != null) cam.backgroundColor = sky;
         RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat; RenderSettings.ambientLight = Color.Lerp(new Color(0.55f, 0.58f, 0.62f), new Color(0.2f, 0.22f, 0.32f), Night);
         RenderSettings.fog = false;

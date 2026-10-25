@@ -8,13 +8,13 @@ public static class Beauty
     public class Row { public string name, detail, tip; public float w; public float v = -1f; }
     public class Result { public int score; public string label, tip; public List<Row> rows = new List<Row>(); public int blocks; public float top; }
 
-    static bool IsBld(string t) => t == "woning" || t == "kantoor";
+    static bool IsBld(string t) => t == "woning" || t == "kantoor" || t == "winkel";
     static float C01(float v) => Mathf.Clamp01(v);
 
     public static Result Compute()
     {
         var cells = PlanetCity.Cells; var res = new Result();
-        int N = 0, roads = 0, parks = 0, water = 0, pads = 0, deadEnds = 0, isolated = 0, bld = 0, bldOK = 0, roofGreen = 0, holes = 0, loose = 0, pedSpots = 0;
+        int N = 0, roads = 0, parks = 0, water = 0, pads = 0, deadEnds = 0, isolated = 0, bld = 0, bldOK = 0, roofGreen = 0, holes = 0, loose = 0, pedSpots = 0, shops = 0, homes = 0, marks = 0;
         var types = new HashSet<string>(); var heights = new HashSet<int>(); var seen = new HashSet<int>();
         foreach (var kv in cells)
         {
@@ -39,7 +39,8 @@ public static class Beauty
                     if (ok) bldOK++;
                 }
                 if (IsBld(b)) hasB = true;
-                if (b == "pad") pedSpots++;
+                if (b == "pad") pedSpots++; if (b == "plein") pedSpots += 2; if (b == "winkel") { pedSpots++; shops++; } if (b == "woning") homes++;
+                if (b == "toren" || b == "molen") marks++;
                 h += Blocks.Height(b);
             }
             res.top = Mathf.Max(res.top, h);
@@ -63,7 +64,9 @@ public static class Beauty
         rows.Add(new Row { name = "Bereikbaar", w = 0.2f, v = bld > 0 ? bldOK / (float)bld : -1f, detail = bld > 0 ? bldOK + " van de " + bld + " gebouwen liggen aan een weg of pad" : "Nog geen gebouwen", tip = "Zet gebouwen naast een weg of pad, zodat je er via de voordeur kunt komen." });
         rows.Add(new Row { name = "Wegennet", w = 0.14f, v = roads > 0 ? C01(1f - (deadEnds * 0.6f + isolated * 1.5f) / roads) * (roadShare > 0.5f ? C01(1f - (roadShare - 0.5f) * 2.5f) : 1f) : -1f, detail = roads > 0 ? roads + " vakken weg, " + deadEnds + " doodlopende einden" + (isolated > 0 ? ", " + isolated + " los" : "") + (roadShare > 0.5f ? ", erg veel asfalt" : "") : "Nog geen wegen", tip = "Verbind doodlopende wegen tot rondjes, en laat niet de halve stad uit asfalt bestaan." });
         rows.Add(new Row { name = "Afwisseling", w = 0.14f, v = 0.6f * C01((types.Count - 2) / 7f) + 0.4f * (heights.Count > 0 ? C01((heights.Count - 1) / 4f) : 0f), detail = types.Count + " soorten blokken, " + heights.Count + " bouwhoogtes", tip = "Wissel af: hoog en laag, parken, paden en water." });
-        rows.Add(new Row { name = "Levendig", w = 0.12f, v = bld > 0 ? C01(pedSpots / (bld * 0.35f)) : -1f, detail = bld > 0 ? pedSpots + " plekken voor voetgangers (paden)" : "Nog geen gebouwen", tip = "Leg paden tussen de gebouwen, daar lopen mensen graag." });
+        rows.Add(new Row { name = "Levendig", w = 0.12f, v = bld > 0 ? C01(pedSpots / (bld * 0.35f)) : -1f, detail = bld > 0 ? pedSpots + " plekken voor voetgangers (paden, pleinen, winkels)" : "Nog geen gebouwen", tip = "Leg paden en pleinen tussen de gebouwen, en zet winkels in de straat: daar lopen mensen graag." });
+        rows.Add(new Row { name = "Voorzieningen", w = 0.1f, v = homes > 2 ? C01(shops / (homes * 0.15f)) : -1f, detail = homes > 2 ? shops + " winkel(s) voor " + homes + " woningen" : "Nog weinig woningen", tip = "Zet een paar winkels tussen de woningen, dan hoeft niemand ver te lopen voor brood." });
+        rows.Add(new Row { name = "Blikvangers", w = 0.06f, v = N > 8 ? C01(0.3f + marks * 0.35f) * C01(1f - Mathf.Max(0f, marks - N * 0.05f) * 0.3f) : -1f, detail = marks + " toren(s) en molen(s)", tip = "Een kerktoren of molen geeft de stad een gezicht dat je van ver ziet." });
         rows.Add(new Row { name = "Water", w = 0.08f, v = water > 0 ? C01(0.7f - Mathf.Max(0f, water / (float)N - 0.25f) * 3f) + 0.3f * C01(water / 3f) : 0.35f, detail = water > 0 ? water + " watervakken" : "Geen water", tip = "Een meertje of gracht maakt een stad meteen mooier." });
         rows.Add(new Row { name = "Samenhang", w = 0.16f, v = C01(1f - (holes * 0.7f + loose) / Mathf.Max(4f, N * 0.12f)), detail = holes + " lege gaten tussen de bebouwing, " + loose + " losse blokken", tip = "Vul lege gaten tussen gebouwen op en haal losse blokken weg." });
         float sw = 0f, sv = 0f; Row weakest = null;

@@ -186,7 +186,7 @@ public class PlanetBuilder : MonoBehaviour
             {
                 string txt = ""; foreach (var row in beauty.rows) txt += "<b>" + row.name + "</b>  " + (row.v < 0f ? "–" : Mathf.RoundToInt(row.v * 100f) + "%") + "   <color=#c8d0d8>" + row.detail + "</color>\n";
                 txt += "\n<color=#f3b43b>" + beauty.tip + "</color>";
-                var tr = Ui.Card(new Rect(348, 76, 440, 215), 0.95f); Ui.Text(new Rect(tr.x, tr.y, tr.width, tr.height), txt);
+                var tr = Ui.Card(new Rect(348, 76, 440, 60 + beauty.rows.Count * 22), 0.95f); Ui.Text(new Rect(tr.x, tr.y, tr.width, tr.height), txt);
             }
         }
         // ---- bovenbalk rechts: klok, weer, geluid, hulp
@@ -231,14 +231,15 @@ public class PlanetBuilder : MonoBehaviour
         // ---- hulp
         if (showHelp)
         {
-            var hr = Ui.Card(new Rect(W / 2 - 260, 90, 520, 380), 0.95f);
+            var hr = Ui.Card(new Rect(W / 2 - 260, 90, 520, 430), 0.95f);
             Ui.Title(new Rect(hr.x, hr.y, 300, 26), "Bediening");
             if (Ui.Button(new Rect(hr.x + hr.width - 150, hr.y, 150, 30), "Voorbeeldstad hier")) { Push(); PlanetCity.Sample(Planet.Nearest(focus)); Changed(); showHelp = false; Say("Voorbeeldstad geplaatst (Ctrl+Z haalt hem weg)"); }
-            Ui.Help(new Rect(hr.x, hr.y + 32, hr.width, 330),
+            Ui.Help(new Rect(hr.x, hr.y + 32, hr.width, 380),
                 "<b>Bouwen</b>  klik of sleep over vakken (1-9 kiest een blok) · rechtermuisknop maakt een vak helemaal leeg · X haalt het bovenste blok weg · Ctrl+Z maakt ongedaan\n" +
                 "<b>Wegen en paden slepen</b>  klik een vak en sleep: een rechte lijn in een van de 12 richtingen (30°). Alleen de vakken in de lijn worden verbonden; twee wegen naast elkaar blijven los. Een klik verbindt met alle buurwegen.\n" +
                 "<b>Wegtypes</b>  bij de weg kies je met B gewone weg, brede weg of laan (met bomen), met O eenrichtingsverkeer (in de sleeprichting; pijlen op het asfalt) en met L verkeerslichten. Sleep een weg over water of een uitgraving: dan wordt het een brug. Een weg in een tussenrichting laat de helft van de vakken ernaast vrij voor gebouwen.\n" +
                 "<b>Wegen en paden</b>  zijn ook blokken: zet ze op aangrenzende vakken en ze sluiten vanzelf aan\n" +
+                "<b>Winkel, plein, toren, molen</b>  etalages lichten 's avonds op (zet er gerust woningen bovenop), een plein heeft een fontein en bankjes, en de molenwieken draaien harder als het stormt\n" +
                 "<b>Camera</b>  WASD schuiven (Shift sneller) · rechtermuis draaien · scroll zoomen · H naar het midden van je stad\n" +
                 "<b>Wandelen</b>  Tab · WASD · Shift rennen · Spatie springen · Esc muis los\n" +
                 "<b>Weer en tijd</b>  R volgend weer (vast) · N zon stilzetten · M geluid aan/uit · G raster aan/uit\n" +

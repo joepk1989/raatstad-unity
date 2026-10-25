@@ -88,9 +88,9 @@ public static class PlanetCity
     static void MarkHalf(int h)
     {
         if (!Cells.TryGetValue(h, out var l) || l.Count == 0) { Cells[h] = new List<string> { "wegdeel" }; Touch(h); return; }
-        string b = l[0]; if (b == "woning" || b == "kantoor" || b == "park" || b == "dak" || b == "blok") { l.Insert(0, "wegdeel"); Touch(h); }   // bestaande bebouwing schuift naar de vrije helft
+        string b = l[0]; if (Buildable(b)) { l.Insert(0, "wegdeel"); Touch(h); }   // bestaande bebouwing schuift naar de vrije helft
     }
-    static bool Buildable(string t) => t == "woning" || t == "kantoor" || t == "park" || t == "dak" || t == "blok";
+    static bool Buildable(string t) => t == "woning" || t == "kantoor" || t == "park" || t == "dak" || t == "blok" || t == "winkel" || t == "plein" || t == "toren";
     public static bool LinkedRoad(int i, int j) => IsRoad(j) && Linked(i, j);
     public static bool LinkedWalk(int i, int j) => IsWalk(j) && Linked(i, j);
     public static int LinkCount(int i) { int n = 0; foreach (int j in Partners(i)) if (IsWalk(j)) n++; return n; }
@@ -128,6 +128,7 @@ public static class PlanetCity
         if (l.Count > 0 && l[0] == "weg") return "Op een weg kun je niet bouwen; haal de weg eerst weg (rechtermuisknop)";
         if (l.Count > 0 && l[0] == "wegdeel" && !Buildable(type)) return "Hier loopt een weg overheen: op de vrije helft passen alleen gebouwen en parken";
         if (l.Count >= 8) return "Hoger kan niet";
+        if (l.Count > 0 && (l[l.Count - 1] == "toren" || l[l.Count - 1] == "molen") && type != "water" && type != "meer") return "Op een " + l[l.Count - 1] + " kun je niets meer zetten";
         if ((type == "water" || type == "meer") && l.Count > 0) l.Clear();
         if (l.Count > 0 && (l[l.Count - 1] == "water" || l[l.Count - 1] == "meer")) l.Clear();
         l.Add(type); Touch(i); return null;
@@ -422,6 +423,69 @@ public static class PlanetCity
     {
         for (int i = 0; i < 12; i++) { float a0 = i * Mathf.PI / 6f, a1 = (i + 1) * Mathf.PI / 6f, am = (a0 + a1) * 0.5f; m.Quad(f.P(Mathf.Cos(a0) * r, y0, Mathf.Sin(a0) * r), f.P(Mathf.Cos(a1) * r, y0, Mathf.Sin(a1) * r), f.P(Mathf.Cos(a1) * r, y1, Mathf.Sin(a1) * r), f.P(Mathf.Cos(a0) * r, y1, Mathf.Sin(a0) * r), f.D(Mathf.Cos(am), 0, Mathf.Sin(am))); }
     }
+    // een balkje op (cx, cz), lang langs richting ang (halve lengte hl, halve breedte hw), van y0 tot y1
+    static void Box(MeshBuilder m, Frame f, float cx, float cz, float ang, float hl, float hw, float y0, float y1)
+    {
+        Vector2 c = new Vector2(cx, cz), d = new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * hl, r = new Vector2(-Mathf.Sin(ang), Mathf.Cos(ang)) * hw;
+        Vector2[] p = { c - d - r, c + d - r, c + d + r, c - d + r };
+        for (int i = 0; i < 4; i++) { Vector2 a = p[i], b = p[(i + 1) % 4], o = (a + b) * 0.5f - c; m.Quad(f.P(a.x, y0, a.y), f.P(b.x, y0, b.y), f.P(b.x, y1, b.y), f.P(a.x, y1, a.y), f.D(o.x, 0, o.y)); }
+        m.Quad(f.P(p[0].x, y1, p[0].y), f.P(p[1].x, y1, p[1].y), f.P(p[2].x, y1, p[2].y), f.P(p[3].x, y1, p[3].y), f.u);
+    }
+    // spitse torenspits op de vakvorm (schaal k), van y tot y + hgt
+    static void Spire(MeshBuilder m, Frame f, float k, float y, float hgt)
+    {
+        Vector3 apex = f.P(0, y + hgt, 0);
+        for (int i = 0; i < f.poly.Length; i++) { Vector2 a = C(f, i, k), b = C(f, i + 1, k), mid = (a + b) * 0.5f; m.Tri(f.P(a.x, y, a.y), f.P(b.x, y, b.y), apex, f.D(mid.x, 0.3f * mid.magnitude, mid.y)); }
+    }
+    // gestreepte zonneluifel boven een etalage: schuin naar buiten en omlaag, aan beide kanten zichtbaar
+    static void Awning(System.Func<string, MeshBuilder> M, Frame f, float k, float y, string stripe)
+    {
+        for (int i = 0; i < f.poly.Length; i++)
+        {
+            Vector2 a = C(f, i, k), b = C(f, i + 1, k), outw = ((a + b) * 0.5f).normalized; const int S = 6;
+            for (int s = 0; s < S; s++)
+            {
+                Vector2 p0 = Vector2.Lerp(a, b, 0.1f + 0.8f * s / S), p1 = Vector2.Lerp(a, b, 0.1f + 0.8f * (s + 1) / S), q0 = p0 + outw * 1.1f, q1 = p1 + outw * 1.1f;
+                var mb = M(s % 2 == 0 ? stripe : "doek");
+                Vector3 A = f.P(p0.x, y, p0.y), B = f.P(p1.x, y, p1.y), Cc = f.P(q1.x, y - 0.45f, q1.y), D = f.P(q0.x, y - 0.45f, q0.y);
+                mb.Quad(A, B, Cc, D, f.D(outw.x * 0.4f, 1f, outw.y * 0.4f)); mb.Quad(A, B, Cc, D, f.D(-outw.x * 0.4f, -1f, -outw.y * 0.4f));
+            }
+        }
+    }
+
+    // Molenwieken: vier armen met een zeil, in het xy-vlak rond de as (z = naar voren). Eén gedeelde mesh voor alle molens.
+    static Mesh wiekMesh, zeilMesh;
+    const float WiekL = 6.3f;
+    static void WiekMeshes()
+    {
+        if (wiekMesh != null && zeilMesh != null) return;
+        var w = new MeshBuilder(); var z = new MeshBuilder();
+        for (int k = 0; k < 4; k++)
+        {
+            float t = k * Mathf.PI / 2f; Vector3 u = new Vector3(Mathf.Cos(t), Mathf.Sin(t), 0f), p = new Vector3(-u.y, u.x, 0f);
+            Vector3 a = -p * 0.09f, b = p * 0.09f, c = u * WiekL + p * 0.09f, d = u * WiekL - p * 0.09f, fz = new Vector3(0, 0, 0.18f);
+            w.Quad(a + fz, b + fz, c + fz, d + fz, Vector3.forward); w.Quad(a + fz, b + fz, c + fz, d + fz, Vector3.back);
+            w.Quad(a, d, d + fz, a + fz, -p); w.Quad(b, c, c + fz, b + fz, p);
+            Vector3 s0 = u * 1.1f + p * 0.12f, s1 = u * WiekL + p * 0.12f, s2 = u * WiekL + p * 1.45f, s3 = u * 1.1f + p * 1.45f, zz = new Vector3(0, 0, 0.1f);
+            z.Quad(s0 + zz, s1 + zz, s2 + zz, s3 + zz, Vector3.forward); z.Quad(s0 + zz, s1 + zz, s2 + zz, s3 + zz, Vector3.back);
+            for (float r = 1.9f; r < WiekL; r += 1.1f) { Vector3 l0 = u * r + p * 0.1f, l1 = u * r + p * 1.47f, lw = u * 0.06f, lz = new Vector3(0, 0, 0.14f); w.Quad(l0 - lw + lz, l0 + lw + lz, l1 + lw + lz, l1 - lw + lz, Vector3.forward); w.Quad(l0 - lw + lz, l0 + lw + lz, l1 + lw + lz, l1 - lw + lz, Vector3.back); }   // dwarslatten
+        }
+        for (int k = 0; k < 6; k++) { float a0 = k * Mathf.PI / 3f, a1 = (k + 1) * Mathf.PI / 3f; Vector3 p0 = new Vector3(Mathf.Cos(a0), Mathf.Sin(a0), 0) * 0.45f, p1 = new Vector3(Mathf.Cos(a1), Mathf.Sin(a1), 0) * 0.45f, hz = new Vector3(0, 0, 0.35f); w.Tri(hz, p0 + hz, p1 + hz, Vector3.forward); w.Quad(p0, p1, p1 + hz, p0 + hz, (p0 + p1)); }   // naaf
+        wiekMesh = w.Build(); zeilMesh = z.Build();
+    }
+    static void MakeWieken(Transform parent, Vector3 pos, Quaternion rot, int hash)
+    {
+        WiekMeshes();
+        var pivot = new GameObject("Wieken"); pivot.transform.SetParent(parent, false); pivot.transform.SetPositionAndRotation(pos, rot);
+        pivot.transform.Rotate(0f, 0f, (hash & 255) / 255f * 90f, Space.Self);
+        var sp = pivot.AddComponent<Wieken>(); sp.Speed = 38f + ((hash >> 8) & 15);
+        foreach (var (mesh, key) in new[] { (wiekMesh, "wiek"), (zeilMesh, "zeil") })
+        {
+            var c = new GameObject(key); c.transform.SetParent(pivot.transform, false); c.layer = Layers.Gebouw;
+            c.AddComponent<MeshFilter>().sharedMesh = mesh; c.AddComponent<MeshRenderer>().sharedMaterial = Mats.Get("p_" + key, ColorOf(key));
+        }
+    }
+
     static void Strip(MeshBuilder m, Frame f, Vector2 d, Vector2 r, float s0, float s1, float hw, float y)
     {
         Vector2 a = d * s0 - r * hw, b = d * s0 + r * hw, c = d * s1 + r * hw, e = d * s1 - r * hw;
@@ -772,6 +836,11 @@ public static class PlanetCity
             case "steen": return new Color(0.62f, 0.60f, 0.58f); case "stoep": return new Color(0.88f, 0.84f, 0.72f);
             case "asfalt": return new Color(0.27f, 0.28f, 0.30f); case "lijn": return Color.white;
             case "modder": return new Color(0.45f, 0.38f, 0.26f); case "riet": return new Color(0.45f, 0.6f, 0.25f);
+            case "etalage": return new Color(0.55f, 0.68f, 0.75f); case "doek": return new Color(0.95f, 0.93f, 0.88f);
+            case "luifel0": return new Color(0.78f, 0.2f, 0.18f); case "luifel1": return new Color(0.2f, 0.5f, 0.32f); case "luifel2": return new Color(0.18f, 0.35f, 0.62f);
+            case "bord": return new Color(0.95f, 0.70f, 0.23f); case "klinker": return new Color(0.70f, 0.55f, 0.45f); case "hout": return new Color(0.52f, 0.36f, 0.22f);
+            case "baksteen": return new Color(0.62f, 0.33f, 0.25f); case "leien": return new Color(0.24f, 0.27f, 0.32f); case "klok": return new Color(0.95f, 0.95f, 0.9f); case "goud": return new Color(0.9f, 0.72f, 0.25f);
+            case "molen": return new Color(0.30f, 0.30f, 0.28f); case "kap": return new Color(0.42f, 0.36f, 0.26f); case "wiek": return new Color(0.35f, 0.22f, 0.15f); case "zeil": return new Color(0.92f, 0.9f, 0.84f);
             default: return new Color(0.40f, 0.28f, 0.18f);
         }
     }
@@ -791,6 +860,7 @@ public static class PlanetCity
         var mb = new Dictionary<string, MeshBuilder>();
         System.Func<string, MeshBuilder> M = k => { if (!mb.TryGetValue(k, out var x)) { x = new MeshBuilder(); mb[k] = x; } return x; };
         int i0 = ch * ChunkN, i1 = Mathf.Min(Planet.Cells.Length, i0 + ChunkN);
+        var mills = new List<(Vector3 pos, Quaternion rot, int hash)>();   // molenwieken: losse objecten die draaien
         for (int i = i0; i < i1; i++)
         {
             if (!Cells.TryGetValue(i, out var list) || list.Count == 0) continue;
@@ -869,6 +939,40 @@ public static class PlanetCity
                     case "blok":
                         Wall(M("steen"), fr, 0.96f, h0, h1); Top(M("steen"), fr, 0.96f, h1);
                         break;
+                    case "winkel":   // winkel: grote etalages (lichten 's avonds op), een gestreepte luifel en een naambord; erboven kan gewoon gewoond worden
+                        { string mu = "muur" + ((hash >> 3) & 3);
+                        Wall(M(mu), fr, 0.86f, h0, h1); Windows(M("etalage"), fr, 0.86f, h + 0.3f, h + 2.0f, 0.14f, 0.86f); Windows(M("bord"), fr, 0.86f, h + 2.45f, h + 2.85f, 0.3f, 0.7f);
+                        Awning(M, fr, 0.87f, h + 2.35f, "luifel" + ((hash >> 5) & 0xffff) % 3);
+                        Top(M(top ? "plat" : mu), fr, 0.86f, h1); if (top) { Wall(M("plat"), fr, 0.86f, h1, h1 + 0.3f); Top(M("plat"), fr, 0.86f, h1 + 0.3f); } }
+                        break;
+                    case "plein":   // plein: klinkers, een fontein in het midden, bankjes eromheen en twee lantaarns
+                        { Top(M("klinker"), fr, 1.0f, h1); Wall(M("klinker"), fr, 1.0f, h0, h1); Top(M("steen"), fr, 0.62f, h1 + 0.005f); Top(M("klinker"), fr, 0.5f, h1 + 0.01f);
+                        Skirt(M("steen"), fr, 2.4f, h1, h1 + 0.55f); Disc(M("steen"), fr, 2.4f, h1 + 0.55f); Disc(M("water"), fr, 2.1f, h1 + 0.57f);
+                        Cone(M("steen"), fr, 0f, 0f, 0.3f, h1 + 0.55f, h1 + 1.6f, 0.22f); Cone(M("steen"), fr, 0f, 0f, 0.25f, h1 + 1.45f, h1 + 1.75f, 1.0f); Disc(M("water"), fr, 0.9f, h1 + 1.76f);
+                        float a0 = (hash & 63) / 63f * Mathf.PI * 2f;
+                        for (int j = 0; j < 3; j++)
+                        {
+                            float a = a0 + j * Mathf.PI * 2f / 3f, rr = fr.rad * 0.6f, bx = Mathf.Cos(a) * rr, bz = Mathf.Sin(a) * rr, tang = a + Mathf.PI / 2f;
+                            Box(M("hout"), fr, bx, bz, tang, 0.9f, 0.24f, h1 + 0.42f, h1 + 0.5f);
+                            Box(M("hout"), fr, bx + Mathf.Cos(a) * 0.24f, bz + Mathf.Sin(a) * 0.24f, tang, 0.9f, 0.04f, h1 + 0.5f, h1 + 0.95f);
+                            for (int s2 = -1; s2 <= 1; s2 += 2) Box(M("paal"), fr, bx + Mathf.Cos(tang) * 0.75f * s2, bz + Mathf.Sin(tang) * 0.75f * s2, tang, 0.05f, 0.2f, h1, h1 + 0.42f);
+                            if (j < 2) { float la = a + Mathf.PI / 3f, lx = Mathf.Cos(la) * fr.rad * 0.78f, lz = Mathf.Sin(la) * fr.rad * 0.78f; Cone(M("paal"), fr, lx, lz, 0.08f, h1, h1 + 4.2f, 0.06f); Cone(M("lamp"), fr, lx, lz, 0.28f, h1 + 3.9f, h1 + 4.45f, 0f); }
+                        } }
+                        break;
+                    case "toren":   // kerktoren: stenen voet, bakstenen schacht met klok en galmgaten, leien spits met een gouden knop
+                        Wall(M("steen"), fr, 0.55f, h0, h + 2.2f); Top(M("steen"), fr, 0.55f, h + 2.2f);
+                        Wall(M("baksteen"), fr, 0.4f, h + 2.2f, h1 - 0.3f); Windows(M("klok"), fr, 0.4f, h1 - 4.6f, h1 - 3.5f, 0.3f, 0.7f); Windows(M("glas"), fr, 0.4f, h1 - 2.5f, h1 - 1.0f, 0.36f, 0.64f);
+                        Wall(M("steen"), fr, 0.45f, h1 - 0.3f, h1); Top(M("steen"), fr, 0.45f, h1);
+                        if (top) { Spire(M("leien"), fr, 0.42f, h1, 8f); Cone(M("goud"), fr, 0f, 0f, 0.14f, h1 + 7.6f, h1 + 8.6f, 0f); }
+                        break;
+                    case "molen":   // molen: taps toelopende romp, een kap en vier draaiende wieken, met het gezicht naar een willekeurige kant
+                        { float r0 = fr.rad * 0.5f, r1 = fr.rad * 0.3f, a = ((hash >> 4) & 7) / 8f * Mathf.PI * 2f; Vector2 fd = new Vector2(Mathf.Cos(a), Mathf.Sin(a));
+                        Cone(M("steen"), fr, 0f, 0f, r0 * 1.06f, h0, h + 0.7f, r0 * 1.04f);
+                        Cone(M("molen"), fr, 0f, 0f, r0, h + 0.7f, h1 - 1.6f, r1); Cone(M("kap"), fr, 0f, 0f, r1 * 1.18f, h1 - 1.6f, h1 + 0.8f, 0.2f);
+                        Box(M("hout"), fr, fd.x * (r0 - 0.1f), fd.y * (r0 - 0.1f), a, 0.35f, 0.6f, h + 0.7f, h + 2.6f);   // deur
+                        Box(M("wiek"), fr, fd.x * (r1 + r0 + 0.5f) * 0.5f, fd.y * (r1 + r0 + 0.5f) * 0.5f, a, (r0 + 0.5f - r1) * 0.5f + 0.5f, 0.15f, h1 - 1.15f, h1 - 0.85f);   // as
+                        float hub = r0 + 0.5f; mills.Add((fr.P(fd.x * hub, h1 - 1.0f, fd.y * hub), Geo.Look(fr.D(fd.x, 0f, fd.y), fr.u), hash)); }
+                        break;
                 }
                 h = h1;
             }
@@ -880,8 +984,21 @@ public static class PlanetCity
             if (kv.Value.v.Count == 0) continue;
             var child = new GameObject(kv.Key); child.transform.SetParent(go.transform, false);
             child.layer = (kv.Key == "asfalt" || kv.Key == "stoep" || kv.Key == "rand" || kv.Key == "lijn" || kv.Key == "paal" || kv.Key == "lamp" || kv.Key == "pad") ? Layers.Weg : Layers.Gebouw;
-            var mesh = kv.Value.Build(); child.AddComponent<MeshFilter>().sharedMesh = mesh; child.AddComponent<MeshRenderer>().sharedMaterial = kv.Key == "lamp" ? Mats.GetUnlit("p_lamp", ColorOf(kv.Key)) : Mats.Get("p_" + kv.Key, ColorOf(kv.Key));
-            if (kv.Key != "water" && kv.Key != "zand" && kv.Key != "lijn" && kv.Key != "lamp" && kv.Key != "riet") child.AddComponent<MeshCollider>().sharedMesh = mesh;
+            var mesh = kv.Value.Build(); child.AddComponent<MeshFilter>().sharedMesh = mesh; child.AddComponent<MeshRenderer>().sharedMaterial = kv.Key == "lamp" || kv.Key == "etalage" ? Mats.GetUnlit("p_" + kv.Key, ColorOf(kv.Key)) : Mats.Get("p_" + kv.Key, ColorOf(kv.Key));
+            if (kv.Key != "water" && kv.Key != "zand" && kv.Key != "lijn" && kv.Key != "lamp" && kv.Key != "riet" && kv.Key != "doek" && !kv.Key.StartsWith("luifel")) child.AddComponent<MeshCollider>().sharedMesh = mesh;
         }
+        foreach (var ml in mills) MakeWieken(go.transform, ml.pos, ml.rot, ml.hash);
+    }
+}
+
+// Draaiende molenwieken: harder bij storm, wat sneller bij regen, en een beetje onregelmatig zoals echte wind
+public class Wieken : MonoBehaviour
+{
+    public float Speed = 40f; float gust;
+    void Update()
+    {
+        gust = Mathf.Lerp(gust, Mathf.PerlinNoise(Time.time * 0.15f, Speed) - 0.5f, Time.deltaTime);
+        float s = Speed * (1f + gust * 0.6f + Weather.Storm * 1.6f + Weather.Rain * 0.3f);
+        transform.Rotate(0f, 0f, -s * Time.deltaTime, Space.Self);
     }
 }
