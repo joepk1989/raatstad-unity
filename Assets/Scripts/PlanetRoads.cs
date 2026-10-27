@@ -167,7 +167,7 @@ public static partial class PlanetCity
             up[k] = pts[k].p.normalized; Vector3 t = pts[Mathf.Min(N - 1, k + 1)].p - pts[Mathf.Max(0, k - 1)].p; t -= up[k] * Vector3.Dot(t, up[k]);
             fw[k] = t.normalized; side[k] = Vector3.Cross(up[k], fw[k]).normalized;
             if (k > 0) S[k] = S[k - 1] + Vector3.Distance(pts[k].p, pts[k - 1].p);
-            low[k] = Mathf.Min(SKB, MinCorner(pts[k].cell) - pts[k].h - 0.35f);   // onderkant van de zijkant: tot onder het maaiveld
+            low[k] = Underpass(pts[k].cell) ? SKB : Mathf.Min(SKB, MinCorner(pts[k].cell) - pts[k].h - 0.35f);   // onderkant van de zijkant: tot onder het maaiveld (niet in de opening van een onderdoorgang)
         }
         System.Func<int, float, float, Vector3> W = (k, off, y) => (pts[k].p + side[k] * off).normalized * (Planet.R + pts[k].h + y);
         for (int k = 0; k + 1 < N; k++)
@@ -179,7 +179,15 @@ public static partial class PlanetCity
                 Vector3 out3 = side[k] * sg;
                 M("rand").Quad(W(k, sg * hwA, AY), W(m, sg * hwA, AY), W(m, sg * (hwA + KW), SY), W(k, sg * (hwA + KW), SY), -out3 * KW + u * (SY - AY));
                 M("stoep").Quad(W(k, sg * (hwA + KW), SY), W(m, sg * (hwA + KW), SY), W(m, sg * hwS, SY), W(k, sg * hwS, SY), u);
-                M("stoep").Quad(W(k, sg * hwS, low[k]), W(m, sg * hwS, low[m]), W(m, sg * hwS, SY), W(k, sg * hwS, SY), out3);
+                if (Underpass(pts[k].cell) == Underpass(pts[m].cell)) M("stoep").Quad(W(k, sg * hwS, low[k]), W(m, sg * hwS, low[m]), W(m, sg * hwS, SY), W(k, sg * hwS, SY), out3);
+                else   // naar een onderdoorgang: de diepe zijkant houdt op bij de rand van het vak (halverwege), anders hangt hij in de opening
+                {
+                    float hm = (pts[k].h + pts[m].h) * 0.5f; Vector3 pm = (pts[k].p + pts[m].p) * 0.5f, sm = (side[k] + side[m]).normalized * sg * hwS;
+                    System.Func<float, Vector3> Wm = y => (pm + sm).normalized * (Planet.R + hm + y);
+                    float lk = Underpass(pts[k].cell) ? SKB : low[k], lm = Underpass(pts[m].cell) ? SKB : low[m];
+                    M("stoep").Quad(W(k, sg * hwS, lk), Wm(lk), Wm(SY), W(k, sg * hwS, SY), out3);
+                    M("stoep").Quad(Wm(lm), W(m, sg * hwS, lm), W(m, sg * hwS, SY), Wm(SY), out3);
+                }
                 if (Under.ContainsKey(pts[k].cell) && Under.ContainsKey(pts[m].cell))   // brug: leuning langs beide kanten
                 {
                     Vector3 a = W(k, sg * hwS, SY), b = W(m, sg * hwS, SY), ta = W(k, sg * hwS, 1.05f), tb = W(m, sg * hwS, 1.05f);
@@ -237,8 +245,8 @@ public static partial class PlanetCity
     public static bool CanRoad(int i, string type)
     {
         if (!Cells.TryGetValue(i, out var l) || l.Count == 0) return true;
-        if (type == "pad") return l.Count == 1 && l[0] == "pad";
-        return (l.Count == 1 && (l[0] == "weg" || l[0] == "wegdeel" || l[0] == "meer" || l[0] == "water" || l[0] == "kuil"));
+        if (type == "pad") return l.Count == 1 && (l[0] == "pad" || l[0] == "weg" || l[0] == "wegdeel");   // over een weg: onderdoorgang
+        return (l.Count == 1 && (l[0] == "weg" || l[0] == "wegdeel" || l[0] == "meer" || l[0] == "water" || l[0] == "kuil" || l[0] == "pad"));   // over een pad: onderdoorgang
     }
     // Wat een klik op vak i zou maken (een wegknoop met armen naar alle wegen ernaast; bij een pad een rondje met strookjes),
     // of bij de gum het wegstuk dat verdwijnt.

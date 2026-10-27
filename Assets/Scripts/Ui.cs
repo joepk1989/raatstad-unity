@@ -23,6 +23,7 @@ public static class Ui
         Init(); S = Mathf.Clamp(Screen.height / 900f, 0.85f, 1.7f); W = Screen.width / S; H = Screen.height / S;
         GUI.matrix = Matrix4x4.Scale(new Vector3(S, S, 1f));
         if (Event.current.type == EventType.Repaint) hitsNow.Clear();
+        if (Event.current.type == EventType.MouseDown) pressed = false;   // een nieuwe klik: alleen de knop die hem nu krijgt, telt
     }
     public static void End()
     {
@@ -35,7 +36,7 @@ public static class Ui
     static GUIStyle sText, sBold, sDim, sTiny, sTitle, sBig, sBtn, sCenter, sKbd, sNum, sHelp, sToast;
     static readonly Dictionary<string, Texture2D> texCache = new Dictionary<string, Texture2D>();
     public static bool Ready => sText != null;
-    public static void ResetStatics() { sText = null; texCache.Clear(); fontR = fontB = fontTitle = null; hitsNow.Clear(); hitsLast.Clear(); }
+    public static void ResetStatics() { sText = null; texCache.Clear(); fontR = fontB = fontTitle = null; hitsNow.Clear(); hitsLast.Clear(); pressed = false; }
 
     public static void Init()
     {
@@ -109,7 +110,19 @@ public static class Ui
     // ---------- bouwstenen ----------
     public static void Panel(Rect r, bool solid = false, float radius = 14f) { Hit(r); Box(r, solid ? PanelSolid : PanelBg, Line, radius); }
     static bool Hover(Rect r) => r.Contains(Mouse);
-    static bool Clicked(Rect r) { Hit(r); return GUI.Button(r, GUIContent.none, GUIStyle.none); }
+    // Een klik: indrukken en loslaten op dezelfde knop. Op de rechthoek en niet op Unity's control-id, want die verschuift als er
+    // tussen indrukken en loslaten ergens anders iets verschijnt of verdwijnt (een melding, een label); dan ging de klik verloren.
+    static Rect pressRect; static bool pressed;
+    static bool Clicked(Rect r)
+    {
+        Hit(r); var e = Event.current; if (e == null || e.button != 0) return false;
+        // de positie die bij de klik zelf hoort (de muis van het Input System blijft in de editor op de laatste plek in het
+        // spelbeeld staan, ook als je ergens anders klikt, zoals op de Play-knop)
+        if (e.type == EventType.MouseDown && r.Contains(e.mousePosition)) { pressed = true; pressRect = r; e.Use(); return false; }
+        if (e.type == EventType.MouseUp && pressed && SameRect(pressRect, r) && r.Contains(e.mousePosition)) { pressed = false; e.Use(); return true; }
+        return false;
+    }
+    static bool SameRect(Rect a, Rect b) => Mathf.Abs(a.x - b.x) < 2f && Mathf.Abs(a.y - b.y) < 2f && Mathf.Abs(a.width - b.width) < 2f && Mathf.Abs(a.height - b.height) < 2f;
     // knop met tekst (en eventueel een pictogram links); on: amber
     public static bool Button(Rect r, string text, bool on = false, string icon = null, bool disabled = false, float radius = 10f, bool solid = false)
     {

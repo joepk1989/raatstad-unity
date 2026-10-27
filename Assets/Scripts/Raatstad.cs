@@ -39,7 +39,7 @@ public class Raatstad : MonoBehaviour
     static void ResetStatics()
     {
         mWalk = mAsph = mLine = mWall = mGround = mGrid = mOutline = null;
-        Mats.Reset(); PlanetCity.ResetAll(); Planet.Cells = null; Planet.Starts = null; Planet.North = Planet.South = -1;
+        Mats.Reset(); PlanetCity.ResetAll(); Planet.Cells = null; Planet.Starts = null; Planet.North = Planet.South = -1; Planet.Axis = Vector3.up;
         Weather.ResetStatics(); Ui.ResetStatics(); Babble.Muted = false; Ambience.Muted = false; Footsteps.Reset(); PlanetLife.ResetStatics(); People.ResetStatics();
         DayNight.Hour = 10f; DayNight.Night = 0f; City.Cells = new System.Collections.Generic.Dictionary<Vector2Int, System.Collections.Generic.List<string>>(); City.Paths = new System.Collections.Generic.List<RoadPath>();
         Chatter.I = null; PlanetLife.I = null; People.I = null; Weather.I = null;

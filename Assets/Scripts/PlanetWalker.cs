@@ -26,7 +26,7 @@ public class PlanetWalker : MonoBehaviour
     {
         float dt = Mathf.Min(Time.deltaTime, 0.05f);
         if (Inp.Down(K.Esc)) Lock(false);
-        if (Inp.LeftDown && Cursor.lockState != CursorLockMode.Locked) Lock(true);
+        if (Inp.LeftDown && Cursor.lockState != CursorLockMode.Locked && !Ui.MouseOverUI) Lock(true);   // een klik op een knop (Bouwen) vangt de muis niet weer
         bool locked = Cursor.lockState == CursorLockMode.Locked;
 
         Vector3 pos = transform.position, up = pos.normalized;
@@ -76,7 +76,8 @@ public class PlanetWalker : MonoBehaviour
         }
         else grounded = false;
         // nooit door de planeet heen
-        float rad = pos.magnitude; if (rad < Planet.R - 0.5f) { pos = pos.normalized * Planet.R; vy = 0f; grounded = true; }
+        float floor = Planet.R + PlanetCity.FloorH(Planet.Nearest(pos)), rad = pos.magnitude;   // het laagste punt van het vak (afgegraven terrein, het pad onder een brug)
+        if (rad < floor - 0.5f) { pos = pos.normalized * floor; vy = 0f; grounded = true; }
 
         transform.position = pos; up = pos.normalized; fwd = (fwd - up * Vector3.Dot(fwd, up)).normalized;
         if (grounded) Footsteps.Walked(steps, vel.magnitude * dt, vel.magnitude > 3f, PlanetCity.IsRoad(Planet.Nearest(pos)));

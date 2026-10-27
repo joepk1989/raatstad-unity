@@ -23,7 +23,7 @@ De wereld is een bol (planeet). Alles is gebaseerd op hexagons en driehoeken.
 - Voetgangersmodules (paden, oplopende paden, kruisingen, hofjes) creëren hoogte en zijn beloopbaar.
 - Standaardspelmodus heet "vrije modus".
 - Bolwereld (`Assets/Scripts/Planet.cs`): Goldberg-veelvlak, een icosaëder verdeeld in M×M driehoeken (M = 46, straal 600 m) met 10·M²+2 vakken. Dat zijn zeshoeken plus de 12 vijfhoeken die op een bol onvermijdelijk zijn. De vijfhoeken zitten op de hoekpunten van de icosaëder. Aansluitlogica moet dus 5 of 6 buren aankunnen (`Cell.nb`).
-- Polen: de y-as gaat door het midden van een icosaëderrand. Omdat M even is, ligt daar een gewoon zeshoekig vak. Noordpool = `Planet.Nearest(Vector3.up)`, zuidpool = `Planet.Nearest(Vector3.down)`. Geen speciale gridlogica nodig, alleen een markering op die twee vakken.
+- Polen: de as (`Planet.Axis`) gaat door de middens van twee tegenover elkaar liggende icosaëdervlakken. Noord- en zuidpool zijn dus twee startplekken (`Planet.North`/`South`), en noord en zuid zijn elkaars spiegelbeeld. De evenaar is de rand tussen de vakken van beide halfronden (`PlanetCity.NorthSide`); breedte en lengte via `PlanetCity.LatLon`.
 
 ## Werkwijze
 - Bouw in kleine, speelbare stappen. Elke stap moet in Play Mode werken voordat de volgende begint.

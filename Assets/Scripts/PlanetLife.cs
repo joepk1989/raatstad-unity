@@ -61,10 +61,11 @@ public class PlanetLife : MonoBehaviour
 
     void PlacePerson(Person a, float dt)
     {
-        float side = PlanetCity.IsRoad(a.cellA) && PlanetCity.IsRoad(a.cellB) ? (PlanetCity.WalkOffset(a.cellA) + PlanetCity.WalkOffset(a.cellB)) * 0.5f : PlanetCity.IsRoad(a.cellA) ? PlanetCity.WalkOffset(a.cellA) * 0.5f : PlanetCity.IsRoad(a.cellB) ? PlanetCity.WalkOffset(a.cellB) * 0.5f : 0.35f;
-        float hgt = Mathf.Lerp(PlanetCity.IsRoad(a.cellA) ? 0.25f : 0.11f, PlanetCity.IsRoad(a.cellB) ? 0.25f : 0.11f, a.ct);   // op de stoep (25 cm) of op een pad
+        bool ra = PlanetCity.IsRoad(a.cellA) && !PlanetCity.UnderLink(a.cellA, a.cellB), rb = PlanetCity.IsRoad(a.cellB) && !PlanetCity.UnderLink(a.cellB, a.cellA);   // onder een brug: op het pad
+        float side = ra && rb ? (PlanetCity.WalkOffset(a.cellA) + PlanetCity.WalkOffset(a.cellB)) * 0.5f : ra ? PlanetCity.WalkOffset(a.cellA) * 0.5f : rb ? PlanetCity.WalkOffset(a.cellB) * 0.5f : 0.35f;
+        float hgt = Mathf.Lerp(ra ? 0.25f : 0.11f, rb ? 0.25f : 0.11f, a.ct);   // op de stoep (25 cm) of op een pad
         Where(a.cellA, a.cellB, a.ct, side, hgt, out Vector3 pos, out Vector3 fwd, out Vector3 up);
-        pos += up * PlanetCity.SurfaceH(a.ct < 0.5f ? a.cellA : a.cellB, pos);   // terreinhoogte en de helling van de weg
+        pos += up * (a.ct < 0.5f ? PlanetCity.SurfaceH(a.cellA, a.cellB, pos) : PlanetCity.SurfaceH(a.cellB, a.cellA, pos));   // terreinhoogte en de helling van de weg
         a.root.position = pos;
         if (a.paused && a.partner != null) { Vector3 to = a.partner.root.position - pos; to -= up * Vector3.Dot(to, up); if (to.sqrMagnitude > 1e-6f) fwd = to.normalized; }
         Quaternion target = Geo.Look(fwd, up);

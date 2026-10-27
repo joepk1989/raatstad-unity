@@ -23,7 +23,8 @@ public static class Planet
     }
     public static Cell[] Cells;
     public static int[] Starts;   // 20 startplekken: de vakken het verst van alle vijfhoeken (het midden van elk icosaëdervlak)
-    public static int North = -1, South = -1;   // de polen: de y-as gaat door het midden van een icosaëderrand, daar ligt (M is even) een gewoon zeshoekig vak
+    public static int North = -1, South = -1;   // de polen: twee tegenover elkaar liggende startplekken (het midden van twee icosaëdervlakken)
+    public static Vector3 Axis = Vector3.up;     // de as door de polen: precies door de middens van die twee vlakken, zodat noord en zuid elkaars spiegelbeeld zijn
     public static bool IsPole(int i) => i >= 0 && (i == North || i == South);
     public static bool Ready => Cells != null;
 
@@ -131,7 +132,12 @@ public static class Planet
         // opzoektabel op breedte- en lengtegraad
         buckets = new Dictionary<int, List<int>>();
         for (int v = 0; v < nV; v++) { int key = BucketKey(Cells[v].dir); if (!buckets.TryGetValue(key, out var l)) { l = new List<int>(2); buckets[key] = l; } l.Add(v); }
-        North = Nearest(Vector3.up); South = Nearest(Vector3.down);
+        // de noordpool: het vlakmidden dat het hoogst ligt (bij gelijke hoogte het eerste); de zuidpool: het vlak er recht tegenover
+        int top = 0; float ty = -2f;
+        for (int face = 0; face < 20; face++) { float y = (iv[f[face, 0]] + iv[f[face, 1]] + iv[f[face, 2]]).normalized.y; if (y > ty + 1e-4f) { ty = y; top = face; } }
+        Axis = (iv[f[top, 0]] + iv[f[top, 1]] + iv[f[top, 2]]).normalized;
+        North = Starts[top]; South = Nearest(-Axis * R);
+        for (int face = 0; face < 20; face++) { Vector3 mid = (iv[f[face, 0]] + iv[f[face, 1]] + iv[f[face, 2]]).normalized; if (Vector3.Dot(mid, Axis) < -0.999f) South = Starts[face]; }
     }
 
     static void AddTri(List<int> tris, List<Vector3> verts, int a, int b, int c)

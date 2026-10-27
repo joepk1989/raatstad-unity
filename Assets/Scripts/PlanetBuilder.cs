@@ -70,8 +70,8 @@ public class PlanetBuilder : MonoBehaviour
 
     void Start()
     {
-        int s0 = Planet.Starts[Random.Range(0, Planet.Starts.Length)]; focus = Planet.Cells[s0].dir; fwd = Planet.Cells[s0].north;   // elke speler begint op een startplek: zo ver mogelijk van de vijfhoeken
-        if (PlanetCity.Cells.Count == 0) { PlanetCity.StartTown(s0); PlanetCity.Rebuild(); PlanetCity.Save(); dist = 230f; pitch = 48f; }   // lege stad: begin met de startstad rond de vlag
+        int s0 = Planet.North; focus = Planet.Cells[s0].dir; fwd = Planet.Cells[s0].north; dist = 230f; pitch = 48f;   // je begint altijd op de noordpool (een startplek)
+        if (PlanetCity.Cells.Count == 0) { PlanetCity.StartTown(s0); PlanetCity.Rebuild(); PlanetCity.Save(); }   // lege stad: de standaardstad rond de noordpool
         outline = new GameObject("Hover").AddComponent<LineRenderer>(); outline.loop = true; outline.positionCount = 6; outline.widthMultiplier = 0.35f; outline.material = Raatstad.MatOutline; outline.useWorldSpace = true;
         walker = new GameObject("Wandelaar").AddComponent<PlanetWalker>(); walker.Cam = Cam; walker.gameObject.SetActive(false);
         LoadBar(); ApplyItem();
@@ -87,10 +87,17 @@ public class PlanetBuilder : MonoBehaviour
         PlanetCity.Cells = u.cells; PlanetCity.Terr.Clear(); foreach (var kv in u.terr) PlanetCity.Terr[kv.Key] = kv.Value;
         PlanetCity.TouchAll(); Changed(); PlanetCity.RebuildGrid(); Say("Ongedaan gemaakt");
     }
-    void Changed() { PlanetCity.Rebuild(); PlanetCity.Save(); beautyT = -99f; }
+    void Changed() { PlanetCity.Rebuild(); PlanetCity.RebuildGrid(); PlanetCity.Save(); beautyT = -99f; }
     void ToggleSound() { Babble.Muted = !Babble.Muted; Ambience.Muted = Babble.Muted; Say(Babble.Muted ? "Geluid uit (M)" : "Geluid aan (M)"); }
     void ToggleGrid() { PlanetCity.GridOn = !PlanetCity.GridOn; PlanetCity.ShowGrid(PlanetCity.GridOn && !walking); Say(PlanetCity.GridOn ? "Raster aan (G)" : "Raster uit (G)"); }
     void GoCentre() { centreT = -99f; CityCentre(); if (hasCentre) { focus = centre; Say("Naar het midden van de stad (H)"); } }
+    // naar de andere kant van de bol: het punt recht tegenover waar je nu kijkt (K, nog een keer: terug)
+    void GoOpposite()
+    {
+        focus = -focus.normalized; fwd -= focus * Vector3.Dot(fwd, focus); if (fwd.sqrMagnitude < 1e-6f) fwd = Planet.Cells[Planet.Nearest(focus)].north; fwd.Normalize();
+        PlanetCity.LatLon(focus, out float lat, out float lon);
+        Say("Naar de andere kant van de bol: " + Mathf.Abs(lat).ToString("0") + "° " + (lat >= 0f ? "N" : "Z") + " " + Mathf.Abs(lon).ToString("0") + "° " + (lon >= 0f ? "O" : "W") + " (K: terug)");
+    }
     void GoPole() { bool north = Vector3.Dot(focus, Planet.Cells[Planet.North].dir) < 0.999f; focus = Planet.Cells[north ? Planet.North : Planet.South].dir; Say(north ? "Naar de noordpool (P, nog een keer: zuidpool)" : "Naar de zuidpool (P)"); }
     void Sample() { Push(); PlanetCity.Sample(Planet.Nearest(focus)); Changed(); Say("Voorbeeldstad geplaatst (Ctrl+Z haalt hem weg)"); }
     // de startstad op de dichtstbijzijnde vrije startplek (vlag), en de camera erheen
@@ -101,8 +108,9 @@ public class PlanetBuilder : MonoBehaviour
     }
     void Empty()
     {
-        Push(); PlanetCity.Cells = new Dictionary<int, List<string>>(); PlanetCity.Terr.Clear(); PlanetCity.ClearLinks(); PlanetCity.TouchAll(); Changed(); PlanetCity.RebuildGrid();
-        Say("Lege bouwgrond (Ctrl+Z haalt je stad terug)");
+        Push(); PlanetCity.ClearAll(); Changed();
+        focus = Planet.Cells[Planet.North].dir; fwd = Planet.Cells[Planet.North].north; dist = 230f; pitch = 48f;   // terug naar het startpunt: de noordpool
+        Say("Lege bouwgrond, bij de noordpool (Ctrl+Z haalt je stad terug)");
     }
     // het bovenste paneel dicht (Escape)
     bool CloseTop()
@@ -132,6 +140,7 @@ public class PlanetBuilder : MonoBehaviour
         if (CurBlock == "weg") { if (Inp.Down(K.B)) CycleStyle(); if (Inp.Down(K.O)) ToggleOneWay(); }
         if (Inp.Down(K.H)) GoCentre();
         if (Inp.Down(K.P)) GoPole();
+        if (Inp.Down(K.K)) GoOpposite();
         if (Inp.Down(K.Z) && Inp.Held(K.Ctrl) && !sculpting) Undo();
         if (TerrTool)
         {
@@ -147,13 +156,13 @@ public class PlanetBuilder : MonoBehaviour
         hasHover = false;
         if (!OverBar && Physics.Raycast(Cam.ScreenPointToRay(Inp.Pos), out RaycastHit hit, 5000f, Layers.Grond, QueryTriggerInteraction.Ignore))
         {
-            hover = Planet.Nearest(hit.point); hasHover = true;
+            hover = Planet.Nearest(hit.point - hit.normal * 0.3f); hasHover = true;   // net in het vlak dat je raakt: de zijkant van een gebouw hoort bij dat gebouw, niet bij de buur
             ShowOutline(hover);
             if (Inp.Down(K.X)) { Push(); if (PlanetCity.RemoveTop(hover)) Changed(); }
             if (Inp.RightDown) { rightAt = Inp.Pos; rightCell = hover; }
             if (Inp.RightUp && rightCell >= 0 && Vector2.Distance(Inp.Pos, rightAt) < 6f) { Push(); if (PlanetCity.Clear(hover)) { Changed(); Say("Vak leeggemaakt"); } else if (PlanetCity.IsHalf(hover)) Say("Hier loopt een weg overheen: klik met rechts op een wegvak van die weg"); rightCell = -1; }
-            bool roadTool = CurBlock == "weg" || CurBlock == "pad";
-            if (TerrTool) { ShowBrush(hover); if (leftDown) { Push(); SculptStart(hover); } }
+            bool roadTool = !eraser && (CurBlock == "weg" || CurBlock == "pad");   // met de gum wis je altijd, wat er ook gekozen is
+            if (TerrTool && !eraser) { ShowBrush(hover); if (leftDown) { Push(); SculptStart(hover); } }
             else if (leftDown) { Push(); painting = !roadTool; lastPainted = -1; lineStart = roadTool ? hover : -1; linePlan = null; }
             if (lineStart >= 0 && Inp.LeftHeld) { linePlan = hover == lineStart ? null : PlanetCity.LinePlan(lineStart, hover); ShowPlan(linePlan); }
             if (painting && Inp.LeftHeld && hover != lastPainted)
@@ -283,8 +292,10 @@ public class PlanetBuilder : MonoBehaviour
     {
         if (n == PlanetCity.Slot) return;
         PlanetCity.Save(); PlanetCity.Slot = n; undo.Clear();
-        if (!PlanetCity.Load()) { PlanetCity.Cells = new Dictionary<int, List<string>>(); PlanetCity.Terr.Clear(); PlanetCity.ClearLinks(); PlanetCity.TouchAll(); PlanetCity.RebuildGrid(); }
-        PlanetCity.Rebuild(); beautyT = -99f; Say("Stad " + n + (PlanetCity.Cells.Count == 0 ? " (leeg)" : ""));
+        bool fresh = !PlanetCity.Load();
+        if (fresh) { PlanetCity.ClearAll(); PlanetCity.StartTown(Planet.North); PlanetCity.Save(); }   // een nieuwe stad: de standaardstad rond de noordpool
+        PlanetCity.Rebuild(); beautyT = -99f; focus = Planet.Cells[Planet.North].dir; fwd = Planet.Cells[Planet.North].north; dist = 230f; pitch = 48f;
+        Say("Stad " + n + (fresh ? " (nieuw, rond de noordpool)" : ""));
     }
 
     void CityCentre()
@@ -334,7 +345,7 @@ public class PlanetBuilder : MonoBehaviour
         if (c < 0 && !line || sculpting || painting) { if (ghostR != null) ghostR.enabled = false; ghostKey = null; return; }
         string key;
         if (line) key = "L|" + type + "|" + PlanetCity.DragStyle + "|" + string.Join(",", linePlan);
-        else if (TerrTool) key = "T|" + c + "|" + terrMode + "|" + brush + "|" + Inp.Held(K.Shift) + "|" + PlanetCity.G(c);
+        else if (TerrTool && !erase) key = "T|" + c + "|" + terrMode + "|" + brush + "|" + Inp.Held(K.Shift) + "|" + PlanetCity.G(c);
         else { PlanetCity.Cells.TryGetValue(c, out var st); key = c + "|" + type + "|" + erase + "|" + PlanetCity.DragStyle + "|" + (st != null ? string.Join(",", st) : "") + "|" + PlanetCity.G(c); }
         if (key == ghostKey && ghostR != null) { ghostR.enabled = ghostF.sharedMesh != null; return; }
         ghostKey = key;
@@ -349,7 +360,7 @@ public class PlanetBuilder : MonoBehaviour
         {
             mesh = PlanetCity.GhostLine(linePlan, type, out origin); ok = true; foreach (int x in linePlan) if (!PlanetCity.CanRoad(x, type)) ok = false; scale = 1f;
         }
-        else if (TerrTool) { mesh = TerrainGhost(c, out origin); ok = true; scale = 1f; mat = TerrMat(terrMode); }
+        else if (TerrTool && !erase) { mesh = TerrainGhost(c, out origin); ok = true; scale = 1f; mat = TerrMat(terrMode); }
         else if (PlanetCity.IsRoad(c) && erase) { mesh = PlanetCity.GhostRoad(c, type, true, out origin); ok = false; scale = 1.02f; }
         else if (!erase && (type == "weg" || type == "pad")) { mesh = PlanetCity.GhostRoad(c, type, false, out origin); ok = PlanetCity.CanRoad(c, type); scale = 1f; }
         else { mesh = PlanetCity.GhostMesh(c, type, erase, out origin); ok = !erase && PlanetCity.CanPlace(c, type) == null; scale = erase ? 1.04f : 1.01f; }
@@ -367,7 +378,7 @@ public class PlanetBuilder : MonoBehaviour
         {
             if (PlanetCity.Plateau(x.c)) continue;
             float w = BrushW(x.d, brush), h = PlanetCity.G(x.c), nh = h;
-            if (terrMode <= 1) nh = Mathf.Clamp(h + (raise ? 1f : -1f) * 1.5f * w, 0f, PlanetCity.TerrTop);
+            if (terrMode <= 1) nh = Mathf.Clamp(h + (raise ? 1f : -1f) * 1.5f * w, PlanetCity.TerrLow, PlanetCity.TerrTop);
             else if (terrMode == 2) nh = hv;
             else if (terrMode == 3) nh = h + (NbAvg(x.c) - h) * Mathf.Min(1f, 0.8f * w);
             else continue;   // helling: geen plaatjes (zoals de webversie); de lijn laat het zien zodra je sleept
@@ -535,7 +546,8 @@ public class PlanetBuilder : MonoBehaviour
     // ---- linksboven: logo, naam, stad en de schoonheid (klikbaar)
     void TopLeft()
     {
-        string sub = "Stad " + PlanetCity.Slot + (beauty != null ? " · " + beauty.blocks + " blokken · hoogste punt " + beauty.top.ToString("0.#") + " m" : "");
+        PlanetCity.LatLon(walking ? walker.transform.position : focus, out float lat, out float lon);   // waar je bent: breedte en lengte (evenaar rood-wit op de grond)
+        string sub = "Stad " + PlanetCity.Slot + (beauty != null ? " · " + beauty.blocks + " blokken" : "") + " · " + Mathf.Abs(lat).ToString("0") + "° " + (lat >= 0f ? "N" : "Z") + " " + Mathf.Abs(lon).ToString("0") + "° " + (lon >= 0f ? "O" : "W");
         float tw = Mathf.Max(Ui.Width("RAATSTAD", Ui.T.Title), Ui.Width(sub, Ui.T.Dim, 11)), w = 40f + tw + 16f + 62f;
         var r = new Rect(G, 12f, w, 48f); Ui.Panel(r, false, 12f);
         Ui.Tex(new Rect(r.x + 11f, r.y + 11.5f, 22f, 25f), Ui.Hex(Ui.Signal, Ui.Signal, 0f, true));
@@ -760,7 +772,7 @@ public class PlanetBuilder : MonoBehaviour
             "<b>Bouwen</b>  kies een blok met 1–9 of de snelbalk; Tab opent alle blokken. Klik of sleep over vakken. Rechtermuisknop maakt een vak leeg, X haalt het bovenste blok weg, Delete is de gum, Ctrl+Z maakt ongedaan.\n\n" +
             "<b>Wegen en paden</b>  klik een vak en sleep: een rechte lijn in een van de 12 richtingen. Alleen de vakken in de lijn worden verbonden. B wisselt gewone weg, brede weg en laan, O eenrichtingsverkeer; over water of een uitgraving wordt het een brug.\n\n" +
             "<b>Terrein</b>  ophogen, afgraven, egaliseren, gladstrijken of helling (T wisselt): houd de muis ingedrukt en sleep, Shift doet het omgekeerde, [ en ] maken het penseel kleiner of groter.\n\n" +
-            "<b>Camera</b>  WASD schuiven (Shift sneller), rechtermuis draaien, scroll zoomen, H naar het midden van je stad, P naar de polen.\n\n" +
+            "<b>Camera</b>  WASD schuiven (Shift sneller), rechtermuis draaien, scroll zoomen, H naar het midden van je stad, P naar de polen, K naar de andere kant van de bol.\n\n" +
             "<b>Cameramodus</b>  Spatie: geen knoppen, de muis kijkt en je vliegt als een drone met WASD, E/Q hoger en lager, Shift snel, Ctrl langzaam, het wiel zoomt. F bewaart een foto in Afbeeldingen\\Raatstad. Spatie of Esc stopt.\n\n" +
             "<b>Lopen</b>  L of de knop rechtsonder; WASD lopen, Shift rennen, Spatie springen, Esc muis los.\n\n" +
             "<b>Tijd en weer</b>  de knop rechtsboven: tijd van de dag, snelheid, weer en raster, mensen en auto's. N zet de tijd stil, R volgend weer, M geluid, G raster.\n\n" +
