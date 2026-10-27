@@ -71,7 +71,7 @@ public class PlanetBuilder : MonoBehaviour
     void Start()
     {
         int s0 = Planet.Starts[Random.Range(0, Planet.Starts.Length)]; focus = Planet.Cells[s0].dir; fwd = Planet.Cells[s0].north;   // elke speler begint op een startplek: zo ver mogelijk van de vijfhoeken
-        if (PlanetCity.Cells.Count == 0) { PlanetCity.Sample(s0); PlanetCity.Rebuild(); PlanetCity.Save(); dist = 160f; }   // lege stad: begin met een voorbeeldstadje
+        if (PlanetCity.Cells.Count == 0) { PlanetCity.StartTown(s0); PlanetCity.Rebuild(); PlanetCity.Save(); dist = 230f; pitch = 48f; }   // lege stad: begin met de startstad rond de vlag
         outline = new GameObject("Hover").AddComponent<LineRenderer>(); outline.loop = true; outline.positionCount = 6; outline.widthMultiplier = 0.35f; outline.material = Raatstad.MatOutline; outline.useWorldSpace = true;
         walker = new GameObject("Wandelaar").AddComponent<PlanetWalker>(); walker.Cam = Cam; walker.gameObject.SetActive(false);
         LoadBar(); ApplyItem();
@@ -93,6 +93,12 @@ public class PlanetBuilder : MonoBehaviour
     void GoCentre() { centreT = -99f; CityCentre(); if (hasCentre) { focus = centre; Say("Naar het midden van de stad (H)"); } }
     void GoPole() { bool north = Vector3.Dot(focus, Planet.Cells[Planet.North].dir) < 0.999f; focus = Planet.Cells[north ? Planet.North : Planet.South].dir; Say(north ? "Naar de noordpool (P, nog een keer: zuidpool)" : "Naar de zuidpool (P)"); }
     void Sample() { Push(); PlanetCity.Sample(Planet.Nearest(focus)); Changed(); Say("Voorbeeldstad geplaatst (Ctrl+Z haalt hem weg)"); }
+    // de startstad op de dichtstbijzijnde vrije startplek (vlag), en de camera erheen
+    void StartTown()
+    {
+        Push(); int st = PlanetCity.FreeStart(focus); PlanetCity.StartTown(st); Changed();
+        focus = Planet.Cells[st].dir; fwd = Planet.Cells[st].north; dist = 230f; pitch = 48f; Say("Startstad gebouwd rond de vlag (Ctrl+Z haalt hem weg)");
+    }
     void Empty()
     {
         Push(); PlanetCity.Cells = new Dictionary<int, List<string>>(); PlanetCity.Terr.Clear(); PlanetCity.ClearLinks(); PlanetCity.TouchAll(); Changed(); PlanetCity.RebuildGrid();
@@ -109,10 +115,12 @@ public class PlanetBuilder : MonoBehaviour
 
     void Update()
     {
-        if (Inp.Down(K.L)) ToggleWalk();
         if (Inp.Down(K.M)) ToggleSound();
+        if (flying) { FlyUpdate(); return; }   // cameramodus: alleen vliegen, kijken en een foto (N tijd en R weer werken vanzelf)
+        if (Inp.Down(K.L)) ToggleWalk();
         if (walking) return;
         if (Inp.Down(K.Esc)) CloseTop();
+        if (Inp.Down(K.Space) && !Modal) { FlyStart(); return; }
         CameraControl();
         if (Modal) { outline.enabled = false; ShowBrush(-1); return; }   // een venster staat open: niets in de stad
 
@@ -352,6 +360,88 @@ public class PlanetBuilder : MonoBehaviour
         else { walker.Exit(); focus = walker.transform.position.normalized; fwd = walker.Forward; }
     }
 
+    // ---------- cameramodus (zoals flyCam in de webversie, 13-camera-modus-geluid.js) ----------
+    // Spatie in de bouwmodus aan en uit (Esc ook). Geen interface, geen bouwvoorbeeld en geen raster; bouwen is geblokkeerd.
+    // De muis kijkt (aanwijzer vast), W/A/S/D vliegt met vaart (de snelheid volgt het doel met dt·3,5, zoals een drone), E/Q hoger
+    // en lager. Snelheid max(12, hoogte·0,9) m/s, Shift ×3, Ctrl ×¼, ingezoomd rustiger. Het wiel zoomt (beeldhoek 12–95°, start 65°),
+    // F bewaart een foto zonder knoppen. Altijd minstens 2 m boven terrein of blok. Bij stoppen komt het draaipunt op wat je aankijkt.
+    // Op de bol is omhoog de richting vanaf het middelpunt: de kijkrichting is een koers langs het oppervlak plus een hoek omhoog.
+    bool flying; Vector3 flyPos, flyVel, flyHead; float flyPitch, flyFovT = 65f, oldFov, oldNear, flyBadgeT, flashT = -99f; bool photoFrame; string flyNote;
+    void FlyStart()
+    {
+        flying = true; catOpen = todOpen = false; eraser = false;
+        flyPos = Cam.transform.position; Vector3 up = flyPos.normalized, look = Cam.transform.forward;
+        flyHead = look - up * Vector3.Dot(look, up); if (flyHead.sqrMagnitude < 1e-6f) flyHead = fwd; flyHead.Normalize();
+        flyPitch = Mathf.Asin(Mathf.Clamp(Vector3.Dot(look, up), -1f, 1f)) * Mathf.Rad2Deg; flyVel = Vector3.zero;
+        oldFov = Cam.fieldOfView; oldNear = Cam.nearClipPlane; Cam.fieldOfView = 65f; flyFovT = 65f; Cam.nearClipPlane = 0.3f;
+        outline.enabled = false; ShowBrush(-1); ShowPlan(null); PlanetCity.ShowGrid(false); painting = false; lineStart = -1;
+        Cursor.lockState = CursorLockMode.Locked; Cursor.visible = false; flyBadgeT = Time.time; flyNote = null;
+    }
+    void FlyStop()
+    {
+        flying = false; Cursor.lockState = CursorLockMode.None; Cursor.visible = true;
+        Cam.fieldOfView = oldFov; Cam.nearClipPlane = oldNear; PlanetCity.ShowGrid(PlanetCity.GridOn);
+        // het draaipunt op wat je aankijkt (of een stuk voor je uit), de camera blijft waar hij is
+        Vector3 up = flyPos.normalized, look = Cam.transform.forward, tg;
+        if (Physics.Raycast(flyPos, look, out RaycastHit h, 1500f, Layers.Grond, QueryTriggerInteraction.Ignore) && h.distance > 8f) tg = h.point;
+        else tg = flyPos + look * 120f;
+        focus = tg.normalized; Vector3 tu = focus, dv = flyPos - tg; float len = dv.magnitude;
+        dist = Mathf.Clamp(len, 14f, 2600f);
+        Vector3 flat = -(dv - tu * Vector3.Dot(dv, tu)); if (flat.sqrMagnitude > 1e-6f) fwd = flat.normalized;
+        pitch = Mathf.Clamp(Mathf.Asin(Mathf.Clamp(Vector3.Dot(dv, tu) / Mathf.Max(1e-3f, len), -1f, 1f)) * Mathf.Rad2Deg, 15f, 89f);
+    }
+    void FlyUpdate()
+    {
+        float dt = Mathf.Min(Time.deltaTime, 0.1f);
+        if (Inp.Down(K.Space) || Inp.Down(K.Esc)) { FlyStop(); return; }
+        if (Inp.Down(K.F)) { photoFrame = true; StartCoroutine(Photo()); }
+        if (Cursor.lockState != CursorLockMode.Locked && Inp.LeftDown) { Cursor.lockState = CursorLockMode.Locked; Cursor.visible = false; }   // na alt-tab weer vastzetten met een klik
+        Vector3 up = flyPos.normalized;
+        if (Cursor.lockState == CursorLockMode.Locked)
+        {
+            Vector2 d = Inp.Delta; const float sens = 0.0022f * Mathf.Rad2Deg;
+            flyHead = Quaternion.AngleAxis(d.x * sens, up) * flyHead; flyPitch = Mathf.Clamp(flyPitch + d.y * sens, -86f, 86f);
+        }
+        flyHead -= up * Vector3.Dot(flyHead, up); flyHead.Normalize();
+        float sc = Inp.Scroll; if (Mathf.Abs(sc) > 0.01f) flyFovT = Mathf.Clamp(flyFovT * Mathf.Pow(1.12f, -Mathf.Sign(sc) * Mathf.Min(3f, Mathf.Abs(sc))), 12f, 95f);
+        Cam.fieldOfView += (flyFovT - Cam.fieldOfView) * Mathf.Min(1f, dt * 6f);
+        Vector3 look = flyHead * Mathf.Cos(flyPitch * Mathf.Deg2Rad) + up * Mathf.Sin(flyPitch * Mathf.Deg2Rad), right = Vector3.Cross(up, flyHead);
+        float f = (Inp.Held(K.W) ? 1f : 0f) - (Inp.Held(K.S) ? 1f : 0f), s = (Inp.Held(K.D) ? 1f : 0f) - (Inp.Held(K.A) ? 1f : 0f), u = (Inp.Held(K.E) ? 1f : 0f) - (Inp.Held(K.Q) ? 1f : 0f);
+        int cell = Planet.Nearest(flyPos); float ground = PlanetCity.G(cell) + (PlanetCity.Plateau(cell) ? PlanetCity.StackHeight(cell) : PlanetCity.IsWalk(cell) ? 0.25f : 0f);
+        float alt = flyPos.magnitude - Planet.R;
+        float speed = Mathf.Max(12f, (alt - PlanetCity.G(cell)) * 0.9f) * (Inp.Held(K.Shift) ? 3f : 1f) * (Inp.Held(K.Ctrl) ? 0.25f : 1f) * (Cam.fieldOfView / 65f);   // ingezoomd: rustiger
+        Vector3 want = (look * f + right * s + up * u) * speed;
+        flyVel += (want - flyVel) * Mathf.Min(1f, dt * 3.5f);   // vaart: optrekken en uitglijden
+        flyPos += flyVel * dt;
+        float r = Mathf.Clamp(flyPos.magnitude, Planet.R + ground + 2f, Planet.R + 1800f); flyPos = flyPos.normalized * r;
+        up = flyPos.normalized; flyHead -= up * Vector3.Dot(flyHead, up); flyHead.Normalize();
+        look = flyHead * Mathf.Cos(flyPitch * Mathf.Deg2Rad) + up * Mathf.Sin(flyPitch * Mathf.Deg2Rad);
+        Cam.transform.position = flyPos; Cam.transform.rotation = Geo.Look(look, up);
+        focus = up;   // de lucht, de mist en het geluid volgen mee
+    }
+    // foto: het beeld zelf zonder knoppen, als png in Afbeeldingen\Raatstad
+    System.Collections.IEnumerator Photo()
+    {
+        yield return new WaitForEndOfFrame();   // dit beeld is zonder interface getekend (photoFrame)
+        try
+        {
+            string dir = System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyPictures), "Raatstad"); System.IO.Directory.CreateDirectory(dir);
+            var tex = ScreenCapture.CaptureScreenshotAsTexture(); string path = System.IO.Path.Combine(dir, "raatstad-" + System.DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".png");
+            System.IO.File.WriteAllBytes(path, tex.EncodeToPNG()); Destroy(tex);
+            flyNote = "Foto bewaard: " + path; flashT = Time.time; flyBadgeT = Time.time;
+        }
+        catch (System.Exception e) { flyNote = "Foto maken lukte niet (" + e.Message + ")"; flyBadgeT = Time.time; }
+        photoFrame = false;
+    }
+    // in de cameramodus alleen een klein label dat na een paar seconden vervaagt, en een flits bij een foto
+    void FlyGui(float W, float H)
+    {
+        if (Time.time - flashT < 0.45f) Ui.Tex(new Rect(0, 0, W, H), Texture2D.whiteTexture, new Color(1f, 1f, 1f, 0.7f * (1f - (Time.time - flashT) / 0.45f)));
+        string t = flyNote ?? "<b>Cameramodus</b> · muis kijkt · W A S D · E/Q hoger/lager · Shift snel · wiel zoomt · F foto · Spatie stopt";
+        float a = Time.time - flyBadgeT < 3.5f ? 1f : 0.35f, w = Ui.Width(t, Ui.T.Text) + 28f; var r = new Rect((W - w) * 0.5f, H - 16f - 32f, w, 32f);
+        var old = GUI.color; GUI.color = new Color(1f, 1f, 1f, a); Ui.Panel(r, false, 16f); Ui.Label(r, t, Ui.T.Text, null, TextAnchor.MiddleCenter); GUI.color = old;
+    }
+
     // ================= interface =================
     const float G = 16f;   // marge langs de randen
     void OnGUI()
@@ -359,6 +449,7 @@ public class PlanetBuilder : MonoBehaviour
         Ui.Begin(); float W = Ui.W, H = Ui.H;
         if (Time.time - beautyT > 3f) { beauty = Beauty.Compute(); beautyT = Time.time; }
         fpsN++; if (Time.time - fpsT > 0.5f) { fps = fpsN / (Time.time - fpsT); fpsN = 0; fpsT = Time.time; }
+        if (flying) { if (!photoFrame) FlyGui(W, H); Ui.End(); return; }   // cameramodus: geen interface
 
         CentreArrow(W, H);
         TopLeft(); TopRight(W);
@@ -578,7 +669,7 @@ public class PlanetBuilder : MonoBehaviour
         if (Ui.CardButton(new Rect(x, y, half, 48f), "Voorbeeldstad hier", "Ringweg, huizen en een meer", false, "huis")) { Sample(); menuOpen = false; }
         if (Ui.CardButton(new Rect(x + half + 8f, y, half, 48f), "Naar het midden", "Camera terug naar je stad (H)", false, "kompas")) { GoCentre(); menuOpen = false; }
         if (Ui.CardButton(new Rect(x, y + 56f, half, 48f), "Naar de polen", "Noord- en zuidpool (P)", false, "kompas")) { GoPole(); menuOpen = false; }
-        if (Ui.CardButton(new Rect(x + half + 8f, y + 56f, half, 48f), "Raster", PlanetCity.GridOn ? "aan (G)" : "uit (G)", PlanetCity.GridOn, "raster")) ToggleGrid();
+        if (Ui.CardButton(new Rect(x + half + 8f, y + 56f, half, 48f), "Startstad", "Een stadje rond een vlag", false, "stad")) { StartTown(); menuOpen = false; }
         y += 2 * 56f + 8f;
         section("LEVEN EN INSTELLINGEN");
         if (Ui.CardButton(new Rect(x, y, half, 48f), "Mensen", PlanetLife.PeopleOn ? "aan" : "uit", PlanetLife.PeopleOn, "mensen")) PlanetLife.PeopleOn = !PlanetLife.PeopleOn;
@@ -605,6 +696,7 @@ public class PlanetBuilder : MonoBehaviour
             "<b>Wegen en paden</b>  klik een vak en sleep: een rechte lijn in een van de 12 richtingen. Alleen de vakken in de lijn worden verbonden. B wisselt gewone weg, brede weg en laan, O eenrichtingsverkeer; over water of een uitgraving wordt het een brug.\n\n" +
             "<b>Terrein</b>  ophogen, afgraven, egaliseren, gladstrijken of helling (T wisselt): houd de muis ingedrukt en sleep, Shift doet het omgekeerde, [ en ] maken het penseel kleiner of groter.\n\n" +
             "<b>Camera</b>  WASD schuiven (Shift sneller), rechtermuis draaien, scroll zoomen, H naar het midden van je stad, P naar de polen.\n\n" +
+            "<b>Cameramodus</b>  Spatie: geen knoppen, de muis kijkt en je vliegt als een drone met WASD, E/Q hoger en lager, Shift snel, Ctrl langzaam, het wiel zoomt. F bewaart een foto in Afbeeldingen\\Raatstad. Spatie of Esc stopt.\n\n" +
             "<b>Lopen</b>  L of de knop rechtsonder; WASD lopen, Shift rennen, Spatie springen, Esc muis los.\n\n" +
             "<b>Tijd en weer</b>  de knop rechtsboven: tijd van de dag, snelheid, weer en raster, mensen en auto's. N zet de tijd stil, R volgend weer, M geluid, G raster.\n\n" +
             "<b>Planeet</b>  21.162 vakken, 3,8 km rond. Oranje: de 12 vijfhoeken. Lichtblauw: de 20 startplekken. Gestreepte paal met vlag: de polen.", Ui.T.Help);
@@ -626,7 +718,7 @@ public class PlanetBuilder : MonoBehaviour
         int blocks = beauty != null ? beauty.blocks : PlanetCity.Cells.Count;
         if (Ui.CardButton(new Rect(x, y, iw, 54f), "Verder bouwen", "Stad " + PlanetCity.Slot + " · " + blocks + " blokken", true, "huis")) welcome = false; y += 62f;
         float half = (iw - 8f) * 0.5f;
-        if (Ui.CardButton(new Rect(x, y, half, 48f), "Voorbeeldstad hier", null, false, "stad")) { Sample(); welcome = false; }
+        if (Ui.CardButton(new Rect(x, y, half, 48f), "Startstad", null, false, "stad")) { StartTown(); welcome = false; }
         if (Ui.CardButton(new Rect(x + half + 8f, y, half, 48f), "Lege bouwgrond", null, false, "leeg")) { Empty(); welcome = false; }
         y += 60f;
         bool off = PlayerPrefs.GetInt("raatstad-welkom-uit", 0) == 1; var cb = new Rect(x, y, 16f, 16f);
