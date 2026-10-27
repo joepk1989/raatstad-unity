@@ -13,7 +13,8 @@ public class PlanetLife : MonoBehaviour
     public int CarCount => cars.Count;
     readonly List<int> roads = new List<int>(), walks = new List<int>();
     static AudioClip hum;
-    public static void ResetStatics() { hum = null; }
+    public static bool PeopleOn = true, CarsOn = true;   // aan/uit in het tijdpaneel en het menu
+    public static void ResetStatics() { hum = null; PeopleOn = true; CarsOn = true; }
     float roadsT, spawnT, idleT = 4f;
     PlanetWalker walker;
     static readonly Color[] Paint = { new Color(0.8f, 0.2f, 0.2f), new Color(0.2f, 0.4f, 0.75f), new Color(0.9f, 0.85f, 0.3f), new Color(0.9f, 0.9f, 0.92f), new Color(0.2f, 0.2f, 0.22f), new Color(0.25f, 0.6f, 0.4f) };
@@ -190,7 +191,7 @@ public class PlanetLife : MonoBehaviour
         float dt = Mathf.Min(Time.deltaTime, 0.05f);
         if (walker == null) walker = FindAnyObjectByType<PlanetWalker>(FindObjectsInactive.Include);
         roadsT -= dt; if (roadsT <= 0f) { roadsT = 2f; RefreshRoads(); }
-        int targetP = Mathf.Clamp(walks.Count / 2, 0, 40), targetC = Mathf.Clamp(roads.Count / 6, 0, 16);
+        int targetP = PeopleOn ? Mathf.Clamp(walks.Count / 2, 0, 40) : 0, targetC = CarsOn ? Mathf.Clamp(roads.Count / 6, 0, 16) : 0;
         spawnT -= dt;
         if (spawnT <= 0f)
         {

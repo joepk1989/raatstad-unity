@@ -5,17 +5,21 @@ public class DayNight : MonoBehaviour
 {
     public static float Night;          // 0 = dag, 1 = nacht
     public static float Hour = 10f;
-    Light sun; Camera cam; bool frozen;
-    const float DayLen = 1200f;   // een dag duurt 20 minuten
+    public static float Speed = 1f;     // tijdsnelheid zoals in het tijdpaneel van de webversie: 0 (stil), 1, 4 of 12
+    static float lastSpeed = 1f;
+    Light sun; Camera cam;
+    const float DayLen = 1200f;   // een dag duurt 20 minuten (bij snelheid 1)
 
-    void Awake() { Hour = 10f; }   // ook als de statics blijven staan tussen twee keer Play
+    void Awake() { Hour = 10f; Speed = 1f; lastSpeed = 1f; }   // ook als de statics blijven staan tussen twee keer Play
+
+    public static void ToggleFreeze() { if (Speed > 0f) { lastSpeed = Speed; Speed = 0f; } else Speed = lastSpeed > 0f ? lastSpeed : 1f; }
 
     void Update()
     {
         if (sun == null) { foreach (var l in FindObjectsByType<Light>()) if (l.type == LightType.Directional) { sun = l; break; } }
         if (cam == null) cam = Camera.main;
-        if (Inp.Down(K.N)) frozen = !frozen;
-        if (!frozen) Hour = (Hour + Time.deltaTime * 24f / DayLen) % 24f;
+        if (Inp.Down(K.N)) ToggleFreeze();
+        Hour = Mathf.Repeat(Hour + Time.deltaTime * 24f / DayLen * Speed, 24f);
         float ang = (Hour - 6f) / 24f * 360f;                      // 6 uur: zon op de horizon, 12 uur: hoogste punt
         float elev = Mathf.Sin(ang * Mathf.Deg2Rad);               // -1..1
         Night = Mathf.Clamp01(0.5f - elev * 2.2f);
@@ -35,5 +39,5 @@ public class DayNight : MonoBehaviour
     }
 
     public static string Clock { get { int h = Mathf.FloorToInt(Hour), m = Mathf.FloorToInt((Hour - h) * 60f); return h.ToString("00") + ":" + m.ToString("00"); } }
-    public bool Frozen => frozen;
+    public bool Frozen => Speed <= 0f;
 }
