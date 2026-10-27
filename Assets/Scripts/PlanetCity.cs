@@ -336,6 +336,14 @@ public static partial class PlanetCity
         }
         DragStyle = keepStyle; DragOneWay = keepOne; TouchAll();
     }
+    // één fontein per plein: alleen op het pleinvak met het laagste nummer van een aaneengesloten groep pleinvakken
+    static bool IsPlein(int i) => Cells.TryGetValue(i, out var l) && l.Count > 0 && l[0] == "plein";
+    static bool FountainHere(int i)
+    {
+        var seen = new HashSet<int> { i }; var q = new Queue<int>(); q.Enqueue(i);
+        while (q.Count > 0 && seen.Count < 200) { int c = q.Dequeue(); if (c < i) return false; foreach (int j in Planet.Cells[c].nb) if (IsPlein(j) && seen.Add(j)) q.Enqueue(j); }
+        return true;
+    }
     static float Ang(Planet.Cell S, int c) { Vector3 d = Planet.Cells[c].dir - S.dir; return Mathf.Atan2(Vector3.Dot(d, S.north), Vector3.Dot(d, S.east)); }
 
     // ---------- bodem ----------
@@ -1104,8 +1112,8 @@ public static partial class PlanetCity
                         break;
                     case "plein":   // plein: klinkers, een fontein in het midden, bankjes eromheen en twee lantaarns
                         { Top(M("klinker"), fr, 1.0f, h1); Wall(M("klinker"), fr, 1.0f, h0, h1); Top(M("steen"), fr, 0.62f, h1 + 0.005f); Top(M("klinker"), fr, 0.5f, h1 + 0.01f);
-                        Skirt(M("steen"), fr, 2.4f, h1, h1 + 0.55f); Disc(M("steen"), fr, 2.4f, h1 + 0.55f); Disc(M("water"), fr, 2.1f, h1 + 0.57f);
-                        Cone(M("steen"), fr, 0f, 0f, 0.3f, h1 + 0.55f, h1 + 1.6f, 0.22f); Cone(M("steen"), fr, 0f, 0f, 0.25f, h1 + 1.45f, h1 + 1.75f, 1.0f); Disc(M("water"), fr, 0.9f, h1 + 1.76f);
+                        if (k > 0 || FountainHere(i)) { Skirt(M("steen"), fr, 2.4f, h1, h1 + 0.55f); Disc(M("steen"), fr, 2.4f, h1 + 0.55f); Disc(M("water"), fr, 2.1f, h1 + 0.57f);
+                        Cone(M("steen"), fr, 0f, 0f, 0.3f, h1 + 0.55f, h1 + 1.6f, 0.22f); Cone(M("steen"), fr, 0f, 0f, 0.25f, h1 + 1.45f, h1 + 1.75f, 1.0f); Disc(M("water"), fr, 0.9f, h1 + 1.76f); }
                         float a0 = (hash & 63) / 63f * Mathf.PI * 2f;
                         for (int j = 0; j < 3; j++)
                         {
