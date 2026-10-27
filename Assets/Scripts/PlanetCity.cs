@@ -84,7 +84,8 @@ public static partial class PlanetCity
     static long DKey(int i, int j) => ((long)i << 20) | (uint)j;
     public static int Flow(int i, int j) => OneWay.Contains(DKey(i, j)) ? 1 : OneWay.Contains(DKey(j, i)) ? -1 : 0;   // +1: alleen van i naar j, -1: alleen van j naar i
     public static bool CanDrive(int i, int j) => Flow(i, j) >= 0;
-    public static byte StyleOf(int i) => Style.TryGetValue(i, out var s) ? s : (byte)0;
+    static int styleOverride = -1;   // bouwvoorbeeld: elke weg in deze stijl tekenen (het wegtype dat je gaat leggen)
+    public static byte StyleOf(int i) => styleOverride >= 0 ? (byte)styleOverride : Style.TryGetValue(i, out var s) ? s : (byte)0;
     static void SetStyle(int i) { if (DragStyle == 0) Style.Remove(i); else Style[i] = DragStyle; }
     // de vakken waarmee i verbonden is (buren, of vakken op afstand 2 recht door de hoek: dan loopt de weg over twee halve vakken)
     public static List<int> Partners(int i) => partners.TryGetValue(i, out var l) ? l : none;
@@ -94,6 +95,20 @@ public static partial class PlanetCity
         if (i == j || !Adjacent2(i, j) || !Links.Add(Key(i, j))) return;
         if (!partners.TryGetValue(i, out var a)) partners[i] = a = new List<int>(6); a.Add(j);
         if (!partners.TryGetValue(j, out var b)) partners[j] = b = new List<int>(6); b.Add(i);
+    }
+    // Bij een klik: verbinden met de weg- en padvakken ernaast, maar nooit zo dat er een driehoekje ontstaat (drie vakken die
+    // elk aan elkaar vastzitten geven een lusje in plaats van een weg). Eerst de losse eindjes, dan de rest.
+    public static List<int> ClickLinks(int i)
+    {
+        var got = new List<int>(); foreach (int j in Partners(i)) if (IsWalk(j)) got.Add(j);
+        for (int pass = 0; pass < 2; pass++)
+            foreach (int j in Planet.Cells[i].nb)
+            {
+                if (!IsWalk(j) || got.Contains(j) || (LinkCount(j) <= 1) != (pass == 0)) continue;
+                bool loop = false; foreach (int p in got) if (Linked(p, j)) loop = true;
+                if (!loop) got.Add(j);
+            }
+        return got;
     }
     public static void Unlink(int i)
     {
@@ -164,11 +179,11 @@ public static partial class PlanetCity
             if (l.Count == 1 && (l[0] == "meer" || l[0] == "water" || l[0] == "kuil")) { Under[i] = l[0]; l[0] = "weg"; }   // een brug over water of een uitgraving
             if (l.Count > 0 && !(l.Count == 1 && l[0] == "weg")) return "Eerst het vak leegmaken (rechtermuisknop) voor een weg";
             if (l.Count == 0) l.Add("weg");
-            SetStyle(i); if (autoLink) foreach (int j in Planet.Cells[i].nb) if (IsWalk(j)) Link(i, j);
+            SetStyle(i); if (autoLink) foreach (int j in ClickLinks(i)) Link(i, j);
             Touch(i); return null;
         }
-        if (type == "pad" && l.Count == 0) { l.Add("pad"); if (autoLink) foreach (int j in Planet.Cells[i].nb) if (IsWalk(j)) Link(i, j); Touch(i); return null; }
-        if (type == "pad" && l.Count == 1 && l[0] == "pad") { if (autoLink) foreach (int j in Planet.Cells[i].nb) if (IsWalk(j)) Link(i, j); Touch(i); return null; }
+        if (type == "pad" && l.Count == 0) { l.Add("pad"); if (autoLink) foreach (int j in ClickLinks(i)) Link(i, j); Touch(i); return null; }
+        if (type == "pad" && l.Count == 1 && l[0] == "pad") { if (autoLink) foreach (int j in ClickLinks(i)) Link(i, j); Touch(i); return null; }
         if (l.Count > 0 && l[0] == "weg") return "Op een weg kun je niet bouwen; haal de weg eerst weg (rechtermuisknop)";
         if (l.Count > 0 && l[0] == "wegdeel" && !Buildable(type)) return "Hier loopt een weg overheen: op de vrije helft passen alleen gebouwen en parken";
         if (l.Count >= 8) return "Hoger kan niet";
@@ -1045,6 +1060,11 @@ public static partial class PlanetCity
             from = list.Count; list.Add(type);
         }
         var mb = new Dictionary<string, MeshBuilder>(); BuildCell(mb, i, list, new List<(Vector3, Quaternion, int)>(), from);
+        return MergeMesh(mb, origin);
+    }
+    // alle stukken van een tekening samen tot één mesh rond origin (voor het bouwvoorbeeld, dat één doorzichtige kleur heeft)
+    static Mesh MergeMesh(Dictionary<string, MeshBuilder> mb, Vector3 origin)
+    {
         var all = new MeshBuilder();
         foreach (var b in mb.Values) { int o = all.v.Count; foreach (var p in b.v) all.v.Add(p - origin); all.n.AddRange(b.n); foreach (int t in b.t) all.t.Add(o + t); }
         return all.v.Count == 0 ? null : all.Build();

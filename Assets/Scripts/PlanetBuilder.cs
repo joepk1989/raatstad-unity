@@ -178,7 +178,7 @@ public class PlanetBuilder : MonoBehaviour
             }
             painting = false;
         }
-        outline.enabled = hasHover; ShowGhost(hasHover && !sculpting && lineStart < 0 ? hover : -1);
+        outline.enabled = hasHover; ShowGhost(hasHover ? hover : -1);
     }
 
     // ---------- terrein boetseren (zoals 14b-boetseren.js in de webversie) ----------
@@ -321,19 +321,21 @@ public class PlanetBuilder : MonoBehaviour
         }
     }
 
-    // ---------- bouwvoorbeeld: het gekozen blok doorzichtig op het vak onder de muis (zoals het spookblok in de webversie) ----------
-    // Amber als het kan, rood als het niet kan; bij de gum de hele stapel in het rood. Niet bij wegen, paden en terrein: daar
-    // tonen de geplande lijn en het penseel wat er gebeurt. Alleen opnieuw gemaakt als vak, blok of stapel verandert.
-    MeshFilter ghostF; MeshRenderer ghostR; string ghostKey; static Material ghostOk, ghostBad;
+    // ---------- bouwvoorbeeld: wat je gaat doen, doorzichtig op de plek waar het komt (zoals de webversie) ----------
+    //  - een blok: het blok in zijn echte vorm bovenop de stapel (het spookblok);
+    //  - een weg of pad: het wegstuk dat een klik zou maken, en tijdens het slepen de hele weg langs de geplande lijn;
+    //  - terrein: plaatjes op de hoogte na één flinke streek onder het penseel (terrPreview), in de kleur van de stand;
+    //  - de gum: wat er verdwijnt, in het rood (ook een wegstuk).
+    // Amber als het kan, rood als het niet kan. Alleen opnieuw gemaakt als er iets verandert.
+    MeshFilter ghostF; MeshRenderer ghostR; string ghostKey; static Material ghostOk, ghostBad; readonly Dictionary<int, Material> terrMats = new Dictionary<int, Material>();
     void ShowGhost(int c)
     {
-        string type = CurBlock; bool erase = eraser;
-        if (c < 0 || TerrTool || (!erase && (type == "weg" || type == "pad")))
-        {
-            if (ghostR != null) ghostR.enabled = false; ghostKey = null; return;
-        }
-        PlanetCity.Cells.TryGetValue(c, out var st);
-        string key = c + "|" + type + "|" + erase + "|" + (st != null ? string.Join(",", st) : "") + "|" + PlanetCity.G(c);
+        string type = CurBlock; bool erase = eraser, line = !erase && linePlan != null && lineStart >= 0;
+        if (c < 0 && !line || sculpting || painting) { if (ghostR != null) ghostR.enabled = false; ghostKey = null; return; }
+        string key;
+        if (line) key = "L|" + type + "|" + PlanetCity.DragStyle + "|" + string.Join(",", linePlan);
+        else if (TerrTool) key = "T|" + c + "|" + terrMode + "|" + brush + "|" + Inp.Held(K.Shift) + "|" + PlanetCity.G(c);
+        else { PlanetCity.Cells.TryGetValue(c, out var st); key = c + "|" + type + "|" + erase + "|" + PlanetCity.DragStyle + "|" + (st != null ? string.Join(",", st) : "") + "|" + PlanetCity.G(c); }
         if (key == ghostKey && ghostR != null) { ghostR.enabled = ghostF.sharedMesh != null; return; }
         ghostKey = key;
         if (ghostF == null)
@@ -342,11 +344,46 @@ public class PlanetBuilder : MonoBehaviour
             ghostR.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; ghostR.receiveShadows = false;
         }
         if (ghostOk == null) { ghostOk = Raatstad.MakeMat(new Color(0.949f, 0.698f, 0.2f, 0.42f), true); ghostBad = Raatstad.MakeMat(new Color(0.878f, 0.341f, 0.243f, 0.45f), true); }
-        var old = ghostF.sharedMesh; var mesh = PlanetCity.GhostMesh(c, type, erase, out Vector3 origin); ghostF.sharedMesh = mesh; if (old != null) Destroy(old);
-        bool ok = erase || PlanetCity.CanPlace(c, type) == null;
-        ghostR.sharedMaterial = ok && !erase ? ghostOk : ghostBad;
-        var t = ghostF.transform; t.position = origin; t.localScale = Vector3.one * (erase ? 1.04f : 1.01f);   // net iets groter, zodat het niet door het echte blok flikkert
+        Mesh mesh; Vector3 origin; bool ok; float scale = 1.01f; Material mat = null;
+        if (line)
+        {
+            mesh = PlanetCity.GhostLine(linePlan, type, out origin); ok = true; foreach (int x in linePlan) if (!PlanetCity.CanRoad(x, type)) ok = false; scale = 1f;
+        }
+        else if (TerrTool) { mesh = TerrainGhost(c, out origin); ok = true; scale = 1f; mat = TerrMat(terrMode); }
+        else if (PlanetCity.IsRoad(c) && erase) { mesh = PlanetCity.GhostRoad(c, type, true, out origin); ok = false; scale = 1.02f; }
+        else if (!erase && (type == "weg" || type == "pad")) { mesh = PlanetCity.GhostRoad(c, type, false, out origin); ok = PlanetCity.CanRoad(c, type); scale = 1f; }
+        else { mesh = PlanetCity.GhostMesh(c, type, erase, out origin); ok = !erase && PlanetCity.CanPlace(c, type) == null; scale = erase ? 1.04f : 1.01f; }
+        var old = ghostF.sharedMesh; ghostF.sharedMesh = mesh; if (old != null) Destroy(old);
+        ghostR.sharedMaterial = mat != null ? mat : ok ? ghostOk : ghostBad;
+        var t = ghostF.transform; t.position = origin; t.localScale = Vector3.one * scale;   // net iets groter, zodat het niet door het echte blok flikkert
         ghostR.enabled = mesh != null;
+    }
+    // terrein: per vak onder het penseel een plaatje op de hoogte na één flinke streek (bebouwde vakken blijven liggen)
+    Mesh TerrainGhost(int c, out Vector3 origin)
+    {
+        origin = Planet.Cells[c].dir * (Planet.R + PlanetCity.G(c)); var m = new MeshBuilder(); bool inv = Inp.Held(K.Shift), raise = (terrMode == 0) != inv;
+        float hv = PlanetCity.G(c); if (terrMode == 2 && !inv) { float s = 0f; var bc = Brush(c, brush); foreach (var x in bc) s += PlanetCity.G(x.c); hv = Mathf.Round(s / bc.Count * 2f) / 2f; }
+        foreach (var x in Brush(c, brush))
+        {
+            if (PlanetCity.Plateau(x.c)) continue;
+            float w = BrushW(x.d, brush), h = PlanetCity.G(x.c), nh = h;
+            if (terrMode <= 1) nh = Mathf.Clamp(h + (raise ? 1f : -1f) * 1.5f * w, 0f, PlanetCity.TerrTop);
+            else if (terrMode == 2) nh = hv;
+            else if (terrMode == 3) nh = h + (NbAvg(x.c) - h) * Mathf.Min(1f, 0.8f * w);
+            else continue;   // helling: geen plaatjes (zoals de webversie); de lijn laat het zien zodra je sleept
+            var cell = Planet.Cells[x.c]; Vector3 mid = cell.dir * (Planet.R + nh + 0.12f) - origin;
+            for (int k = 0; k < cell.corners.Length; k++)
+            {
+                Vector3 a = Vector3.Lerp(cell.dir, cell.corners[k], 0.92f).normalized * (Planet.R + nh + 0.12f) - origin, b = Vector3.Lerp(cell.dir, cell.corners[(k + 1) % cell.corners.Length], 0.92f).normalized * (Planet.R + nh + 0.12f) - origin;
+                m.Tri(mid, a, b, cell.dir); m.Tri(mid, b, a, -cell.dir);   // van beide kanten zichtbaar (ook als het onder de grond ligt)
+            }
+        }
+        return m.v.Count == 0 ? null : m.Build();
+    }
+    Material TerrMat(int mode)
+    {
+        if (terrMats.TryGetValue(mode, out var mt) && mt != null) return mt;
+        var col = Find("t:" + mode).col; col.a = 0.35f; mt = Raatstad.MakeMat(col, true); terrMats[mode] = mt; return mt;
     }
 
     void ShowOutline(int i)

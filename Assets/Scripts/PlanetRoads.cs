@@ -231,4 +231,50 @@ public static partial class PlanetCity
             else { m.Quad(b + d0 * r0, b + d1 * r0, b + up * h + d1 * r1, b + up * h + d0 * r1, om); m.Tri(b + up * h, b + up * h + d0 * r1, b + up * h + d1 * r1, up); }
         }
     }
+
+    // ---------- bouwvoorbeeld voor wegen en paden ----------
+    // Kan hier een weg (of pad) komen? Dezelfde regels als Place: leeg, al een weg, een half vak, of een brug over water of een uitgraving.
+    public static bool CanRoad(int i, string type)
+    {
+        if (!Cells.TryGetValue(i, out var l) || l.Count == 0) return true;
+        if (type == "pad") return l.Count == 1 && l[0] == "pad";
+        return (l.Count == 1 && (l[0] == "weg" || l[0] == "wegdeel" || l[0] == "meer" || l[0] == "water" || l[0] == "kuil"));
+    }
+    // Wat een klik op vak i zou maken (een wegknoop met armen naar alle wegen ernaast; bij een pad een rondje met strookjes),
+    // of bij de gum het wegstuk dat verdwijnt.
+    public static Mesh GhostRoad(int i, string type, bool erase, out Vector3 origin)
+    {
+        origin = Planet.Cells[i].dir * (Planet.R + G(i)); var mb = new Dictionary<string, MeshBuilder>();
+        if (type == "pad" && !erase) { PadGhost(mb, new List<int> { i }); return MergeMesh(mb, origin); }
+        var arms = new List<int>(); if (erase) arms = RoadNb(i); else foreach (int j in ClickLinks(i)) if (IsRoad(j)) arms.Add(j);
+        styleOverride = erase ? -1 : DragStyle;
+        try { NodeMesh(mb, i, arms); } finally { styleOverride = -1; }
+        return MergeMesh(mb, origin);
+    }
+    // De weg (of het pad) langs een geplande sleeplijn, als doorlopend lint met ronde hoeken
+    public static Mesh GhostLine(List<int> line, string type, out Vector3 origin)
+    {
+        origin = Planet.Cells[line[0]].dir * (Planet.R + G(line[0])); var mb = new Dictionary<string, MeshBuilder>();
+        if (type == "pad") { PadGhost(mb, line); return MergeMesh(mb, origin); }
+        styleOverride = DragStyle;
+        try { ChainMesh(mb, line, false, new Dictionary<int, List<int>>(), new HashSet<int>()); } finally { styleOverride = -1; }
+        return MergeMesh(mb, origin);
+    }
+    // een pad als smal lint (2,2 m) door de vakmiddens, met een rondje op elk eind
+    static void PadGhost(Dictionary<string, MeshBuilder> mb, List<int> line)
+    {
+        var m = new MeshBuilder(); mb["pad"] = m;
+        var pts = line.Count > 1 ? SmoothLine(line, false) : new List<RP> { new RP { p = Planet.Cells[line[0]].dir * Planet.R, h = G(line[0]), cell = line[0] } };
+        System.Func<Vector3, float, Vector3> up = (p, h) => p.normalized * (Planet.R + h + 0.11f);
+        for (int k = 0; k + 1 < pts.Count; k++)
+        {
+            Vector3 a = pts[k].p, b = pts[k + 1].p, u = a.normalized, t = b - a, sd = Vector3.Cross(u, t).normalized * 1.1f;
+            m.Quad(up(a - sd, pts[k].h), up(a + sd, pts[k].h), up(b + sd, pts[k + 1].h), up(b - sd, pts[k + 1].h), u);
+        }
+        foreach (var e in new[] { pts[0], pts[pts.Count - 1] })
+        {
+            Vector3 u = e.p.normalized, ax = Vector3.Cross(u, Mathf.Abs(u.y) < 0.9f ? Vector3.up : Vector3.right).normalized, az = Vector3.Cross(u, ax);
+            for (int k = 0; k < 16; k++) { float a0 = k * Mathf.PI / 8f, a1 = (k + 1) * Mathf.PI / 8f; m.Tri(up(e.p, e.h), up(e.p + (ax * Mathf.Cos(a0) + az * Mathf.Sin(a0)) * 1.4f, e.h), up(e.p + (ax * Mathf.Cos(a1) + az * Mathf.Sin(a1)) * 1.4f, e.h), u); }
+        }
+    }
 }
