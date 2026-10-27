@@ -1017,30 +1017,55 @@ public static partial class PlanetCity
         RebuildRoads();   // het wegennet: alleen de lijnen en knopen die veranderd zijn
     }
 
-    static void BuildChunk(int ch)
+    // ---------- bouwvoorbeeld (het spookblok van de webversie) ----------
+    // Kan blok 'type' op vak i? null = ja, anders de reden. Dezelfde regels als Place (voor blokken, niet voor wegen), zonder iets te veranderen.
+    public static string CanPlace(int i, string type)
     {
-        BuildGround(ch);
-        if (chunks.TryGetValue(ch, out var old) && old != null) UnityEngine.Object.Destroy(old.gameObject);
-        chunks.Remove(ch);
-        var mb = new Dictionary<string, MeshBuilder>();
-        System.Func<string, MeshBuilder> M = k => { if (!mb.TryGetValue(k, out var x)) { x = new MeshBuilder(); mb[k] = x; } return x; };
-        int i0 = ch * ChunkN, i1 = Mathf.Min(Planet.Cells.Length, i0 + ChunkN);
-        var mills = new List<(Vector3 pos, Quaternion rot, int hash)>();   // molenwieken: losse objecten die draaien
-        for (int i = i0; i < i1; i++)
+        if (!Cells.TryGetValue(i, out var l) || l.Count == 0) return null;
+        if (type == "pad" && l.Count == 1 && l[0] == "pad") return null;
+        if (l[0] == "weg") return "Op een weg kun je niet bouwen; haal de weg eerst weg (rechtermuisknop)";
+        if (l[0] == "wegdeel" && !Buildable(type)) return "Hier loopt een weg overheen: op de vrije helft passen alleen gebouwen en parken";
+        if (type == "water" || type == "meer") return null;   // water vervangt wat er staat
+        if (l[l.Count - 1] == "water" || l[l.Count - 1] == "meer") return null;
+        if (l.Count >= 8) return "Hoger kan niet";
+        if (l[l.Count - 1] == "toren" || l[l.Count - 1] == "molen") return "Op een " + l[l.Count - 1] + " kun je niets meer zetten";
+        return null;
+    }
+    // De vorm van wat Place(i, type) zou toevoegen, of bij de gum de hele stapel, als één mesh rond het hart van het vak (origin).
+    // null als er niets te tonen is (een wegvak: dat tekent het wegennet).
+    public static Mesh GhostMesh(int i, string type, bool erase, out Vector3 origin)
+    {
+        origin = Planet.Cells[i].dir * (Planet.R + G(i));
+        Cells.TryGetValue(i, out var cur); var list = cur != null ? new List<string>(cur) : new List<string>(); int from;
+        if (erase) { if (list.Count == 0 || list[0] == "weg") return null; from = 0; }
+        else
         {
-            if (!Cells.TryGetValue(i, out var list) || list.Count == 0) continue;
-            var fr = new Frame(i);
-            if (list[0] == "weg") { if (Under.ContainsKey(i)) { UnderMesh(mb, fr, i, i * 73856093); BridgePillar(M, fr, i); } continue; }   // de weg zelf tekent het wegennet (PlanetRoads.cs); hier alleen wat onder een brug ligt
+            if (list.Count > 0 && list[0] == "weg") return null;
+            if (type == "water" || type == "meer" || (list.Count > 0 && (list[list.Count - 1] == "water" || list[list.Count - 1] == "meer"))) { bool half = list.Count > 0 && list[0] == "wegdeel"; list.Clear(); if (half) list.Add("wegdeel"); }
+            from = list.Count; list.Add(type);
+        }
+        var mb = new Dictionary<string, MeshBuilder>(); BuildCell(mb, i, list, new List<(Vector3, Quaternion, int)>(), from);
+        var all = new MeshBuilder();
+        foreach (var b in mb.Values) { int o = all.v.Count; foreach (var p in b.v) all.v.Add(p - origin); all.n.AddRange(b.n); foreach (int t in b.t) all.t.Add(o + t); }
+        return all.v.Count == 0 ? null : all.Build();
+    }
+
+    // Eén vak tekenen: de stapel blokken (vanaf blok 'from'; het bouwvoorbeeld tekent alleen het nieuwe blok bovenop)
+    static void BuildCell(Dictionary<string, MeshBuilder> mb, int i, List<string> list, List<(Vector3 pos, Quaternion rot, int hash)> mills, int from)
+    {
+        System.Func<string, MeshBuilder> M = k => { if (!mb.TryGetValue(k, out var x)) { x = new MeshBuilder(); mb[k] = x; } return x; };
+        var fr = new Frame(i);
+            if (list[0] == "weg") { if (Under.ContainsKey(i)) { UnderMesh(mb, fr, i, i * 73856093); BridgePillar(M, fr, i); } return; }   // de weg zelf tekent het wegennet (PlanetRoads.cs); hier alleen wat onder een brug ligt
             if (list[0] == "wegdeel")   // half vak naast een schuine weg: de helft naar de weg toe is zandvloer; wat erop gebouwd is staat op de vrije helft
             {
                 var rest = list.GetRange(1, list.Count - 1);
-                if (!HalfNormal(i, out var hn)) { if (rest.Count == 0) { Top(M("zand"), fr, 0.97f, 0.06f); continue; } }   // zonder bekende weg: gewoon een vak
+                if (!HalfNormal(i, out var hn)) { if (rest.Count == 0) { if (from == 0) Top(M("zand"), fr, 0.97f, 0.06f); return; } }   // zonder bekende weg: gewoon een vak
                 else
                 {
                     var hd = HalfDirs(i, hn); var lp = new List<Vector3>();
                     foreach (var d in hd) { Vector3 w = d * Planet.R - fr.o; lp.Add(new Vector3(Vector3.Dot(w, fr.e), 0f, Vector3.Dot(w, fr.n))); }
-                    for (int q = 1; q + 1 < lp.Count; q++) M("zand").Tri(fr.P(lp[0].x, 0.06f, lp[0].z), fr.P(lp[q].x, 0.06f, lp[q].z), fr.P(lp[q + 1].x, 0.06f, lp[q + 1].z), fr.u);
-                    if (rest.Count == 0) continue;
+                    if (from == 0) for (int q = 1; q + 1 < lp.Count; q++) M("zand").Tri(fr.P(lp[0].x, 0.06f, lp[0].z), fr.P(lp[q].x, 0.06f, lp[q].z), fr.P(lp[q + 1].x, 0.06f, lp[q + 1].z), fr.u);
+                    if (rest.Count == 0) return;
                     var fd = HalfDirs(i, hn, true);
                     if (fd.Count >= 3)
                     {
@@ -1050,14 +1075,15 @@ public static partial class PlanetCity
                         fr = new Frame(fr, o2, pl, rs / fd.Count);
                     }
                 }
-                list = rest;
+                list = rest; from = Mathf.Max(0, from - 1);
             }
-            if (list.Count == 1 && list[0] == "meer") { Lake(mb, fr, i, 0f, i * 73856093); continue; }
-            if (list.Count == 1 && list[0] == "pad") { Footpath(mb, fr, i); continue; }
+            if (list.Count == 1 && list[0] == "meer") { Lake(mb, fr, i, 0f, i * 73856093); return; }
+            if (list.Count == 1 && list[0] == "pad") { Footpath(mb, fr, i); return; }
             float h = 0f; int hash = i * 73856093;
             for (int k = 0; k < list.Count; k++)
             {
                 string t = list[k]; bool top = k == list.Count - 1; float h1 = h + Blocks.Height(t), h0 = k == 0 ? -0.2f : h;   // onderste blok iets de bodem in (de bol loopt af naar de hoeken)
+                if (k < from) { h = h1; continue; }   // bouwvoorbeeld: alleen het nieuwe blok bovenop
                 switch (t)
                 {
                     case "woning":
@@ -1141,7 +1167,18 @@ public static partial class PlanetCity
                 }
                 h = h1;
             }
-        }
+    }
+
+    static void BuildChunk(int ch)
+    {
+        BuildGround(ch);
+        if (chunks.TryGetValue(ch, out var old) && old != null) UnityEngine.Object.Destroy(old.gameObject);
+        chunks.Remove(ch);
+        var mb = new Dictionary<string, MeshBuilder>();
+        System.Func<string, MeshBuilder> M = k => { if (!mb.TryGetValue(k, out var x)) { x = new MeshBuilder(); mb[k] = x; } return x; };
+        int i0 = ch * ChunkN, i1 = Mathf.Min(Planet.Cells.Length, i0 + ChunkN);
+        var mills = new List<(Vector3 pos, Quaternion rot, int hash)>();   // molenwieken: losse objecten die draaien
+        for (int i = i0; i < i1; i++) if (Cells.TryGetValue(i, out var list) && list.Count > 0) BuildCell(mb, i, list, mills, 0);
         if (mb.Count == 0) return;
         var go = new GameObject("Deel " + ch); go.transform.SetParent(root, false); chunks[ch] = go.transform;
         foreach (var kv in mb)

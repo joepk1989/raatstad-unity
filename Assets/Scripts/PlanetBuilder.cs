@@ -122,7 +122,7 @@ public class PlanetBuilder : MonoBehaviour
         if (Inp.Down(K.Esc)) CloseTop();
         if (Inp.Down(K.Space) && !Modal) { FlyStart(); return; }
         CameraControl();
-        if (Modal) { outline.enabled = false; ShowBrush(-1); return; }   // een venster staat open: niets in de stad
+        if (Modal) { outline.enabled = false; ShowBrush(-1); ShowGhost(-1); return; }   // een venster staat open: niets in de stad
 
         if (Inp.Down(K.Tab)) catOpen = !catOpen;
         K[] dk = { K.D1, K.D2, K.D3, K.D4, K.D5, K.D6, K.D7, K.D8, K.D9 };
@@ -178,7 +178,7 @@ public class PlanetBuilder : MonoBehaviour
             }
             painting = false;
         }
-        outline.enabled = hasHover;
+        outline.enabled = hasHover; ShowGhost(hasHover && !sculpting && lineStart < 0 ? hover : -1);
     }
 
     // ---------- terrein boetseren (zoals 14b-boetseren.js in de webversie) ----------
@@ -321,6 +321,34 @@ public class PlanetBuilder : MonoBehaviour
         }
     }
 
+    // ---------- bouwvoorbeeld: het gekozen blok doorzichtig op het vak onder de muis (zoals het spookblok in de webversie) ----------
+    // Amber als het kan, rood als het niet kan; bij de gum de hele stapel in het rood. Niet bij wegen, paden en terrein: daar
+    // tonen de geplande lijn en het penseel wat er gebeurt. Alleen opnieuw gemaakt als vak, blok of stapel verandert.
+    MeshFilter ghostF; MeshRenderer ghostR; string ghostKey; static Material ghostOk, ghostBad;
+    void ShowGhost(int c)
+    {
+        string type = CurBlock; bool erase = eraser;
+        if (c < 0 || TerrTool || (!erase && (type == "weg" || type == "pad")))
+        {
+            if (ghostR != null) ghostR.enabled = false; ghostKey = null; return;
+        }
+        PlanetCity.Cells.TryGetValue(c, out var st);
+        string key = c + "|" + type + "|" + erase + "|" + (st != null ? string.Join(",", st) : "") + "|" + PlanetCity.G(c);
+        if (key == ghostKey && ghostR != null) { ghostR.enabled = ghostF.sharedMesh != null; return; }
+        ghostKey = key;
+        if (ghostF == null)
+        {
+            var go = new GameObject("Bouwvoorbeeld"); ghostF = go.AddComponent<MeshFilter>(); ghostR = go.AddComponent<MeshRenderer>();
+            ghostR.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; ghostR.receiveShadows = false;
+        }
+        if (ghostOk == null) { ghostOk = Raatstad.MakeMat(new Color(0.949f, 0.698f, 0.2f, 0.42f), true); ghostBad = Raatstad.MakeMat(new Color(0.878f, 0.341f, 0.243f, 0.45f), true); }
+        var old = ghostF.sharedMesh; var mesh = PlanetCity.GhostMesh(c, type, erase, out Vector3 origin); ghostF.sharedMesh = mesh; if (old != null) Destroy(old);
+        bool ok = erase || PlanetCity.CanPlace(c, type) == null;
+        ghostR.sharedMaterial = ok && !erase ? ghostOk : ghostBad;
+        var t = ghostF.transform; t.position = origin; t.localScale = Vector3.one * (erase ? 1.04f : 1.01f);   // net iets groter, zodat het niet door het echte blok flikkert
+        ghostR.enabled = mesh != null;
+    }
+
     void ShowOutline(int i)
     {
         var c = Planet.Cells[i]; float h = PlanetCity.StackHeight(i) + 0.3f; bool plat = PlanetCity.Plateau(i);
@@ -352,7 +380,7 @@ public class PlanetBuilder : MonoBehaviour
         walking = !walking; PlanetCity.ShowGrid(PlanetCity.GridOn && !walking); catOpen = todOpen = menuOpen = scoreOpen = helpOpen = welcome = false;
         if (walking)
         {
-            outline.enabled = false; ShowBrush(-1); ShowPlan(null);
+            outline.enabled = false; ShowBrush(-1); ShowPlan(null); ShowGhost(-1);
             int i = Planet.Nearest(focus); float h = PlanetCity.G(i) + PlanetCity.StackHeight(i);
             if (PlanetCity.IsWalk(i)) h = PlanetCity.SurfaceH(i, focus * Planet.R) + 0.26f;
             walker.Enter(focus * (Planet.R + h + 0.3f), fwd);
@@ -374,7 +402,7 @@ public class PlanetBuilder : MonoBehaviour
         flyHead = look - up * Vector3.Dot(look, up); if (flyHead.sqrMagnitude < 1e-6f) flyHead = fwd; flyHead.Normalize();
         flyPitch = Mathf.Asin(Mathf.Clamp(Vector3.Dot(look, up), -1f, 1f)) * Mathf.Rad2Deg; flyVel = Vector3.zero;
         oldFov = Cam.fieldOfView; oldNear = Cam.nearClipPlane; Cam.fieldOfView = 65f; flyFovT = 65f; Cam.nearClipPlane = 0.3f;
-        outline.enabled = false; ShowBrush(-1); ShowPlan(null); PlanetCity.ShowGrid(false); painting = false; lineStart = -1;
+        outline.enabled = false; ShowBrush(-1); ShowPlan(null); ShowGhost(-1); PlanetCity.ShowGrid(false); painting = false; lineStart = -1;
         Cursor.lockState = CursorLockMode.Locked; Cursor.visible = false; flyBadgeT = Time.time; flyNote = null;
     }
     void FlyStop()
