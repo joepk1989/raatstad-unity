@@ -43,11 +43,17 @@ public class Weather : MonoBehaviour
     }
 
     public void Set(Kind k, bool fixedMode) { Current = k; Wissel = !fixedMode; nextT = 90f + Random.value * 120f; }
+    // toets O: het volgende weer, Shift+O het vorige; na sneeuw komt wisselend (zoals de webversie). Geeft de naam terug.
+    public string Cycle(int d)
+    {
+        int n = ((Wissel ? 6 : (int)Current) + d + 7) % 7;
+        if (n == 6) { Wissel = true; nextT = 90f + Random.value * 120f; return "Wisselend"; }
+        Set((Kind)n, true); return Names[n];
+    }
 
     void Update()
     {
         float dt = Time.deltaTime;
-        if (Inp.Down(K.R)) { Kind k = (Kind)(((int)Current + 1) % 6); Set(k, true); }
         if (Wissel) { nextT -= dt; if (nextT <= 0f) { Current = Next(Current); nextT = 90f + Random.value * 150f; } }
         int c = (int)Current; tCloud = T[c, 0]; tFog = T[c, 1]; tRain = T[c, 2]; tSnow = T[c, 3]; tStorm = T[c, 4];
         float k2 = Mathf.Min(1f, dt * 0.35f);

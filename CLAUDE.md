@@ -37,9 +37,13 @@ Al aanwezig in `Assets/Scripts/`: de planeet (`Planet`, `PlanetBuilder`, `Planet
 
 Erbij gekomen op 25 oktober 2026:
 - Bouwblokken winkel, plein, toren en molen (draaiende `Wieken`), ook in de schoonheidsscore en de praatjes. Bloktypes staan in `Blocks` (`City.cs`), tekenen per blok in `PlanetCity.BuildChunk`.
-- Polen gemarkeerd: `Planet.North`/`South`/`IsPole`, gestreepte paal met vlag op een ijswit vak; toets P springt ernaartoe.
+- Polen gemarkeerd: `Planet.North`/`South`/`IsPole`, gestreepte paal met vlag op een ijswit vak; toets N springt ernaartoe (P is pauze, zoals de webversie).
 - Wegprofiel van de webversie: asfalt 10 cm, schuine stoeprand 30 cm, stoep 25 cm; geen stoep over het asfalt van een andere arm, ronde stoephoeken op kruisingen.
 - Terrein (low poly, als `07b-terrein.js`): hoogte per vak 0–30 m in `PlanetCity.Terr`, bebouwde vakken op een sokkel, wegen hellen mee (`Frame.H`, `PlanetCity.SurfaceH`). Boetseren met het gereedschap Terrein (toets 9): ophogen, afgraven, egaliseren, gladstrijken, helling; penseel 1/7/19/37 vakken.
+
+Erbij gekomen op 28 oktober 2026:
+- Bediening gelijk aan de webversie: Q/E draaien, WASD/pijltjes schuiven, +/− zoomen, rechts of Shift slepen schuift, middelste knop of Alt slepen draait; P pauze, O weer, N polen, I eenrichting, M menu, ? bediening. Het venster Bediening (`PlanetBuilder.Help`) hoort gelijk te blijven met de code.
+- Wegen en paden op een niveau (`PlanetCity.DragLevel`, Page Up/Down, halve stappen van 2,25 m): lager in een geul, hoger op een dijk, met rechte randen (`ExactGround`). Een kruising met een weg op een ander niveau wordt vanzelf ongelijkvloers (`SetLevel`); een bestaande weg wordt nooit verzet. Weghalen zet het terrein terug (`preLevel`). Automatische test: `Assets/Scripts/LevelTest.cs` (niet in git) met `niveautest.txt` in persistentDataPath.
 
 Nog te doen:
 1. Modules als JSON met edge-codes (nu nog in code)

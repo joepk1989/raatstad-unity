@@ -4,7 +4,8 @@ using UnityEngine;
 // Bouwen op de planeet: de camera hangt boven een punt op de bol en schuift over het oppervlak (WASD),
 // draait (rechtermuis) en zoomt (scroll). Klik een vak om het gekozen blok te plaatsen; een weg is ook een blok.
 // De bediening volgt de webversie (v100, 15d-bediening.js): linksboven de stad en de schoonheid, rechtsboven tijd en weer,
-// geluid en Menu; onderaan de snelbalk 1–9 met "Alle blokken" (Tab), linksonder het gereedschap, rechtsonder Bouwen/Lopen (L).
+// geluid en Menu; onderaan de snelbalk 1–9 met "Alle blokken" (Tab), linksonder gum en ongedaan maken, rechtsonder Bouwen/Lopen (L)
+// met daarboven de knop ? (alle toetsen). Alle toetsen en de muis staan in Help() op een rij: houd dat venster gelijk met de code.
 public class PlanetBuilder : MonoBehaviour
 {
     public Camera Cam;
@@ -18,6 +19,7 @@ public class PlanetBuilder : MonoBehaviour
     Beauty.Result beauty; float beautyT = -99f, fps; int fpsN; float fpsT;
     Vector3 centre; float centreT = -99f; bool hasCentre;   // middelpunt van de stad, voor de pijl
     Vector2 rightAt; int rightCell = -1;
+    int camDrag, camBtn; Vector2 camFrom; bool camMoved; float wheelAcc;   // slepen met de muis: 1 schuiven, 2 draaien; knop 0 links, 1 rechts, 2 midden
 
     // ---------- catalogus en snelbalk ----------
     class Item { public string id, name, tab, block; public Color col; }
@@ -39,6 +41,8 @@ public class PlanetBuilder : MonoBehaviour
     Item Cur => Find(bar[slot]);
     string CurBlock => eraser ? "gum" : Cur.block;
     bool TerrTool => !eraser && Cur.block == "terrein";
+    bool LevelTool => !eraser && (CurBlock == "pad" || CurBlock == "weg");   // weg of pad: Page Up/Down kiest het niveau
+    bool PathDrag => lineStart >= 0 && Inp.LeftHeld && LevelTool;   // een weg of pad slepen: ook + en - en het wiel kiezen het niveau (Q/E blijven draaien)
 
     // open panelen: catalogus, tijd/weer, schoonheid, menu, bediening, welkom
     bool catOpen, todOpen, scoreOpen, menuOpen, helpOpen, welcome;
@@ -78,7 +82,7 @@ public class PlanetBuilder : MonoBehaviour
         welcome = PlayerPrefs.GetInt("raatstad-welkom-uit", 0) == 0;
     }
 
-    void Say(string s) { msg = s; msgT = Time.time + 4f; }
+    void Say(string s) { msg = s; msgT = Time.time + 4f; if (flying) { flyNote = s; flyBadgeT = Time.time; } }   // in de cameramodus op het label
     void Push() { undo.Add((PlanetCity.Clone(PlanetCity.Cells), new Dictionary<int, float>(PlanetCity.Terr))); if (undo.Count > 100) undo.RemoveAt(0); }
     void Undo()
     {
@@ -88,7 +92,13 @@ public class PlanetBuilder : MonoBehaviour
         PlanetCity.TouchAll(); Changed(); PlanetCity.RebuildGrid(); Say("Ongedaan gemaakt");
     }
     void Changed() { PlanetCity.Rebuild(); PlanetCity.RebuildGrid(); PlanetCity.Save(); beautyT = -99f; }
-    void ToggleSound() { Babble.Muted = !Babble.Muted; Ambience.Muted = Babble.Muted; Say(Babble.Muted ? "Geluid uit (M)" : "Geluid aan (M)"); }
+    void ToggleSound() { Babble.Muted = !Babble.Muted; Ambience.Muted = Babble.Muted; Say(Babble.Muted ? "Geluid uit" : "Geluid aan"); }
+    void ToggleHelp()
+    {
+        helpOpen = !helpOpen; if (!helpOpen) return;
+        menuOpen = scoreOpen = welcome = false;
+        if (walking) { Cursor.lockState = CursorLockMode.None; Cursor.visible = true; }   // tijdens het lopen: de muis los om het venster te kunnen sluiten
+    }
     void ToggleGrid() { PlanetCity.GridOn = !PlanetCity.GridOn; PlanetCity.ShowGrid(PlanetCity.GridOn && !walking); Say(PlanetCity.GridOn ? "Raster aan (G)" : "Raster uit (G)"); }
     void GoCentre() { centreT = -99f; CityCentre(); if (hasCentre) { focus = centre; Say("Naar het midden van de stad (H)"); } }
     // naar de andere kant van de bol: het punt recht tegenover waar je nu kijkt (K, nog een keer: terug)
@@ -98,7 +108,7 @@ public class PlanetBuilder : MonoBehaviour
         PlanetCity.LatLon(focus, out float lat, out float lon);
         Say("Naar de andere kant van de bol: " + Mathf.Abs(lat).ToString("0") + "° " + (lat >= 0f ? "N" : "Z") + " " + Mathf.Abs(lon).ToString("0") + "° " + (lon >= 0f ? "O" : "W") + " (K: terug)");
     }
-    void GoPole() { bool north = Vector3.Dot(focus, Planet.Cells[Planet.North].dir) < 0.999f; focus = Planet.Cells[north ? Planet.North : Planet.South].dir; Say(north ? "Naar de noordpool (P, nog een keer: zuidpool)" : "Naar de zuidpool (P)"); }
+    void GoPole() { bool north = Vector3.Dot(focus, Planet.Cells[Planet.North].dir) < 0.999f; focus = Planet.Cells[north ? Planet.North : Planet.South].dir; Say(north ? "Naar de noordpool (N, nog een keer: zuidpool)" : "Naar de zuidpool (N)"); }
     void Sample() { Push(); PlanetCity.Sample(Planet.Nearest(focus)); Changed(); Say("Voorbeeldstad geplaatst (Ctrl+Z haalt hem weg)"); }
     // de startstad op de dichtstbijzijnde vrije startplek (vlag), en de camera erheen
     void StartTown()
@@ -123,11 +133,15 @@ public class PlanetBuilder : MonoBehaviour
 
     void Update()
     {
-        if (Inp.Down(K.M)) ToggleSound();
-        if (flying) { FlyUpdate(); return; }   // cameramodus: alleen vliegen, kijken en een foto (N tijd en R weer werken vanzelf)
+        // overal, ook tijdens het lopen en in de cameramodus: P zet de tijd stil, O ander weer (Shift+O het vorige)
+        if (Inp.Down(K.P)) { DayNight.ToggleFreeze(); Say(DayNight.Speed > 0f ? "De tijd loopt weer (P)" : "Pauze: de tijd staat stil (P)"); }
+        if (Inp.Down(K.O) && Weather.I != null) Say("Weer: " + Weather.I.Cycle(Inp.Held(K.Shift) ? -1 : 1) + " (O, Shift+O terug)");
+        if (flying) { FlyUpdate(); return; }   // cameramodus: alleen vliegen, kijken en een foto
         if (Inp.Down(K.L)) ToggleWalk();
-        if (walking) return;
+        if (Inp.Down(K.Slash)) ToggleHelp();
+        if (walking) { if (Inp.Down(K.Esc)) helpOpen = false; return; }
         if (Inp.Down(K.Esc)) CloseTop();
+        if (Inp.Down(K.M)) { bool open = !menuOpen; helpOpen = scoreOpen = welcome = todOpen = catOpen = false; menuOpen = open; }
         if (Inp.Down(K.Space) && !Modal) { FlyStart(); return; }
         CameraControl();
         if (Modal) { outline.enabled = false; ShowBrush(-1); ShowGhost(-1); return; }   // een venster staat open: niets in de stad
@@ -135,11 +149,17 @@ public class PlanetBuilder : MonoBehaviour
         if (Inp.Down(K.Tab)) catOpen = !catOpen;
         K[] dk = { K.D1, K.D2, K.D3, K.D4, K.D5, K.D6, K.D7, K.D8, K.D9 };
         for (int i = 0; i < dk.Length; i++) if (Inp.Down(dk[i])) SelectSlot(i);
-        if (Inp.Down(K.Del)) { eraser = !eraser; Say(eraser ? "Gum: klik of sleep over vakken om ze leeg te maken (Delete)" : "Gum uit"); }
+        if (Inp.Down(K.Del) || Inp.Down(K.Back)) { eraser = !eraser; Say(eraser ? "Gum: klik of sleep over vakken om ze leeg te maken (Delete)" : "Gum uit"); }
         if (Inp.Down(K.G)) ToggleGrid();
-        if (CurBlock == "weg") { if (Inp.Down(K.B)) CycleStyle(); if (Inp.Down(K.O)) ToggleOneWay(); }
+        if (LevelTool)
+        {
+            int dl = (Inp.Down(K.PgUp) ? 1 : 0) - (Inp.Down(K.PgDn) ? 1 : 0);
+            if (PathDrag) { dl += (Inp.Down(K.Plus) ? 1 : 0) - (Inp.Down(K.Minus) ? 1 : 0); wheelAcc += Inp.Scroll; if (Mathf.Abs(wheelAcc) >= 0.9f) { dl += wheelAcc > 0f ? 1 : -1; wheelAcc = 0f; } }
+            if (dl != 0) StepLevel(dl);
+        }
+        if (CurBlock == "weg") { if (Inp.Down(K.B)) CycleStyle(); if (Inp.Down(K.I)) ToggleOneWay(); if (Inp.Down(K.U)) ToggleUnder(); }
         if (Inp.Down(K.H)) GoCentre();
-        if (Inp.Down(K.P)) GoPole();
+        if (Inp.Down(K.N)) GoPole();
         if (Inp.Down(K.K)) GoOpposite();
         if (Inp.Down(K.Z) && Inp.Held(K.Ctrl) && !sculpting) Undo();
         if (TerrTool)
@@ -148,8 +168,10 @@ public class PlanetBuilder : MonoBehaviour
             if (Inp.Down(K.LBr) && brush > 0) { brush--; Say("Penseel: " + BrushSize(brush) + " vak" + (brush > 0 ? "ken" : "") + " ([ en ])"); }
             if (Inp.Down(K.RBr) && brush < 3) { brush++; Say("Penseel: " + BrushSize(brush) + " vakken ([ en ])"); }
         }
-        // een klik in de stad sluit de catalogus en het tijdpaneel (en bouwt dan niet)
-        bool leftDown = Inp.LeftDown;
+        // Shift+wiel: het volgende of vorige vak van de snelbalk (zoals de webversie)
+        if (Inp.Held(K.Shift) && !Ui.MouseOverUI && !PathDrag) { wheelAcc += Inp.Scroll; if (Mathf.Abs(wheelAcc) >= 0.9f) { SelectSlot((slot + (wheelAcc < 0f ? 1 : 8)) % 9); wheelAcc = 0f; } } else if (!PathDrag) wheelAcc = 0f;
+        // een klik in de stad sluit de catalogus en het tijdpaneel (en bouwt dan niet); Shift- of Alt-slepen beweegt de camera
+        bool leftDown = Inp.LeftDown && camDrag == 0;
         if (leftDown && !Ui.MouseOverUI && (catOpen || todOpen)) { catOpen = todOpen = false; leftDown = false; }
 
         // aanwijzen: het vak onder de muis
@@ -167,11 +189,12 @@ public class PlanetBuilder : MonoBehaviour
             if (lineStart >= 0 && Inp.LeftHeld) { linePlan = hover == lineStart ? null : PlanetCity.LinePlan(lineStart, hover); ShowPlan(linePlan); }
             if (painting && Inp.LeftHeld && hover != lastPainted)
             {
-                lastPainted = hover;
-                if (eraser) { if (PlanetCity.Clear(hover)) Changed(); }
+                int prev = lastPainted; lastPainted = hover;
+                if (eraser) { if (PlanetCity.ClearFrom(hover, prev)) Changed(); }   // de gum vanaf de weg onder een brug haalt die onderdoorgang weg, niet de brug
                 else { string err = PlanetCity.Place(hover, CurBlock); if (err != null) Say(err); else Changed(); }
             }
         }
+        if (leftDown && lineStart >= 0 && LevelTool && PlanetCity.DragLevel != 0) StepLevel(0);   // herinnering: dit komt hoger of lager
         if (!hasHover || !TerrTool) ShowBrush(-1);
         if (sculpting) { if (Inp.LeftHeld) SculptUpdate(Time.deltaTime); else SculptEnd(); }
         if (Inp.LeftUp)
@@ -180,9 +203,15 @@ public class PlanetBuilder : MonoBehaviour
             if (lineStart >= 0)
             {
                 string t = CurBlock; int ok = 0; string err = null;
-                if (linePlan != null) ok = PlanetCity.PlaceLine(linePlan, t); else { err = PlanetCity.Place(lineStart, t); if (err == null) ok = 1; }
+                bool du = PlanetCity.DragUnder; int lv = PlanetCity.DragLevel; bool level = t == "pad" || t == "weg";
+                if (t == "weg" && lv != 0) PlanetCity.DragUnder = lv <= -2;   // een niveau lager: onder kruisende wegen door; hoger: eroverheen (SetLevel); een half niveau: kruispunt
+                if (linePlan != null) ok = PlanetCity.PlaceLine(linePlan, t);
+                else if (level && lv != 0 && (err = PlanetCity.LevelClickProblem(lineStart, lv, t)) != null) ok = 0;   // een los vak op een niveau: niet op of naast een weg op een andere hoogte
+                else { err = PlanetCity.Place(lineStart, t); if (err == null) ok = 1; }
+                PlanetCity.DragUnder = du;
+                if (ok > 0 && level) PlanetCity.SetLevel(linePlan ?? new List<int> { lineStart }, lv, t);
                 if (ok > 0) Changed(); else if (err != null) Say(err);
-                if (linePlan != null && ok > 0) Say(ok + " vakken " + Cur.name.ToLower());
+                if (linePlan != null && ok > 0) Say(PlanetCity.LastNote ?? ok + " vakken " + Cur.name.ToLower());   // een melding over de lijn gaat voor
                 lineStart = -1; linePlan = null; ShowPlan(null);
             }
             painting = false;
@@ -285,7 +314,20 @@ public class PlanetBuilder : MonoBehaviour
     static readonly string[] StyleNames = { "Gewone weg", "Brede weg", "Laan" };
     static readonly string[] StyleIds = { "weg", "weg:breed", "weg:laan" };
     void CycleStyle() { PlanetCity.DragStyle = (byte)((PlanetCity.DragStyle + 1) % 3); SetVariant(StyleIds[PlanetCity.DragStyle]); Say("Wegtype: " + StyleNames[PlanetCity.DragStyle] + " (B) · sleep of klik om aan te leggen; een weg over water of een uitgraving wordt een brug"); }
-    void ToggleOneWay() { PlanetCity.DragOneWay = !PlanetCity.DragOneWay; Say(PlanetCity.DragOneWay ? "Eenrichtingsverkeer (O): de weg die je sleept is eenrichting, in de sleeprichting" : "Weer in twee richtingen (O)"); }
+    void ToggleUnder() { PlanetCity.DragUnder = !PlanetCity.DragUnder; Say(PlanetCity.DragUnder ? "Ongelijkvloers (U): de weg die je sleept gaat onder kruisende wegen door" : "Gelijkvloers (U): kruisende wegen worden een kruispunt"); }
+    void ToggleOneWay() { PlanetCity.DragOneWay = !PlanetCity.DragOneWay; Say(PlanetCity.DragOneWay ? "Eenrichtingsverkeer (I): de weg die je sleept is eenrichting, in de sleeprichting" : "Weer in twee richtingen (I)"); }
+    // het niveau van de weg of het pad dat je legt (blijft staan), in halve niveaus: 0 op het maaiveld, -2 tot +2 niveaus, stappen van 2,25 m
+    static string LevelName(int lv) { int a = Mathf.Abs(lv); string n = (a / 2 > 0 ? (a / 2).ToString() : "") + (a % 2 == 1 ? "½" : ""); return lv == 0 ? "0" : (lv > 0 ? "+" : "−") + n; }
+    static string Meters(int lv) => (Mathf.Abs(lv) * PlanetCity.StepH).ToString("0.##").Replace('.', ',') + " m";
+    void StepLevel(int d)
+    {
+        PlanetCity.DragLevel = Mathf.Clamp(PlanetCity.DragLevel + d, -4, 4); int lv = PlanetCity.DragLevel; string wat = CurBlock == "pad" ? "Pad" : "Weg";
+        string extra = lv == -2 ? "; past precies onder een weg door" : lv == 2 && CurBlock == "weg" ? "; een weg op het maaiveld past er precies onder" : Mathf.Abs(lv) == 1 ? "; een half niveau: kruisen wordt een kruispunt" : "";
+        Say(lv == 0 ? wat + " op het maaiveld (Page Up/Down kiest het niveau)"
+            : wat + " op niveau " + LevelName(lv) + ": " + Meters(lv) + (lv < 0 ? " lager, in een geul" : " hoger, op een dijk") + extra + " (Page Up/Down)");
+        if (linePlan != null) ShowPlan(linePlan);
+        ghostKey = null;
+    }
     void ToggleLights() { PlanetCity.Lights = !PlanetCity.Lights; PlanetCity.TouchAll(); PlanetCity.Rebuild(); Say(PlanetCity.Lights ? "Verkeerslichten aan" : "Verkeerslichten uit"); }
 
     void SwitchSlot(int n)
@@ -323,12 +365,13 @@ public class PlanetBuilder : MonoBehaviour
         }
         int n = polys.Count;
         while (planLines.Count < n) { var l = new GameObject("Plan").AddComponent<LineRenderer>(); l.loop = true; l.widthMultiplier = 0.3f; l.material = Raatstad.MatOutline; l.useWorldSpace = true; planLines.Add(l); }
+        float lvOff = LevelTool ? PlanetCity.DragLevel * PlanetCity.StepH : 0f;   // een weg of pad op een ander niveau: de lijn ook
         for (int k = 0; k < planLines.Count; k++)
         {
             if (k >= n) { planLines[k].enabled = false; continue; }
             var pc = polys[k]; planLines[k].enabled = true; planLines[k].widthMultiplier = 0.3f; brushShown = -2;
             if (planLines[k].positionCount != pc.Length) planLines[k].positionCount = pc.Length;
-            for (int q = 0; q < pc.Length; q++) planLines[k].SetPosition(q, pc[q] * (Planet.R + hs[k]));
+            for (int q = 0; q < pc.Length; q++) planLines[k].SetPosition(q, pc[q] * (Planet.R + hs[k] + lvOff));
         }
     }
 
@@ -342,11 +385,13 @@ public class PlanetBuilder : MonoBehaviour
     void ShowGhost(int c)
     {
         string type = CurBlock; bool erase = eraser, line = !erase && linePlan != null && lineStart >= 0;
+        ShowLevelGhost(LevelTool && !sculpting ? (line ? linePlan : c >= 0 ? new List<int> { c } : null) : null);   // ook op niveau 0: een brug over een verdiepte weg
         if (c < 0 && !line || sculpting || painting) { if (ghostR != null) ghostR.enabled = false; ghostKey = null; return; }
         string key;
         if (line) key = "L|" + type + "|" + PlanetCity.DragStyle + "|" + string.Join(",", linePlan);
         else if (TerrTool && !erase) key = "T|" + c + "|" + terrMode + "|" + brush + "|" + Inp.Held(K.Shift) + "|" + PlanetCity.G(c);
         else { PlanetCity.Cells.TryGetValue(c, out var st); key = c + "|" + type + "|" + erase + "|" + PlanetCity.DragStyle + "|" + (st != null ? string.Join(",", st) : "") + "|" + PlanetCity.G(c); }
+        int lvG = LevelTool && !erase && (type == "weg" || type == "pad") ? PlanetCity.DragLevel : 0; key += "|" + lvG;   // op een ander niveau: het voorbeeld schuift mee
         if (key == ghostKey && ghostR != null) { ghostR.enabled = ghostF.sharedMesh != null; return; }
         ghostKey = key;
         if (ghostF == null)
@@ -366,8 +411,76 @@ public class PlanetBuilder : MonoBehaviour
         else { mesh = PlanetCity.GhostMesh(c, type, erase, out origin); ok = !erase && PlanetCity.CanPlace(c, type) == null; scale = erase ? 1.04f : 1.01f; }
         var old = ghostF.sharedMesh; ghostF.sharedMesh = mesh; if (old != null) Destroy(old);
         ghostR.sharedMaterial = mat != null ? mat : ok ? ghostOk : ghostBad;
-        var t = ghostF.transform; t.position = origin; t.localScale = Vector3.one * scale;   // net iets groter, zodat het niet door het echte blok flikkert
+        var t = ghostF.transform; t.position = origin + origin.normalized * (lvG * PlanetCity.StepH); t.localScale = Vector3.one * scale;   // net iets groter, zodat het niet door het echte blok flikkert
         ghostR.enabled = mesh != null;
+    }
+    // Voorbeeld tijdens het slepen van een weg of pad: de geul (blauw) of dijk (oranje) als een doorzichtige strook langs de lijn,
+    // met de bodem zo breed als de weg en zijkanten onder 45°, zoals hij komt; en waar de lijn een weg kruist die een niveau
+    // hoger of lager ligt (ook op niveau 0, over een verdiepte weg), alvast de brug: een dek met twee portalen (amber).
+    MeshFilter lvlF, brgF; MeshRenderer lvlR, brgR; string lvlKey;
+    void ShowLevelGhost(List<int> cells)
+    {
+        int lv = PlanetCity.DragLevel; string type = CurBlock;
+        if (cells == null || cells.Count == 0 || !LevelTool) { if (lvlR != null) lvlR.enabled = false; if (brgR != null) brgR.enabled = false; lvlKey = null; return; }
+        string key = lv + "|" + type + "|" + PlanetCity.DragStyle + "|" + string.Join(",", cells);
+        if (key == lvlKey && lvlR != null) { lvlR.enabled = lvlF.sharedMesh != null; brgR.enabled = brgF.sharedMesh != null; return; } lvlKey = key;
+        if (lvlF == null)
+        {
+            var go = new GameObject("Niveauvoorbeeld"); lvlF = go.AddComponent<MeshFilter>(); lvlR = go.AddComponent<MeshRenderer>(); lvlR.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; lvlR.receiveShadows = false;
+            var gb = new GameObject("Brugvoorbeeld"); brgF = gb.AddComponent<MeshFilter>(); brgR = gb.AddComponent<MeshRenderer>(); brgR.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; brgR.receiveShadows = false;
+        }
+        if (ghostOk == null) { ghostOk = Raatstad.MakeMat(new Color(0.949f, 0.698f, 0.2f, 0.42f), true); ghostBad = Raatstad.MakeMat(new Color(0.878f, 0.341f, 0.243f, 0.45f), true); }
+        Vector3 origin = Planet.Cells[cells[0]].dir * (Planet.R + PlanetCity.G(cells[0])); var m = new MeshBuilder(); var mb = new MeshBuilder();
+        float hw = PlanetCity.WalkHalfWidth(type), R = Planet.R;
+        Vector3 P(Vector3 d, Vector3 across, float sdw, float h) => (d * R + across * sdw).normalized * (R + h) - origin;   // punt op de bol: vak d, dwars sdw, hoogte h
+        for (int k = 0; k < cells.Count; k++)
+        {
+            int a = cells[k]; Vector3 ad = Planet.Cells[a].dir;
+            float ta = PlanetCity.LevelTarget(a, lv), ga = PlanetCity.G(a);
+            if (lv != 0 && k + 1 < cells.Count)   // de strook van hart tot hart, de zijkanten tot op het maaiveld van het vak
+            {
+                int b = cells[k + 1]; Vector3 bd = Planet.Cells[b].dir, along = (bd - ad - ad * Vector3.Dot(bd - ad, ad)).normalized, ax = Vector3.Cross(ad, along).normalized, bx = Vector3.Cross(bd, along).normalized;
+                float tb = PlanetCity.LevelTarget(b, lv), gb = PlanetCity.G(b), wa = hw + Mathf.Abs(ta - ga), wb = hw + Mathf.Abs(tb - gb), y = 0.12f * (lv < 0 ? 1f : 1f);
+                m.Quad(P(ad, ax, -hw, ta + y), P(ad, ax, hw, ta + y), P(bd, bx, hw, tb + y), P(bd, bx, -hw, tb + y), ad);   // bodem of kruin
+                m.Quad(P(ad, ax, -hw, ta + y), P(ad, ax, hw, ta + y), P(bd, bx, hw, tb + y), P(bd, bx, -hw, tb + y), -ad);
+                for (int sg = -1; sg <= 1; sg += 2)   // zijkanten onder 45°
+                {
+                    Vector3 q0 = P(ad, ax, sg * hw, ta + y), q1 = P(ad, ax, sg * wa, ga + y), q2 = P(bd, bx, sg * wb, gb + y), q3 = P(bd, bx, sg * hw, tb + y);
+                    m.Quad(q0, q1, q2, q3, ad); m.Quad(q0, q1, q2, q3, -ad);
+                }
+            }
+            else if (lv != 0 && cells.Count == 1)   // één vak: een plaatje op de hoogte
+            {
+                var cell = Planet.Cells[a]; Vector3 mid = ad * (R + ta + 0.12f) - origin;
+                for (int q = 0; q < cell.corners.Length; q++) { Vector3 c1 = Vector3.Lerp(ad, cell.corners[q], 0.92f).normalized * (R + ta + 0.12f) - origin, c2 = Vector3.Lerp(ad, cell.corners[(q + 1) % cell.corners.Length], 0.92f).normalized * (R + ta + 0.12f) - origin; m.Tri(mid, c1, c2, ad); m.Tri(mid, c1, c2, -ad); }
+            }
+            // een brug: over de lijn heen (de nieuwe gaat eronderdoor) of langs de lijn (de nieuwe gaat erover)
+            int cr = PlanetCity.CrossingPreview(a, cells, lv, type, out float deck);
+            if (cr == 0) continue;
+            Vector3 dir;   // de richting van het dek
+            if (cr > 0) { int p0 = k > 0 ? cells[k - 1] : a, p1 = k + 1 < cells.Count ? cells[k + 1] : a; dir = Planet.Cells[p1].dir - Planet.Cells[p0].dir; }
+            else { var ps = PlanetCity.Partners(a); dir = ps.Count >= 2 ? Planet.Cells[ps[1]].dir - Planet.Cells[ps[0]].dir : Planet.Cells[a].north; }
+            dir -= ad * Vector3.Dot(dir, ad); if (dir.sqrMagnitude < 1e-6f) continue; dir.Normalize(); Vector3 acr = Vector3.Cross(ad, dir).normalized;
+            float dw = cr > 0 ? hw - 1.5f : PlanetCity.WalkHalfWidth(PlanetCity.IsPath(a) ? "pad" : "weg") - 1.5f, L = 7.8f, top = deck + 0.3f, bot = deck - 1.08f;
+            Vector3 Q(float along, float sdw, float h) => (ad * R + dir * along + acr * sdw).normalized * (R + h) - origin;
+            Vector3[] t4 = { Q(-L, -dw, top), Q(-L, dw, top), Q(L, dw, top), Q(L, -dw, top) }, b4 = { Q(-L, -dw, bot), Q(-L, dw, bot), Q(L, dw, bot), Q(L, -dw, bot) };
+            mb.Quad(t4[0], t4[1], t4[2], t4[3], ad); mb.Quad(b4[0], b4[1], b4[2], b4[3], -ad);
+            for (int q = 0; q < 4; q++) { int r2 = (q + 1) % 4; mb.Quad(t4[q], t4[r2], b4[r2], b4[q], (t4[q] + t4[r2]) * 0.5f - (ad * R - origin)); }
+            for (int sg = -1; sg <= 1; sg += 2)   // de portalen: een lijst van 2 m dik rond de opening, tot 2,5 m onder het dek
+            {
+                float a0 = sg * L, a1 = sg * (L + 2f), pw = dw + 3f, low = bot - PlanetCity.LevelH + 1.08f;
+                foreach (var (w0, w1) in new[] { (-pw, -dw), (dw, pw) })
+                {
+                    Vector3 f0 = Q(a0, w0, top), f1 = Q(a0, w1, top), f2 = Q(a0, w1, low), f3 = Q(a0, w0, low), e0 = Q(a1, w0, top), e1 = Q(a1, w1, top), e2 = Q(a1, w1, low), e3 = Q(a1, w0, low);
+                    mb.Quad(e0, e1, e2, e3, dir * sg); mb.Quad(f0, f1, e1, e0, ad); mb.Quad(f0, e0, e3, f3, -acr); mb.Quad(f1, e1, e2, f2, acr);
+                }
+                Vector3 l0 = Q(a0, -pw, top), l1 = Q(a0, pw, top), l2 = Q(a1, pw, top), l3 = Q(a1, -pw, top); mb.Quad(l0, l1, l2, l3, ad);
+            }
+        }
+        var old = lvlF.sharedMesh; lvlF.sharedMesh = m.v.Count > 0 ? m.Build() : null; if (old != null) Destroy(old);
+        var oldb = brgF.sharedMesh; brgF.sharedMesh = mb.v.Count > 0 ? mb.Build() : null; if (oldb != null) Destroy(oldb);
+        lvlR.sharedMaterial = TerrMat(lv < 0 ? 1 : 0); lvlF.transform.position = origin; lvlR.enabled = lvlF.sharedMesh != null;
+        brgR.sharedMaterial = ghostOk; brgF.transform.position = origin; brgR.enabled = brgF.sharedMesh != null;
     }
     // terrein: per vak onder het penseel een plaatje op de hoogte na één flinke streek (bebouwde vakken blijven liggen)
     Mesh TerrainGhost(int c, out Vector3 origin)
@@ -408,15 +521,51 @@ public class PlanetBuilder : MonoBehaviour
             outline.SetPosition(k, c.corners[k] * (Planet.R + (plat ? PlanetCity.G(i) + h : (PlanetCity.IsWalk(i) ? Mathf.Max(PlanetCity.OwnCorner(i, k), PlanetCity.SurfaceH(i, c.corners[k] * Planet.R)) : PlanetCity.OwnCorner(i, k)) + 0.3f)));
     }
 
+    // ---------- camera bij het bouwen (zoals 13-camera, 14-invoer en 15b-sneltoetsen in de webversie) ----------
+    // Toetsen: W/A/S/D of de pijltjes schuiven (Shift sneller), Q/E draaien, + en - zoomen. Muis: het wiel zoomt (Shift+wiel kiest
+    // een blok), rechts slepen of Shift+slepen schuift, de middelste knop of Alt+slepen draait en kantelt. Schuiven pakt de grond
+    // vast: die volgt de muis. Een klik met rechts zonder te slepen maakt een vak leeg. Links slepen bouwt (de webversie draait dan).
+    void Pan(Vector3 metres) { focus = (focus + metres / Planet.R).normalized; fwd = (fwd - focus * Vector3.Dot(fwd, focus)).normalized; }
     void CameraControl()
     {
-        float dt = Time.deltaTime, sp = (Inp.Held(K.Shift) ? 3f : 1f) * dist * 0.8f;
+        float dt = Time.deltaTime, sp = (Inp.Held(K.Shift) ? 3f : 1f) * dist;   // ongeveer een schermbreedte per seconde, zoals de webversie
         Vector3 up = focus; fwd = (fwd - up * Vector3.Dot(fwd, up)).normalized; Vector3 right = Vector3.Cross(up, fwd);
-        Vector3 move = Vector3.zero;
-        if (!Modal) { if (Inp.Held(K.W)) move += fwd; if (Inp.Held(K.S)) move -= fwd; if (Inp.Held(K.D)) move += right; if (Inp.Held(K.A)) move -= right; }
-        if (move != Vector3.zero) { focus = (focus + move.normalized * (sp * dt / Planet.R)).normalized; up = focus; fwd = (fwd - up * Vector3.Dot(fwd, up)).normalized; }
-        if (!Ui.MouseOverUI && !Modal) dist = Mathf.Clamp(dist * (1f - Inp.Scroll * 0.1f), 12f, 2600f);   // scrollen in de catalogus zoomt niet
-        if (Inp.RightHeld && !Modal) { Vector2 d = Inp.Delta; fwd = Quaternion.AngleAxis(d.x * 0.2f, up) * fwd; pitch = Mathf.Clamp(pitch - d.y * 0.2f, 15f, 89f); }
+        Vector3 move = Vector3.zero; float turn = 0f, zoomIn = 0f;
+        if (!Modal)
+        {
+            if (Inp.Held(K.W) || Inp.Held(K.Up)) move += fwd; if (Inp.Held(K.S) || Inp.Held(K.Down)) move -= fwd;
+            if (Inp.Held(K.D) || Inp.Held(K.Right)) move += right; if (Inp.Held(K.A) || Inp.Held(K.Left)) move -= right;
+            turn = (Inp.Held(K.Q) ? 1f : 0f) - (Inp.Held(K.E) ? 1f : 0f);
+            if (!PathDrag) zoomIn = (Inp.Held(K.Plus) ? 1f : 0f) - (Inp.Held(K.Minus) ? 1f : 0f);   // een pad slepen: + en - kiezen het niveau
+        }
+        if (move != Vector3.zero) Pan(move.normalized * sp * dt);
+        if (turn != 0f) fwd = Quaternion.AngleAxis(turn * 92f * dt, focus) * fwd;   // 1,6 rad/s
+        if (!Ui.MouseOverUI && !Modal && !Inp.Held(K.Shift) && !PathDrag) dist *= 1f - Inp.Scroll * 0.1f;   // scrollen in de catalogus zoomt niet
+        if (zoomIn != 0f) dist *= Mathf.Pow(2f, -zoomIn * 1.5f * dt);
+        dist = Mathf.Clamp(dist, 12f, 2600f);
+        // slepen met de muis: schuiven of draaien
+        if (camDrag == 0 && !Modal && !Ui.MouseOverUI)
+        {
+            bool alt = Inp.Held(K.Alt), shiftPan = Inp.Held(K.Shift) && !TerrTool;   // terrein: Shift boetseert andersom
+            if (Inp.MiddleDown) { camDrag = 2; camBtn = 2; }
+            else if (Inp.LeftDown && alt) { camDrag = 2; camBtn = 0; }
+            else if (Inp.RightDown) { camDrag = 1; camBtn = 1; }
+            else if (Inp.LeftDown && shiftPan) { camDrag = 1; camBtn = 0; }
+            if (camDrag != 0) { camFrom = Inp.Pos; camMoved = camDrag == 2; }
+        }
+        if (camDrag != 0)
+        {
+            bool held = camBtn == 0 ? Inp.LeftHeld : camBtn == 1 ? Inp.RightHeld : Inp.MiddleHeld;
+            if (!held || Modal) camDrag = 0;
+            else
+            {
+                if (!camMoved && Vector2.Distance(Inp.Pos, camFrom) > 6f) { camMoved = true; rightCell = -1; }   // gesleept: geen klik met rechts
+                Vector2 d = Inp.Delta;
+                if (camMoved && camDrag == 1) { right = Vector3.Cross(focus, fwd); Pan(-(right * d.x + fwd * d.y) * dist * 0.0019f); }
+                else if (camDrag == 2) { fwd = Quaternion.AngleAxis(d.x * 0.4f, focus) * fwd; pitch = Mathf.Clamp(pitch - d.y * 0.34f, 15f, 89f); }
+            }
+        }
+        up = focus; fwd = (fwd - up * Vector3.Dot(fwd, up)).normalized;
         int fc = Planet.Nearest(focus); float h = PlanetCity.G(fc) + PlanetCity.StackHeight(fc);
         Vector3 target = focus * (Planet.R + h);
         Vector3 pos = target + (-fwd * Mathf.Cos(pitch * Mathf.Deg2Rad) + up * Mathf.Sin(pitch * Mathf.Deg2Rad)) * dist;
@@ -530,11 +679,12 @@ public class PlanetBuilder : MonoBehaviour
         CentreArrow(W, H);
         TopLeft(); TopRight(W);
         if (!walking) { Hotbar(W, H); Tools(H); if (!catOpen) Options(W, H); }
-        else { var wr = new Rect(W / 2 - 250, H - G - 40, 500, 40); Ui.Panel(wr, false, 20f); Ui.Label(wr, "WASD lopen · muis kijken · Shift rennen · Spatie springen · Esc muis los · L terug naar bouwen", Ui.T.Dim, null, TextAnchor.MiddleCenter); }
+        else { string wt = "WASD lopen · muis kijken · Shift rennen · Spatie springen · Esc muis los · L terug naar bouwen · ? toetsen"; float ww = Ui.Width(wt, Ui.T.Dim) + 40f; var wr = new Rect((W - ww) * 0.5f, H - G - 40, ww, 40); Ui.Panel(wr, false, 20f); Ui.Label(wr, wt, Ui.T.Dim, null, TextAnchor.MiddleCenter); }
         ModeSwitch(W, H);
         if (todOpen) TodPanel(W);
         if (catOpen && !walking) Catalogue(W, H);
         if (TerrTool && hasHover && !walking && !Modal) TerrLabel();
+        if (LevelTool && PlanetCity.DragLevel != 0 && !walking && !catOpen) LevelBadge(W, H);
         if (Time.time < msgT) Ui.Toast(msg, Mathf.Clamp01((msgT - Time.time) / 0.5f), catOpen ? CatBottom + CatHeight(W) + 12f : walking ? G + 52f : 150f);
         if (scoreOpen) ScorePanel(W, H);
         if (menuOpen) Menu(W, H);
@@ -647,9 +797,10 @@ public class PlanetBuilder : MonoBehaviour
         float y = H - 12f - (SlotH + 10f) - 6f - 32f - 8f - 42f;
         if (CurBlock == "weg" && !eraser)
         {
-            float w = 336f + 8f + 150f + 8f + 120f + 20f; var r = new Rect((W - w) * 0.5f, y, w, 42f); Ui.Panel(r, false, 12f); float x = r.x + 10f;
+            float w = 336f + 8f + 150f + 8f + 150f + 8f + 120f + 20f; var r = new Rect((W - w) * 0.5f, y, w, 42f); Ui.Panel(r, false, 12f); float x = r.x + 10f;
             int s = Ui.Seg(new Rect(x, r.y + 5f, 336f, 32f), StyleNames, PlanetCity.DragStyle); if (s >= 0 && s != PlanetCity.DragStyle) { PlanetCity.DragStyle = (byte)s; SetVariant(StyleIds[s]); } x += 344f;
             if (Ui.Button(new Rect(x, r.y + 5f, 150f, 32f), PlanetCity.DragOneWay ? "Eenrichting" : "Twee richtingen", PlanetCity.DragOneWay)) ToggleOneWay(); x += 158f;
+            if (Ui.Button(new Rect(x, r.y + 5f, 150f, 32f), "Ongelijkvloers", PlanetCity.DragUnder)) ToggleUnder(); x += 158f;
             if (Ui.Button(new Rect(x, r.y + 5f, 120f, 32f), "Lichten", PlanetCity.Lights, "licht")) ToggleLights();
         }
         else if (TerrTool)
@@ -663,6 +814,13 @@ public class PlanetBuilder : MonoBehaviour
             string t = "Gum: klik of sleep over vakken om ze leeg te maken"; float w = Ui.Width(t, Ui.T.Text) + 32f; var r = new Rect((W - w) * 0.5f, y + 4f, w, 34f); Ui.Panel(r, false, 17f); Ui.Label(r, t, Ui.T.Text, null, TextAnchor.MiddleCenter);
         }
     }
+    // boven de snelbalk links: op welk niveau de weg of het pad komt
+    void LevelBadge(float W, float H)
+    {
+        int lv = PlanetCity.DragLevel; string t = "Niveau " + LevelName(lv) + " · " + Meters(lv) + " " + (lv > 0 ? "hoger" : "lager") + " · PgUp/PgDn";
+        float w = Ui.Width(t, Ui.T.Bold) + 28f; var r = new Rect((W - w) * 0.5f, H - 12f - (SlotH + 10f) - 6f - 32f - 8f - 42f - 8f - 30f, w, 30f);
+        Ui.Panel(r, true, 15f); Ui.Label(r, t, Ui.T.Bold, Ui.Signal, TextAnchor.MiddleCenter);
+    }
     void TerrLabel()
     {
         string t = (Mathf.Round(PlanetCity.G(hover) * 2f) / 2f).ToString("0.0") + " m" + (PlanetCity.Plateau(hover) ? " · bebouwd, blijft liggen" : sculpting ? "" : " · " + TerrHints[terrMode]);
@@ -670,18 +828,17 @@ public class PlanetBuilder : MonoBehaviour
         Ui.Panel(r, true, 8f); Ui.Label(r, t, Ui.T.Text, null, TextAnchor.MiddleCenter);
     }
 
-    // ---- linksonder: ongedaan maken, gum en raster; daarboven de beeldsnelheid
+    // ---- linksonder: gum en ongedaan maken (zoals de webversie; het raster staat in het tijdpaneel en onder G); daarboven de beeldsnelheid
     void Tools(float H)
     {
         float y = H - 12f - 44f, x = G;
-        if (Ui.RoundButton(new Rect(x, y, 44f, 44f), "ongedaan", false, undo.Count == 0)) Undo(); x += 50f;
         if (Ui.RoundButton(new Rect(x, y, 44f, 44f), "gum", eraser)) { eraser = !eraser; nameT = Time.time + 1.6f; } x += 50f;
-        if (Ui.RoundButton(new Rect(x, y, 44f, 44f), "raster", PlanetCity.GridOn)) ToggleGrid();
+        if (Ui.RoundButton(new Rect(x, y, 44f, 44f), "ongedaan", false, undo.Count == 0)) Undo();
         string f = Mathf.RoundToInt(fps) + " fps" + (PlanetLife.I != null ? " · " + PlanetLife.I.People.Count + " mensen · " + PlanetLife.I.CarCount + " auto's" : "");
         var fr = new Rect(G, y - 8f - 24f, Ui.Width(f, Ui.T.Bold, 11) + 20f, 24f); Ui.Panel(fr, false, 12f); Ui.Label(fr, f, Ui.T.Bold, null, TextAnchor.MiddleCenter, 11);
     }
 
-    // ---- rechtsonder: bouwen of lopen
+    // ---- rechtsonder: bouwen of lopen (L), daarboven ? voor alle toetsen
     void ModeSwitch(float W, float H)
     {
         float b1 = 14f + 17f + 6f + Ui.Width("Bouwen", Ui.T.Bold, 14) + 14f, b2 = 14f + 17f + 6f + Ui.Width("Lopen", Ui.T.Bold, 14) + 14f;
@@ -689,6 +846,7 @@ public class PlanetBuilder : MonoBehaviour
         var r1 = new Rect(r.x + 4f, r.y + 4f, b1, 36f); var r2 = new Rect(r1.xMax + 2f, r.y + 4f, b2, 36f);
         if (Ui.Button(r1, "Bouwen", !walking, "huis", false, 18f) && walking) ToggleWalk();
         if (Ui.Button(r2, "Lopen", walking, "lopen", false, 18f) && !walking) ToggleWalk();
+        if (Ui.Button(new Rect(W - G - 38f, r.y - 12f - 38f, 38f, 38f), "?", helpOpen)) ToggleHelp();   // alle toetsen
     }
 
     // ---- schoonheid: in het midden, met een zeshoekige score, een balk per onderdeel en een tip (zoals de webversie)
@@ -745,40 +903,114 @@ public class PlanetBuilder : MonoBehaviour
         section("GEREEDSCHAP");
         if (Ui.CardButton(new Rect(x, y, half, 48f), "Voorbeeldstad hier", "Ringweg, huizen en een meer", false, "huis")) { Sample(); menuOpen = false; }
         if (Ui.CardButton(new Rect(x + half + 8f, y, half, 48f), "Naar het midden", "Camera terug naar je stad (H)", false, "kompas")) { GoCentre(); menuOpen = false; }
-        if (Ui.CardButton(new Rect(x, y + 56f, half, 48f), "Naar de polen", "Noord- en zuidpool (P)", false, "kompas")) { GoPole(); menuOpen = false; }
+        if (Ui.CardButton(new Rect(x, y + 56f, half, 48f), "Naar de polen", "Noord- en zuidpool (N)", false, "kompas")) { GoPole(); menuOpen = false; }
         if (Ui.CardButton(new Rect(x + half + 8f, y + 56f, half, 48f), "Startstad", "Een stadje rond een vlag", false, "stad")) { StartTown(); menuOpen = false; }
         y += 2 * 56f + 8f;
         section("LEVEN EN INSTELLINGEN");
         if (Ui.CardButton(new Rect(x, y, half, 48f), "Mensen", PlanetLife.PeopleOn ? "aan" : "uit", PlanetLife.PeopleOn, "mensen")) PlanetLife.PeopleOn = !PlanetLife.PeopleOn;
         if (Ui.CardButton(new Rect(x + half + 8f, y, half, 48f), "Auto's", PlanetLife.CarsOn ? "aan" : "uit", PlanetLife.CarsOn, "auto")) PlanetLife.CarsOn = !PlanetLife.CarsOn;
         if (Ui.CardButton(new Rect(x, y + 56f, half, 48f), "Verkeerslichten", PlanetCity.Lights ? "aan" : "uit", PlanetCity.Lights, "licht")) ToggleLights();
-        if (Ui.CardButton(new Rect(x + half + 8f, y + 56f, half, 48f), "Geluid", Babble.Muted ? "uit (M)" : "aan (M)", !Babble.Muted, Babble.Muted ? "stil" : "geluid")) ToggleSound();
-        if (Ui.CardButton(new Rect(x, y + 112f, half, 48f), "Bediening", "Alle toetsen op een rij", false, "boek")) { helpOpen = true; menuOpen = false; }
+        if (Ui.CardButton(new Rect(x + half + 8f, y + 56f, half, 48f), "Geluid", Babble.Muted ? "uit" : "aan", !Babble.Muted, Babble.Muted ? "stil" : "geluid")) ToggleSound();
+        if (Ui.CardButton(new Rect(x, y + 112f, half, 48f), "Bediening", "Alle toetsen op een rij (?)", false, "boek")) { helpOpen = true; menuOpen = false; }
         if (Ui.CardButton(new Rect(x + half + 8f, y + 112f, half, 48f), "Welkom", "Het beginscherm", false, "zon")) { welcome = true; menuOpen = false; }
         y += 3 * 56f + 4f;
         Ui.Label(new Rect(x, y, iw, 16f), "Alles is op ware grootte: een vak is 15,6 m breed, een verdieping 3 m, de planeet 3,8 km rond.", Ui.T.Dim, null, null, 11);
         if (Ui.DimClick()) menuOpen = false;
     }
 
-    // ---- bediening: alle toetsen op een rij
+    // ---- bediening: alle toetsen en de muis op een rij, in twee kolommen (zoals het venster ? van de webversie, 15b-sneltoetsen.js)
+    // "#Kop" is een kopje; anders "toetsen|uitleg". In de toetsen is elk woord met een hoofdletter of een teken een toets,
+    // een woord met een kleine letter (muis, wiel, slepen) gewone tekst, en "/" betekent "of".
+    static readonly string[] HelpLeft = {
+        "#Camera",
+        "W A S D / pijltjes|schuiven (Shift: sneller)",
+        "Q E|draaien",
+        "+ - / wiel|zoomen",
+        "rechts slepen / Shift+slepen|schuiven",
+        "midden slepen / Alt+slepen|draaien en kantelen",
+        "H|naar het midden van je stad",
+        "N|naar de noordpool, nog eens: zuidpool",
+        "K|naar de andere kant van de bol",
+        "#Bouwen",
+        "1–9 / Shift+wiel|blok uit de snelbalk",
+        "Tab|alle blokken",
+        "klik / slepen|bouwen",
+        "rechts klik|vak leegmaken",
+        "X|bovenste blok weghalen",
+        "Delete|gum aan en uit",
+        "Ctrl+Z|ongedaan maken",
+        "#Wegen en paden",
+        "slepen|een rechte lijn in 12 richtingen",
+        "B|gewone weg, brede weg, laan",
+        "I|eenrichting",
+        "U|ongelijkvloers: onder kruisende wegen door",
+        "PgUp PgDn|niveau: stappen van 2,25 m (ook + - wiel bij slepen)",
+        "#Terrein",
+        "slepen|boetseren (ingedrukt houden)",
+        "Shift+slepen|andersom",
+        "T|ophogen, afgraven, egaliseren, glad, helling",
+        "[ ]|penseel: 1, 7, 19 of 37 vakken",
+    };
+    static readonly string[] HelpRight = {
+        "#Cameramodus",
+        "Spatie|aan en uit (of Esc)",
+        "muis|rondkijken",
+        "W A S D|vliegen",
+        "E Q|omhoog en omlaag",
+        "Shift / Ctrl|sneller of langzamer",
+        "wiel|inzoomen",
+        "F|foto, in Afbeeldingen\\Raatstad",
+        "#Lopen",
+        "L|lopen, en terug naar bouwen",
+        "W A S D|lopen (Shift: rennen)",
+        "Spatie|springen",
+        "muis|rondkijken (klik om te vangen)",
+        "Esc|muis loslaten",
+        "#Altijd",
+        "P|tijd stilzetten en verder",
+        "O|ander weer (Shift+O: vorige)",
+        "G|raster aan en uit",
+        "M|menu",
+        "?|dit overzicht",
+        "Esc|venster sluiten",
+    };
+    static float HelpHeight(string[] rows) { float h = 0f; for (int k = 0; k < rows.Length; k++) h += rows[k][0] == '#' ? (k > 0 ? 30f : 22f) : 21f; return h; }
     void Help(float W, float H)
     {
         Ui.DimBack(0.25f);
-        float w = 560f, h = 560f; var r = new Rect((W - w) * 0.5f, Mathf.Max(16f, (H - h) * 0.5f), w, h); Ui.Panel(r, true, 16f);
-        float x = r.x + 18f, iw = w - 36f, y = r.y + 14f;
+        float w = 900f, colW = (w - 36f - 28f) * 0.5f, h = 54f + Mathf.Max(HelpHeight(HelpLeft), HelpHeight(HelpRight)) + 14f;
+        var r = new Rect((W - w) * 0.5f, Mathf.Max(16f, (H - h) * 0.5f), w, h); Ui.Panel(r, true, 16f);
+        float x = r.x + 18f, y = r.y + 14f;
         Ui.Tex(new Rect(x, y + 5f, 18f, 18f), Ui.Icon("boek"), Ui.Ink); Ui.Label(new Rect(x + 28f, y, 200f, 28f), "BEDIENING", Ui.T.Title);
         if (Ui.RoundButton(new Rect(r.xMax - 18f - 30f, y - 1f, 30f, 30f), "sluit")) helpOpen = false; y += 40f;
-        Ui.Label(new Rect(x, y, iw, h - 60f),
-            "<b>Bouwen</b>  kies een blok met 1–9 of de snelbalk; Tab opent alle blokken. Klik of sleep over vakken. Rechtermuisknop maakt een vak leeg, X haalt het bovenste blok weg, Delete is de gum, Ctrl+Z maakt ongedaan.\n\n" +
-            "<b>Wegen en paden</b>  klik een vak en sleep: een rechte lijn in een van de 12 richtingen. Alleen de vakken in de lijn worden verbonden. B wisselt gewone weg, brede weg en laan, O eenrichtingsverkeer; over water of een uitgraving wordt het een brug.\n\n" +
-            "<b>Terrein</b>  ophogen, afgraven, egaliseren, gladstrijken of helling (T wisselt): houd de muis ingedrukt en sleep, Shift doet het omgekeerde, [ en ] maken het penseel kleiner of groter.\n\n" +
-            "<b>Camera</b>  WASD schuiven (Shift sneller), rechtermuis draaien, scroll zoomen, H naar het midden van je stad, P naar de polen, K naar de andere kant van de bol.\n\n" +
-            "<b>Cameramodus</b>  Spatie: geen knoppen, de muis kijkt en je vliegt als een drone met WASD, E/Q hoger en lager, Shift snel, Ctrl langzaam, het wiel zoomt. F bewaart een foto in Afbeeldingen\\Raatstad. Spatie of Esc stopt.\n\n" +
-            "<b>Lopen</b>  L of de knop rechtsonder; WASD lopen, Shift rennen, Spatie springen, Esc muis los.\n\n" +
-            "<b>Tijd en weer</b>  de knop rechtsboven: tijd van de dag, snelheid, weer en raster, mensen en auto's. N zet de tijd stil, R volgend weer, M geluid, G raster.\n\n" +
-            "<b>Planeet</b>  21.162 vakken, 3,8 km rond. Oranje: de 12 vijfhoeken. Lichtblauw: de 20 startplekken. Gestreepte paal met vlag: de polen.", Ui.T.Help);
+        HelpColumn(HelpLeft, x, y, colW); HelpColumn(HelpRight, x + colW + 28f, y, colW);
         if (Ui.DimClick()) helpOpen = false;
     }
+    static void HelpColumn(string[] rows, float x, float y, float w)
+    {
+        const float keysW = 178f;
+        for (int k = 0; k < rows.Length; k++)
+        {
+            string row = rows[k];
+            if (row[0] == '#') { if (k > 0) y += 8f; Ui.Label(new Rect(x, y, w, 16f), row.Substring(1).ToUpper(), Ui.T.Tiny); y += 22f; continue; }
+            int bar = row.IndexOf('|'); float kx = x;
+            foreach (string tok in row.Substring(0, bar).Split(' '))
+            {
+                if (tok == "/") { kx = HelpText("of", kx, y); continue; }
+                string[] parts = tok.Length > 1 ? tok.Split('+') : new[] { tok };
+                for (int q = 0; q < parts.Length; q++)
+                {
+                    if (q > 0) kx = HelpText("+", kx, y);
+                    string pt = parts[q];
+                    if (pt.Length > 1 && char.IsLower(pt[0])) kx = HelpText(pt, kx, y);
+                    else { float kw = Mathf.Max(20f, Ui.Width(pt, Ui.T.Kbd) + 12f); Ui.Kbd(new Rect(kx, y + 1f, kw, 18f), pt); kx += kw + 4f; }
+                }
+            }
+            Ui.Label(new Rect(x + keysW, y, w - keysW, 20f), row.Substring(bar + 1), Ui.T.Text, null, TextAnchor.MiddleLeft);
+            y += 21f;
+        }
+    }
+    static float HelpText(string t, float x, float y) { float tw = Ui.Width(t, Ui.T.Dim); Ui.Label(new Rect(x, y, tw + 2f, 20f), t, Ui.T.Dim, null, TextAnchor.MiddleLeft); return x + tw + 5f; }
 
     // ---- welkom: bij het starten (uit te zetten)
     void Welcome(float W, float H)

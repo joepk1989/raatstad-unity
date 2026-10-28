@@ -18,7 +18,6 @@ public class DayNight : MonoBehaviour
     {
         if (sun == null) { foreach (var l in FindObjectsByType<Light>()) if (l.type == LightType.Directional) { sun = l; break; } }
         if (cam == null) cam = Camera.main;
-        if (Inp.Down(K.N)) ToggleFreeze();
         Hour = Mathf.Repeat(Hour + Time.deltaTime * 24f / DayLen * Speed, 24f);
         float ang = (Hour - 6f) / 24f * 360f;                      // 6 uur: zon op de horizon, 12 uur: hoogste punt
         float elev = Mathf.Sin(ang * Mathf.Deg2Rad);               // -1..1

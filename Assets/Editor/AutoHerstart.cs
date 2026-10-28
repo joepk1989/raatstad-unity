@@ -1,5 +1,6 @@
 using System.IO;
 using UnityEditor;
+using UnityEngine;
 
 // Na een scriptwijziging (ook als Unity niet vooraan staat): Play stoppen, opnieuw compileren en Play weer starten,
 // zodat de nieuwe code meteen in het spel te zien is. Stoppen slaat niets op; de stad komt bij de start uit het bestand.
@@ -24,6 +25,13 @@ static class AutoHerstart
 
     static void Tick()
     {
+        // een testverzoek (brugtest.txt of niveautest.txt): Play starten, de test draait dan vanzelf
+        // (pas als alles gecompileerd is; speelt het al, dan eerst stoppen zodat de test bij de start draait)
+        if (!changed && !EditorApplication.isCompiling && !EditorApplication.isUpdating && (File.Exists(Path.Combine(Application.persistentDataPath, "brugtest.txt")) || File.Exists(Path.Combine(Application.persistentDataPath, "niveautest.txt"))))
+        {
+            if (EditorApplication.isPlaying) { EditorApplication.isPlaying = false; return; }
+            if (!EditorApplication.isPlayingOrWillChangePlaymode) { EditorApplication.isPlaying = true; return; }
+        }
         if (!changed || !On) return;
         double now = EditorApplication.timeSinceStartup;
         if (settleAt == 0) { settleAt = now + 1.0; return; }   // even wachten tot alle bestanden geschreven zijn
