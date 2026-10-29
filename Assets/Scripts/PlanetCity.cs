@@ -100,9 +100,13 @@ public static partial class PlanetCity
     public static readonly Dictionary<int, float> preCarve = new Dictionary<int, float>();   // de hoogte van een vak voordat een geul het omlaag zette
     public static readonly Dictionary<int, float> preLevel = new Dictionary<int, float>();   // de hoogte van het terrein voordat een weg of pad op een niveau het verzette (komt terug bij weghalen)
     // een weg of pad verzet het terrein van zijn vak: de oude hoogte onthouden (de eerste keer) en de nieuwe zetten
-    static void LevelTerr(int i, float h) { if (!preLevel.ContainsKey(i)) preLevel[i] = preCarve.TryGetValue(i, out var pre) ? pre : G(i); preCarve.Remove(i); SetTerr(i, h); }
+    static void LevelTerr(int i, float h)
+    {
+        if (!preLevel.ContainsKey(i)) preLevel[i] = preCarve.TryGetValue(i, out var pre) ? pre : G(i); preCarve.Remove(i); SetTerr(i, h);
+        foreach (int j in Planet.Cells[i].nb) Touch(j);   // het talud reikt tot twee vakken ver (een flauwe helling, twee niveaus diep)
+    }
     // een weg of pad is weg: het terrein van het vak terug zoals het was (de geul ernaast gaat via RestoreCarve terug)
-    static void RestoreLevel(int i) { if (preLevel.TryGetValue(i, out var h)) { preLevel.Remove(i); preCarve.Remove(i); SetTerr(i, h); Touch(i); } }
+    static void RestoreLevel(int i) { if (preLevel.TryGetValue(i, out var h)) { preLevel.Remove(i); preCarve.Remove(i); SetTerr(i, h); Touch(i); foreach (int j in Planet.Cells[i].nb) Touch(j); } }
     // geulen die verdwenen of kleiner werden: de vakken gaan terug naar hun oude hoogte (of naar wat de geul nog vraagt)
     static void RestoreCarve()
     {
@@ -164,7 +168,10 @@ public static partial class PlanetCity
             if (Mathf.Abs(T.a) > q.hw + FieldReach + c.radius + 1f || S.a < -c.radius - FieldReach - 1f || S.a > len + c.radius + FieldReach + 1f) continue;
             ls.Add(q);
             float hr = Mathf.Lerp(q.ha, q.hb, Mathf.Clamp01(S.a / len)), dz = Mathf.Max(0.3f, Mathf.Abs(hr - hc0)) / FieldK;   // de voet van de kant: waar hij het terrein raakt
-            foreach (var f in new[] { T - Lin.C(q.hw), T + Lin.C(q.hw), T - Lin.C(q.hw + dz), T + Lin.C(q.hw + dz), S, S - Lin.C(len), S + Lin.C(dz), S - Lin.C(len + dz) })
+            // de voet van de kant loopt schuin als de weg helt (hij ligt waar weghoogte + talud het terrein raakt): een rechte lijn in (S, T)
+            float sg = hr < hc0 ? 1f : -1f, gk = sg * (q.hb - q.ha) / (len * FieldK), c0 = q.hw + sg * (hc0 - q.ha) / FieldK;
+            Lin toeP = T + S * gk - Lin.C(c0), toeM = T - S * gk + Lin.C(c0);
+            foreach (var f in new[] { T - Lin.C(q.hw), T + Lin.C(q.hw), toeP, toeM, S, S - Lin.C(len), S + Lin.C(dz), S - Lin.C(len + dz) })
             {
                 var next = new List<List<Vector2>>(); foreach (var pl in polys) if (!SplitBy(pl, f, next)) next.Add(pl); polys = next;
             }
@@ -187,10 +194,9 @@ public static partial class PlanetCity
         foreach (var q in decks)
         {
             if ((o3 - q.c).magnitude > FlatL + q.open + 40f + c.radius) continue;
-            Vector3 across = Vector3.Cross(q.dir, q.along).normalized; float toe = FlatL + Mathf.Max(0.3f, q.h - q.floor) / FieldK;
+            Vector3 across = Vector3.Cross(q.dir, q.along).normalized; float toe = FlatL + Mathf.Max(0.3f, q.h - q.floor) / AbutK;
             Lin A = new Lin { a = Vector3.Dot(o3 - q.c, q.along), x = Vector3.Dot(c.east, q.along), y = Vector3.Dot(c.north, q.along) };
-            Lin B = new Lin { a = Vector3.Dot(o3 - q.c, across), x = Vector3.Dot(c.east, across), y = Vector3.Dot(c.north, across) };
-            foreach (var f in new[] { A - Lin.C(FlatL), A + Lin.C(FlatL), A - Lin.C(toe), A + Lin.C(toe), B - Lin.C(q.open), B + Lin.C(q.open), B - Lin.C(q.open + AbutW), B + Lin.C(q.open + AbutW) })
+            foreach (var f in new[] { A - Lin.C(FlatL), A + Lin.C(FlatL), A - Lin.C(toe), A + Lin.C(toe) })
             {
                 var next = new List<List<Vector2>>(); foreach (var pl in polys) if (!SplitBy(pl, f, next)) next.Add(pl); polys = next;
             }
@@ -332,7 +338,13 @@ public static partial class PlanetCity
         foreach (var x in EdgeCrossings())
         {
             float hw = x.road ? RoadHW : PathHW;
-            if (x.swap ? WalkLevel(x.u) != 0 && WalkLevel(x.v) != 0 : WalkLevel(x.b1) != 0 && WalkLevel(x.b2) != 0) continue;   // de onderste ligt op een niveau: eigen stroken
+            if (x.swap ? WalkLevel(x.u) != 0 && WalkLevel(x.v) != 0 : WalkLevel(x.b1) != 0 && WalkLevel(x.b2) != 0)   // de onderste ligt op een niveau: eigen stroken,
+            {                                                                                                                  // en een landhoofd tussen de portalen (grond op de brug)
+                int l1 = x.swap ? x.u : x.b1, l2 = x.swap ? x.v : x.b2, h1 = x.swap ? x.b1 : x.u, h2 = x.swap ? x.b2 : x.v;
+                Vector3 md = (Planet.Cells[l1].dir + Planet.Cells[l2].dir).normalized;
+                decks.Add(new Deck { c = md * Planet.R, dir = md, along = Tan(Planet.Cells[l2].dir - Planet.Cells[l1].dir, md), h = Mathf.Max(G(h1), G(h2)), floor = Mathf.Min(G(l1), G(l2)), open = x.road ? RoadHW : PathHW });
+                continue;
+            }
             if (x.swap)   // de schuine weg u–v gaat onder de weg b1–b2 door: portalen langs de rand, 7,8 m voor en na het midden
             {
                 float deck = Mathf.Max(G(x.b1), G(x.b2)), floor = Mathf.Min(deck - UnderClear, Mathf.Min(G(x.u), G(x.v)));
@@ -390,12 +402,9 @@ public static partial class PlanetCity
             {
                 if (!IsWalk(b)) continue; if (levelled.Contains(b) && b < a) continue;   // elk stuk één keer
                 Vector3 bd = Planet.Cells[b].dir, along = Tan(bd - ad, ad); Vector3 pa = ad * Planet.R, pb = bd * Planet.R;
-                // elk stuk loopt een halve wegbreedte door voorbij beide harten: bij een doodlopend eind tot het eind van de weg (rechte
-                // kop), in een bocht vult de overlap de buitenhoek, op een recht stuk valt het samen met het volgende stuk
-                // een doodlopend eind (op een niveau) krijgt een zeshoekige kop rond het hart (AddCap), dan stopt het stuk daar
+                // elk stuk loopt van hart tot hart: op een recht stuk sluit het precies aan op het volgende (een stuk dat doorliep gaf
+                // trapjes waar de helling verandert); een doodlopend eind, bocht of splitsing krijgt een zeshoekige kop (AddCap)
                 bool capA = Capped(a), capB = levelled.Contains(b) && Capped(b);
-                if (!capA) pa = (pa - along * hw).normalized * Planet.R;
-                if (!capB) pb = (pb + Tan(bd - ad, bd) * hw).normalized * Planet.R;
                 segs.Add(new Seg { a = pa, b = pb, ha = G(a), hb = LevelFor(b, a), hw = hw, capA = capA, capB = capB });
             }
             if (Capped(a)) AddCap(a, G(a), hw);   // doodlopend, bocht, splitsing of los vak
@@ -429,16 +438,16 @@ public static partial class PlanetCity
     static readonly List<Cap> caps = new List<Cap>();
     static bool HasField => segs.Count > 0 || caps.Count > 0;
     // het landhoofd van een brug over een weg of pad op een niveau: tussen de portalen (FlatL voor en na het hart, langs de weg
-    // eronder) ligt de grond op de hoogte van de bovenste weg, behalve de opening van de koker; daarbuiten onder de helling terug
+    // eronder) ligt de grond op de hoogte van de bovenste weg, behalve de opening van de koker; bij de portalen bijna recht omlaag
     struct Deck { public Vector3 c, dir, along; public float h, floor, open; }
     static readonly List<Deck> decks = new List<Deck>();
-    const float AbutK = 8f, AbutW = 0.6f;   // de wand naast de koker: bijna recht (8 op 1), 60 cm breed
+    const float AbutK = 8f;   // de wand bij de portalen: bijna recht (8 op 1)
     static float DeckRaise(Deck q, Vector3 w, out bool slope)
     {
         Vector3 v = w - q.c, across = Vector3.Cross(q.dir, q.along); float sAl = Mathf.Abs(Vector3.Dot(v, q.along)), lat = Mathf.Abs(Vector3.Dot(v, across));
         slope = false; if (lat > q.open + 40f || sAl > FlatL + 40f) return float.MinValue;
-        float a = Mathf.Max(0f, sAl - FlatL) * FieldK, b = Mathf.Max(0f, q.open + AbutW - lat) * AbutK; slope = a > 0f || b > 0f;
-        return q.h - a - b;
+        float a = Mathf.Max(0f, sAl - FlatL) * AbutK; slope = a > 0f;   // bij de portalen bijna recht omlaag: de bak loopt onder de brug door tot het beton
+        return q.h - a;   // ook boven de koker dicht op dekhoogte: de koker ligt eronder, in het beton
     }
     static void AddCap(int i, float h, float hw)
     {
@@ -477,7 +486,7 @@ public static partial class PlanetCity
             {
                 Vector3 ab = q.b - q.a; float l2 = ab.sqrMagnitude; if (l2 < 1e-4f) continue; float len = Mathf.Sqrt(l2), u = Vector3.Dot(w - q.a, ab) / l2;
                 Vector3 dv = w - (q.a + ab * u); dv -= dir * Vector3.Dot(dv, dir); float lat = dv.magnitude, over = Mathf.Max(0f, Mathf.Max(-u, u - 1f) * len);   // naast het stuk, en voorbij een eind
-                if (lat > q.hw + FieldReach || over > FieldReach || (u < 0f && q.capA) || (u > 1f && q.capB)) continue;   // voorbij een kop: die doet het
+                if (lat > q.hw + FieldReach || u < 0f || u > 1f) continue;   // alleen naast het stuk: voorbij het eind doet de kop het, of het volgende stuk (een rechte kop gaf daar een trapje)
                 float hr = Mathf.Lerp(q.ha, q.hb, Mathf.Clamp01(u)), rise = Mathf.Max(Mathf.Max(0f, lat - q.hw), over) * FieldK;   // de kant, of de kop
                 if (pass == 0 && hr > base_ + 0.01f) { float v = hr - rise; if (v > h) { h = v; slope = rise > 0f; } }        // talud
                 else if (pass == 1 && hr < base_ - 0.01f) { float v = hr + rise; if (v < h) { h = v; slope = rise > 0f; } }   // uitgraving
@@ -549,6 +558,32 @@ public static partial class PlanetCity
     // gaat eronderdoor (als die recht kruist), minder → een kruispunt op de hoogte van de bestaande weg (de nieuwe helt ernaartoe).
     // Een bestaande weg wordt dus nooit verzet. Een pad onder een weg door regelt Place al (onderdoorgang); een pad hoger dan een
     // weg kan nog niet (loopbrug).
+    // Ongelijkvloers op het maaiveld (U, of een pad dat onder een weg door gaat): de lijn duikt alleen bij een kruising onder de
+    // andere weg door, als een weg op een niveau (zodat de bak, de koker en het betonblok van het model overpass_path gelden in plaats
+    // van de oude portaalgeul): de vakken naast de kruising een niveau lager, de vakken daarnaast een half niveau (de helling)
+    public static void DipUnder(List<int> line)
+    {
+        if (line == null || line.Count < 3) return;
+        var depth = new Dictionary<int, int>();   // index in de lijn → halve niveaus omlaag (2 = een niveau)
+        bool Own(int c) { foreach (int j in Partners(c)) if (!line.Contains(j)) return false; return true; }   // hoort het vak ook bij een andere weg (kruispunt, aansluiting), dan blijft het liggen
+        void Mark(int k, int d) { if (k < 0 || k >= line.Count || Underpass(line[k]) || !Own(line[k])) return; depth[k] = Mathf.Max(depth.TryGetValue(k, out var o) ? o : 0, d); }
+        for (int k = 0; k < line.Count; k++)
+        {
+            int c = line[k];
+            bool cross = Underpass(c) && ((PadUnder(c) && ((k > 0 && IsPath(line[k - 1])) || (k + 1 < line.Count && IsPath(line[k + 1])))) || (k > 0 && k + 1 < line.Count && TunnelLinks.Contains(Key(line[k - 1], line[k + 1]))));
+            if (cross)
+            {
+                Mark(k - 1, 2); Mark(k + 1, 2); Mark(k - 2, 1); Mark(k + 2, 1);
+                Low[c] = Mathf.Min(Low.TryGetValue(c, out var lo) ? lo : G(c), G(c) - LevelH); Touch(c);
+            }
+            if (k > 0 && LowerLinks.Contains(Key(line[k - 1], c))) { Mark(k - 1, 2); Mark(k, 2); Mark(k - 2, 1); Mark(k + 1, 1); }   // schuin onder een weg door
+        }
+        foreach (var kv in depth)
+        {
+            int c = line[kv.Key]; if (!IsWalk(c)) continue; float b = PadGround(c) ?? G(c);
+            LevelTerr(c, b - kv.Value * StepH); Touch(c); foreach (int j in Partners(c)) Touch(j);
+        }
+    }
     public static void SetLevel(List<int> line, int lv, string type)
     {
         if (line == null) return; float carry = float.NaN; bool road = type == "weg";
@@ -729,14 +764,14 @@ public static partial class PlanetCity
         if (under == "pad")
         {
             foreach (int j in new List<int>(Partners(i))) if (!IsPath(j)) { Links.Remove(Key(i, j)); OneWay.Remove(DKey(i, j)); OneWay.Remove(DKey(j, i)); partners[i].Remove(j); if (partners.TryGetValue(j, out var b)) b.Remove(i); }
-            if (Low.TryGetValue(i, out var plo)) { preLevel.Remove(i); preCarve.Remove(i); SetTerr(i, plo); }   // het pad op zijn eigen hoogte; het terrein eromheen volgt via de geul (RestoreCarve)
+            if (Low.TryGetValue(i, out var plo)) { float org = preLevel.TryGetValue(i, out var p0) ? p0 : G(i); preCarve.Remove(i); SetTerr(i, plo); preLevel[i] = org; }   // het pad op zijn eigen hoogte; weghalen zet later het maaiveld van voor de brug terug
             Low.Remove(i);
         }
         else if (under == "weg")   // de bovenste weg weg: de onderste weg loopt weer gewoon door dit vak, op zijn eigen hoogte
         {
             Unlink(i); var ends = new List<long>(); foreach (long k in TunnelLinks) { int a = (int)(k >> 20), b = (int)(k & 0xFFFFF); if (MidCell(a, b) == i) ends.Add(k); }
             foreach (long k in ends) { int a = (int)(k >> 20), b = (int)(k & 0xFFFFF); Links.Remove(k); TunnelLinks.Remove(k); partners[a].Remove(b); partners[b].Remove(a); Link(a, i); Link(i, b); }
-            if (Low.TryGetValue(i, out var wlo)) { preLevel.Remove(i); preCarve.Remove(i); SetTerr(i, wlo); }   // de onderste weg op zijn eigen hoogte
+            if (Low.TryGetValue(i, out var wlo)) { float org = preLevel.TryGetValue(i, out var p0) ? p0 : G(i); preCarve.Remove(i); SetTerr(i, wlo); preLevel[i] = org; }   // de onderste weg op zijn eigen hoogte; weghalen zet later het maaiveld terug
             Low.Remove(i);
         }
         else Unlink(i);
@@ -934,6 +969,7 @@ public static partial class PlanetCity
             for (int k = 1; k + 1 < line.Count; k++)
             {
                 int c = line[k], p = line[k - 1], q = line[k + 1]; if (!IsRoad(c)) continue;
+                if (DragLevel != 0 && G(c) - ((PadGround(c) ?? G(c)) + DragLevel * StepH) < LevelH - 0.1f) continue;   // de weg die je kruist ligt niet een niveau hoger: geen tunnel, SetLevel maakt er een kruispunt van
                 if (!Under.ContainsKey(c) && !Linked(p, c) && !Linked(q, c) && !under.Contains(p) && Adjacent2(p, c) && Adjacent2(c, q) && MidCell(p, q) == c) under.Add(c);
                 else LastNote = "Hier kon de weg niet onderdoor (hij loopt daar langs of over een bestaande weg of brug): het werd een kruispunt";
             }

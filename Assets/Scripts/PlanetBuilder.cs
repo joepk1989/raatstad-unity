@@ -210,6 +210,7 @@ public class PlanetBuilder : MonoBehaviour
                 else { err = PlanetCity.Place(lineStart, t); if (err == null) ok = 1; }
                 PlanetCity.DragUnder = du;
                 if (ok > 0 && level) PlanetCity.SetLevel(linePlan ?? new List<int> { lineStart }, lv, t);
+                if (ok > 0 && level && lv == 0 && linePlan != null) PlanetCity.DipUnder(linePlan);   // ongelijkvloers op het maaiveld: alleen bij de kruising omlaag
                 if (ok > 0) Changed(); else if (err != null) Say(err);
                 if (linePlan != null && ok > 0) Say(PlanetCity.LastNote ?? ok + " vakken " + Cur.name.ToLower());   // een melding over de lijn gaat voor
                 lineStart = -1; linePlan = null; ShowPlan(null);
