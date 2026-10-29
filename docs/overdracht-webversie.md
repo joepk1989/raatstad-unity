@@ -1,4 +1,4 @@
-# Overdracht webversie → Unity (stand 25 oktober 2026)
+# Overdracht webversie → Unity (stand 29 oktober 2026)
 
 Dit document beschrijft alles wat er in de webversie van Raatstad (`src/js/`) is bijgekomen sinds de laatste Unity-versie
 (planeet-wegensysteem, zie `unity/README.md`), met de maten, regels en formules die je nodig hebt om het in Unity na te bouwen.
@@ -73,13 +73,15 @@ in de lakkleur blijven staan), wielkasten donkere halve zeshoeken over de flank 
 Lakkleuren (`LP_PAINT`): #e8c547 #d9534f #4a90a4 #f2f3f5 #3d5a80 #7bb356 #e07a3f #2b2f36 #b8a9c9 #c9ced4 #5a1f2a #b5a36a #1c1f24. Ruitkleur #1d2b36 (roughness 0,6).
 Wielen: band 10-hoek, velg 8-hoek, vijf gaten, gloeiende ring (hub) in de accentkleur. Test-opstelling: `node test/visueel/voertuigen.js`.
 
-## 4. Roekeloos rijgedrag (`11-autos.js`, instelling "Roekeloos rijgedrag")
+## 4. Totale chaos: rijgedrag (`11-autos.js`, knop en instelling "Totale chaos", intern `cars.reckless`; heette eerst "Roekeloos rijgedrag")
 Elke auto krijgt een persona zodra de stand aan gaat:
 - **racer** (35 %): doelsnelheid 26 m/s. Achter een tragere auto op een recht stuk (3–26 m voor hem, hij rijdt > 3 m/s en de ander > 0,5 m/s trager): claxon, 3,5 s inhalen over de **linker** rijstrook (zijdelingse verschuiving 2,7 m), pas terug als de ander > 7 m achter hem is.
 - **ontwijker** (40 %): doelsnelheid 20 m/s. Iemand 3 tot `6 + 0,9·v` m vooruit binnen 1,6 m zijwaarts, of een auto 3–14 m vooruit die hem laat remmen: 1,4–1,6 s uitwijken (2,4 m naar de vrije kant), remt niet.
 - **jager** (25 %): doelsnelheid 17 m/s. Kiest het dichtstbijzijnde doelwit in een kegel vóór zich (2,5–34 m, zijwaarts < `3 + 0,45·afstand`), ook de speler in loopstand; stuurt erop af (zijwaartse verschuiving tot −4,5…+5,5 m, dus ook over de stoep), claxon bij de start, 6 s jagen, dan 5 s rust. Snelheid tot 16 m/s.
 - Sturen: fietsmodel (Stanley-regelaar) met een doelverschuiving `latCur` naast de rijlijn: `δ = atan(L·κ) + eHead + atan(−1,6·(eLat − latCur)/(1,5 + v))`, `δ` begrensd op 0,7 rad (0,95 onder 4 m/s), stuursnelheid 2,6 rad/s. Op de stoep (`onCurb`) verliest hij snelheid, maar wordt niet teruggetrokken als `|latCur| ≥ 1`.
 - Roekeloze auto's raken de speler ook op de stoeprand (hoogteverschil < 0,35 m i.p.v. 0,2). Versnellen 7 m/s², remmen 9 m/s² (netjes 2,5 / 6).
+- Lange rechte weg (`kind === 'lane'`, stuk > 30 m): doelsnelheid racer 42, jager 30, ontwijker 32 m/s; optrekken racer 12, anderen 9 m/s². Afremmen voor wat komt: `want = √(vN² + 2·7,5·late·rest)` met `vN` = 9 m/s voor een bocht; `late` = 1, of bij 40 % van de bestuurders per stuk weg 1,6–3,2 (te laat remmen).
+- Zie ook 12–14 (slippen, schade, terugvinden).
 - Test: `node test/visueel/roekeloos.js` (30 auto's, 30 s: tellingen inhalen/ontwijken/jagen/botsingen).
 
 ## 5. Vastzitten: achteruit en eromheen (`11-autos.js`, blok "Vast achter een auto die niet meer rijdt")
@@ -133,12 +135,291 @@ meer = place, minder = remove, gelijk met toast "Gedraaid"/"Dak" = rotate, gelij
 - Laadscherm: hexraster met een golf (zelfde stijl als `HexLoadingScreen.cs`: R = min(36, max(18, min(W,H)/11)) px, gap R/6, vertraging `afstand·0,005 − 0,785` s).
 - Startstadje: rotonde met drie wegen, modulehuizen met de deur naar de straat, vijver van drie vakken, plein met fontein, rozentuin, speeltuin, bibliotheek; tweede rij parkmodules.
 
-## 9. Open punten
+## 10. Schoonheidsscore met modules (`12-bouwacties-schoonheid.js`, `cityBeauty`)
+Zeven rijen, gewogen gemiddelde `sv/sw`, score = `round((sv/sw)^1,6 · 100)` (de top is moeilijker dan het midden).
+| rij | gewicht | wat |
+|---|---|---|
+| Groen | 0,18 | aandeel groen (Groen-modules volledig, andere modules met groen half), ideaal 0,3, boven 0,6 straf; groen telt door tot 1 vak rond de bebouwing |
+| Bereikbaar | 0,20 | aandeel gebouwen met een deur die het loopnetwerk bereikt (`people.graph()`, deurknopen `mdoor`) |
+| Wegennet | 0,14 | `1 − (doodlopend·0,6 + los·1,5)/wegen`, straf als meer dan de helft weg is |
+| Afwisseling | 0,14 | `0,55·soorten + 0,25·hoogteverschil + 0,2·mix`, mix ideaal ~72 % wonen |
+| Levendig | 0,12 | `0,6·voetgangersplekken + 0,4·mix` |
+| Water | 0,08 | water met bruggen (bruggen gevonden via wegpunten boven water), te veel water straf |
+| Samenhang | 0,16 | `1 − (gaten·0,7 + losse blokken) / max(4, 0,12·vakken)`: lege gaten tussen bebouwing en losse blokken kosten punten |
+Modules tellen per footprint (`modStat`, `modPeople`). De knop rekent eerst opnieuw (`updateScore()`).
+
+## 11. Bloed (`11-autos.js`, blok "Bloed", instelling "Bloed")
+Laag-poly: zeshoekige spatten (`CircleGeometry(1, 6)` plat, InstancedMesh 420, ringbuffer) en driehoekige druppels (tetraëder 0,13, 220 stuks, zwaartekracht 14 m/s²,
+max 1,5 s). Spat kleurt van #b3101c naar #4a0b11 in 45 s en vervaagt na 150 s in 30 s. Per autotype drie plekken op de carrosserie (voorbumper, motorkap, voorruit,
+gevonden met een straal op de echte romp) en bloedige bandensporen; een plas als iemand blijft liggen. Let op in Unity/three: zet eerst de kleur van alle instances, pas dan `count = 0`.
+
+## 12. Slippen en uitvliegen (`11-autos.js`, alleen totale chaos)
+- In een bocht (`turn`/`u`) of op de rotonde (wegtype `ring`), bij `v > 7`: kromming uit de koersverandering over de komende 6 m, `ratio = v²·|Δh|/6 / grip`, grip racer 6,5, jager 7,5, ontwijker 9,5 m/s².
+  Bij `ratio > 1` per seconde kans `(ratio − 1)·1,1` (rotonde ·2,2).
+- Gevolg: langs de **raaklijn** glijden met 1,05·v en tollen (`w = ±0,8–2,4 rad/s`), glijwrijving 3,6 m/s² (gewone botsing 6, op de stoeprand 9). Op de rotonde in 60 % van de gevallen
+  de lucht in: `vy = 2,5–5,5 m/s`, draaien om twee assen, landing = botsing met 30 schade. Er wordt **niet** op gebouwen gemikt.
+- Tegen een gebouw, blok of terrein (terrein voor de auto > 0,9 m hoger dan waar hij staat, ook 1,8 m vooruit gemeten): terugstuiteren met −0,25·v en schade.
+
+## 13. Schade, rook, vuur en explosie (`11-autos.js`, blok "Schade"; vervangt de takelwagens)
+- `hp` 100. Klap tussen auto's: `impact·1,9` voor allebei; tegen een gebouw/terrein: `snelheid·1,2` (vanaf 3 m/s); landing: 30. Hooguit één schadeklap per 0,5 s.
+- `hp < 65`: lichte rook (4 wolkjes/s), `< 35`: donkere rook (9/s), `≤ 0`: brand (`ignite`): hij rolt uit, staat stil, 26 deeltjes/s vuur + rook; na 4,5–7,5 s `explode`:
+  22 vuurdeeltjes radiaal 1,5–6,5 m/s, 16 grote rookwolken, geluid `boom`, voetgangers binnen 7 m worden weggeslingerd (7 m/s) met bloed, auto's binnen 5,5 m krijgen 35 schade
+  (kettingreactie). Daarna begint de auto ergens anders opnieuw met 100.
+- Deeltjes: icosaëders (detail 0), rook transparant 0,5 (van #3a3835 naar #9b9a96, groeit 0,55→2 m, of 1,1→4,6 bij een explosie), vuur additief (#fff2a0 → #ff7a1a → #a8200c, krimpt).
+  Rook en vuur worden niet uitgezonden verder dan 260 m van de camera. Geluid `boom`: bruine ruis lowpass 900→70 Hz 0,9 s + bandpass 600→180 + sinus 90→34 Hz + vijf metaaltikjes.
+- Geen takelwagens meer (`towDispatch` doet niets).
+
+## 14. Zelf de weg terugvinden en geen sprongen (`11-autos.js`, `rejoin`)
+- Na een botsing (stilstand 2,5 s of 12 s voorbij) en meer dan 1,5 m van de rijlijn: zoek rijstroken binnen 60 m, score = afstand − 5·(cos tussen rijrichting en eigen koers),
+  probeer de beste zes. Pad = punt bij de achteras (zodat het midden van de auto niet verspringt) + bézier vanuit de huidige koers naar een punt 7 m verder op de rijstrook
+  + de rest van die rijstrook. Een bézierpunt in een gebouwvak of blok: volgende kandidaat. Na het terugvinden 3 s "spook" (geen botsingen, max 2,5 m/s).
+- Rijdt een roekeloze auto meer dan `3 + |latCur|` m naast zijn lijn: niet terugzetten maar zijdelings terugschuiven met max 3,5 m/s en bijdraaien; meer dan 14 m: `rejoin`.
+- Gemeten (16 auto's, chaos, 4 min): 91× zelf terug, 0× opnieuw beginnen, 0 sprongen.
+- **Botsing tussen auto's** (`collide`): gerichte dozen (halve maten 2,3 × 0,95), scheidende-assentest over de vier assen, kleinste overlap = normaal. Twee rondes per beeld: de eerste duwt uit elkaar en geeft de klap (impuls `(1 + 0,25)·impact/2`, draaiing via het hefboompunt, `INERT = (4·HL² + 4·HW²)/12`), de tweede duwt alleen nog uit elkaar.
+  Spookstand (na opnieuw beginnen 1,5 s, vastzitten 4 s): alleen een auto die netjes op zijn lijn rijdt mag door een stilstaande heen; een auto die zelf stuurt of glijdt wordt zacht opzij geduwd (geen klap, geen schade, snelheid ×0,5 of de normaalcomponent eraf).
+  Gemeten met `test/visueel/overlap.js` (overlap > 0,2 m): chaos 16 auto's 854 → 0 beelden/min, 30 auto's ~1 beeld/min van max 0,3 m; netjes verkeer 0.
+
+## 15. Instorten (`11c-instorten.js`, instelling "Instorten")
+- Pas bij een klap wordt het gebouw in losse stukken opgebouwd (`mv2Build(..., { pieces: true })`): elke muur, vloertegel, dakdeel en elk voorwerp een eigen mesh met een doos.
+  Contact: dozen die elkaar binnen 0,16 m raken zijn buren.
+- **Dragers**: een stuk blijft staan zolang er een pad van steun naar de grond is (Dijkstra; omhoog gratis, opzij 1 stap, naar beneden hangen 2, meer dan 3 stappen houdt niets).
+  Hoekpalen en muren zijn zo vanzelf de dragers; aparte dragers per module zijn niet nodig.
+- Klap met snelheid `sp` (vanaf 4 m/s): alles binnen `R = min(13, 2,4 + (sp − 3)·0,6)` m en tot 3,6 m hoog (bij `sp > 14` tot 6,6 m) breekt los met snelheid `0,22·sp` in de rijrichting.
+  Daarna valt wat geen steun meer heeft (zwaartekracht, een paar stuiters), stof (tetraëders), puin zakt na een tijd weg. Max 170 losse stukken tegelijk.
+- Wat blijft staan wordt over alle kapotte gebouwen heen per materiaal samengevoegd (anders honderden tekenopdrachten). De botsing van het hele gebouw vervalt (geen onzichtbare muren);
+  bij weghalen of een nieuwe stad verdwijnen de brokstukken mee.
+- Alleen gebouwen (`modMeta(m).bouw`), geen parken. Oude blokken (woning/kantoor) worden bij een harde klap eerst omgezet naar een module.
+
+## 16. Oude blokken naar modules (`08k-oud-omzetten.js`, `oudOmzetten`)
+Kolommen van woning/kantoor/blok/zuilen/hof/tribune/tunnel (een dak bovenop valt weg) worden bibliotheekmodules met dezelfde hoogte, deur naar de dichtstbijzijnde straat,
+per soort aaneengesloten lagen opgestapeld (`lv`). Woning: 1 Bungalow, 2 Rijhuis (vier varianten), 3 Rijhuis/Stadswoning, 4 Herenhuis, 5–6 Appartementen, 7 Woontoren;
+kantoor: 1 Werkplaats, 3–5 Kantoor, 7 Kantoortoren; hogere kolommen gestapeld. Gebeurt automatisch in `rebuildAll()`; kolommen met pad/park/trap erin blijven oud.
+Verkeer en bewoners tellen modules mee per verdieping (`cityCounts`): Wonen = huizen, Werken = kantoren, Winkels ×0,6, Openbaar ×0,4.
+
+## 17. Totale chaos: mensen (`10-mensen.js`, `10b-stadspraat.js`)
+- Lopen ×2,4–3,5 (kinderen ×2,2, ouderen ×1,6): ~3 m/s gemiddeld. Geen pauzes, geen praatjes.
+- Schreeuwen: per persoon elke 5–17 s (alleen binnen 70 m van de camera), hooguit 3 kreten tegelijk en minstens 0,6 s ertussen. Opnames in `assets/schreeuw.mp3`
+  (paniek ×6, kort ×3, gruwel ×1, bloed ×1; stukken in `SCR`); stemhoogte kind ×1,35, vrouw ×1,2, oudere ×0,86. De bloedkreet hoort bij het bloedeffect, de gruwelkreet bij een explosie.
+- Spreekballonnen alleen paniek en verwarring (`PANIC`, plus brand- en instortzinnen als dat echt gebeurt), rood en trillend; om de 0,8–2,4 s iemand, met een korte kreet.
+
+## 18. Cameramodus (`13-camera-modus-geluid.js`, `flyCam`)
+Spatie in de bouwmodus aan/uit (Esc ook). Geen interface, geen bouwvoorbeeld (ook niet op lege vakken), geen rasterlijnen; bouwen, slopen, wegen trekken, ongedaan maken en de bouwtoetsen zijn geblokkeerd (alleen P pauze en O weer werken). Muis kijkt (aanwijzer vast), W/A/S/D vliegt met
+vaart (snelheid volgt het doel met `dt·3,5`), E/Q omhoog/omlaag, snelheid `max(12, hoogte·0,9)` m/s, Shift ×3, Ctrl ×0,25, wiel zoomt (beeldhoek 12–95°, start 65°), F slaat een png
+zonder knoppen op. Minimaal 2 m boven terrein of blok.
+**Kanonskogel** (`11d-kogel.js`, `collapse.shoot`, `cars.ballHit`): links schiet een kogel (straal 0,45 m, 48 m/s, om de 0,22 s), rechts een zware sloopkogel (1,2 m, 30 m/s, om de 0,6 s),
+vanuit de camera in de kijkrichting (+1,5 m/s omhoog), laag-poly bol (icosaëder, 80 driehoeken), max 16 tegelijk. Zwaartekracht 9,81, stuiteren op grond/weg/blok (`vy·−0,42`,
+rollen remt af), weg na 8 s of 1,5 s stil. Langs de baan in stapjes van 0,8·straal: raakt hij een staand stuk van een gebouw (doos + straal + 0,25 m, op elke hoogte), dan breekt alles
+binnen `R = min(10, 1,2 + 0,12·v + 2,2·straal)` m (hoogte telt ×1,15) los met `0,2·v·(1 − d/(R+0,5))` in de vliegrichting; de kogel stuitert terug met ×−0,22.
+Een auto: vliegt (als `v·m > 9`, 60 %) of tolt weg (`m` = 0,3, sloopkogel 0,55), schade `v·1,4` (sloopkogel ×2,4). Een voetganger valt om (ragdoll, 9 m/s in de vliegrichting, sloopkogel ×1,4) met bloed.
+Gemeten: vier schoten op een stadswoning van 3 lagen: 468 → 157 staande stukken. Bij stoppen komt het draaipunt op wat je aankijkt.
+
+## 19. Prestaties (`08c-modules-v2.js` `batchMods`, `15c-instellingen.js`)
+- Modules worden per 6×6 vakken en per gelijk materiaal (`matKey`, niet per materiaalobject) samengevoegd; de losse modules blijven onzichtbaar maar raakbaar voor klikken.
+  Tekenopdrachten −60 tot −77 %. Schaduwkaart om het andere beeld. Beeldscherpte "Automatisch" past de resolutie aan op de beeldtijd.
+- Mensen en auto's (27 okt): `nearby(x, z)` wordt per vak onthouden tot het volgende beeld (`nearbyClear` bij elk beeld en elke verbouwing); muren hebben een omhullende doos (`wallBB`, 0,3 m marge) en vloerveelhoeken een omhullende cirkel, zodat de meeste meteen afvallen; mensen verder dan 140 m van de camera worden om de drie beelden bijgewerkt (verspreid, met de opgespaarde tijd, maar nooit een stap groter dan 0,06 s, anders snijden ze hoeken door muren); wie valt of opstaat blijft elk beeld bijgewerkt. Auto's kijken via een raster van 8 m alleen naar voetgangers binnen hun rem- en kijkafstand, en naar andere auto's binnen `max(23, kijkafstand + 4)` m.
+  Gemeten (Grote stad, 160 mensen, 40 auto's, rekentijd per beeld): mensen 13,8 → ~6 ms, auto's 4,7 → ~2 ms; Startstadje mensen 3,4 → 1,3, auto's 1,2 → 0,7 ms. Geen extra "door iets heen", botsingen of vastlopers (`test/visueel/{deel,muren,overlap}.js`).
+- Raatbouwer: de camera vliegt in 380 ms naar de helft van de afstand en de maker vervaagt in; op de telefoon één werkbalkrij en een uitklapbaar paneel.
+
+## 20. Lopen en rennen van mensen (`10-mensen.js`: `stepFeet`, `runFeet`, `animPose`, `avoidance`)
+Geen animatieclips: elke voet wordt echt neergezet (procedureel), de benen volgen met inverse kinematica. Dat werkt op elke helling, trap en
+stoeprand en is in Unity direct na te bouwen (per persoon in C# of met de Jobs-systeem; een `Animator` is niet nodig, wel handig voor het bovenlijf).
+
+**Lichaam** (`scale = lengte / 1,78`; kind 1,15–1,40 m, vrouw 1,60–1,74, man 1,72–1,89): heupgewricht 0,965·sc boven de enkel, been `L = 0,88·sc·0,985`
+(dij en scheen elk 0,44), enkel 0,082 m boven de vloer, heupen 0,088·sc opzij, voeten 0,1·sc opzij. Loopsnelheid kind 1,25–1,6, oudere 0,8–1,0, anders 1,1–1,5 m/s;
+paslengte `stride = (kind 1,0 / oudere 1,15 / anders 1,45)·(0,95–1,05)·sc·1,2`, `stepLen = 0,4·stride`. Ouderen leunen 0,12–0,2 rad voorover.
+
+**Lopen** (stappen op fout, niet op ritme):
+- Echte lichaamssnelheid `v` = gefilterde positieverandering (`k = min(1, dt·10)`), ook als iemand geduwd wordt.
+- Zolang er geen voet zwaait: per voet de *ideale plek* = heup + `lead`·looprichting + 0,1·sc opzij, met `lead = min(stepLen/2, 0,33·sc, |v|·swingT/2 + 0,03·sc)`.
+  Fout = `√(lon² + (1,6·lat)²) + 0,55·sc·|hoekverschil|`. De voet met de grootste fout stapt als die boven `max(0,12·sc, 1,5·lead)` komt (om en om; stilstaand 0,13·sc).
+- Zwaaitijd `swingT = clamp(0,42·√(1,3/max(0,6, v))·√sc, 0,22, 0,5)` s (sneller lopen = langere passen, niet tragere benen). Landingspunt = ideale plek + `v·swingT`,
+  nooit gekruist (minstens 0,15·sc aan de eigen kant van de andere voet); hoogte = vloer onder dat punt (trap, stoep).
+- Zwaaibaan: `p = 0,45t + 0,55·smoothstep(t)` (meteen naar voren, rustig neerzetten), hoogte + `sin(πt)·arc`, `arc = 0,075·sc` (+0,7·hoogteverschil).
+  Voet kantelt: eerst tenen omlaag (afzetten, tot 0,5 rad), dan tenen omhoog (hiel eerst, −0,22). Een staande voet draait pas mee als het hoekverschil > 0,3 rad.
+- Staat een voet > 0,9·sc van de heup (geduwd, gestruikeld), dan wordt hij direct onder je gezet; blijft hij ver achter, dan zwaait de andere 2,5× sneller.
+- Heuphoogte: de laagste van `voet.y + √(L² − horizontale afstand²)` over beide voeten (de zwaaivoet telt mee bij afzetten en neerzetten),
+  minimaal 0,62·sc boven de grond; zakken met `dt·18`, omhoog met `dt·8`. Daar komt het natuurlijke op-en-neer vandaan. Gewicht 0,024·sc boven het standbeen.
+- Bovenlijf: bekken draait mee met het voorste been (−0,12·beenverschil), borst tegengesteld (+0,24), armen tegen de benen in (0,38 rad), elleboog buigt meer als de arm naar voren gaat,
+  hoofd compenseert en kijkt af en toe rond.
+
+**Rennen** (sinds 27 okt; vanaf `snelheid > 2,25` en echte snelheid > 1,7 m/s, terug naar lopen onder 1,95/2,1), stappen op afzet, niet op fout:
+- Ritme `cad = clamp(2,35 + 0,22·v, 2,7, 3,5)/√sc` passen/s. Steuntijd `Tst = min(0,9/cad, 0,56·sc/v)`, zwaaitijd `Tsw = max(0,14, 2/cad − Tst)`: bij hardlopen
+  zweef je dus (beide voeten los; gemeten ~35–40 % van de tijd bij ~2,7–2,9 m/s).
+- Een staande voet zet af als hij 0,34·sc achter de heup is én de andere voet al halverwege zijn zwaai is (`t > 0,42`); noodgeval: > 0,7·sc achter of > 0,95·sc weg.
+- Landingspunt wordt elk beeld bijgewerkt (volgt bochten): heup + `v·resterende zwaaitijd` + 0,15·sc vooruit + 0,085·sc opzij. Hoogte pas na 55 % van de zwaai opgezocht.
+- Zwaaibaan: smoothstep, hoogte `0,2·sc·sin(πt)^0,75` plus hiel omhoog achter je `0,1·sc·sin(π·min(1, t/0,5))·(1 − t)`; tenen tot 0,85 rad omlaag bij afzetten.
+- Heup: zo hoog als de staande voet toelaat met de hiel los (been + 0,07·sc), in de lucht 0,91·sc, altijd tussen 0,78·sc en 0,92·sc (geen uitval of spreidstand); volgt met `dt·16`.
+- Bovenlijf volgt `runK` (0→1 met `dt·5`): borst 0,17 rad voorover, bekken 0,06, armen zwaaien 0,8 rad, ellebogen ~1,3 rad gebogen, hoofd 0,13 rad terug (blik vooruit).
+- Gemeten (61 mensen in chaos): voet verspringt 12,6 → 0,6 keer per minuut per persoon, ritme 3,7 → 2,9–3,1 passen/s, gestrekt been 17 → 5 % van de tijd.
+
+**Ontwijken**: raster van 2 m. Wandelaars kijken 2,4 m vooruit (tegenligger rechts houden, stilstaand of schuin naar de vrije kant, achter iemand tempo aanpassen,
+1,4 m). Rennende mensen kijken `max(2,4, 1,3·v + 0,6)` m vooruit (dus ~1,3 s), zoeken het raster zo ver af als nodig, zijdelings `0,8 + 0,08·v`, wijken sneller uit
+(`dt·(2,5 + 0,6·v)`) en halen iemand in die minder dan 80 % van hun eigen snelheid loopt. Gemeten (chaos, 3× 1 min): bijna-botsingen < 0,45 m 341 → 124 per minuut,
+kleinste afstand 0,16 → 0,24–0,36 m. Nooit door elkaar: binnen 0,5 m duwen ze elkaar uit elkaar (max 5 cm per beeld, langs muren).
+Muren: een stap die een muur op lichaamshoogte (0,6–1,2 m boven de voeten) zou kruisen, glijdt langs die muur; lukt dat ook niet, dan blijf je staan.
+De controle "door iets heen" kijkt bij wandelaars om de 4 beelden en bij rennen elk beeld (anders lijkt een bocht om een paaltje een lijn erdoorheen).
+
+**In Unity**: dezelfde opbouw past op een Humanoid met Animation Rigging (Two Bone IK per been, doel = de voetpositie hierboven, hint = knie vooruit) of
+volledig procedureel zoals hier. Wie liever clips gebruikt: de gemeten passen per seconde en paslengtes hierboven zijn dan de doelwaarden voor het afspeeltempo,
+en de voeten moeten met IK op de vloer blijven (anders glijden ze over trappen en stoepranden).
+
+## 22. Trappen in de Raatbouwer (naar `trappen.dae`, 27 okt; `08c-modules-v2.js` trappen, `08d-module-maker.js` Trap/Bordestrap)
+Voorbeeld van Joep (SketchUp, `trappen.dae`): een trappenhuis met per verdieping één rechte steek langs de rand van het vak en een bordes op elke verdieping, heen en terug
+(steek 1 in de buitenste driehoekrij, steek 2 in de rij ernaast), en een verhoogd vak met een trap waarvan elke trede één driehoekje van het raster is (0,2 m per trede).
+Gemeten in het bestand: vak R = 9 m, verdieping 3 m, vloer 0,3 m dik; steek 6,75 m lang (3 zijden van het fijne raster, 2,25 m), 1,95 m breed (één driehoekrij:
+2,25·√3/2), 16 optreden van 0,1875 m en aantreden van 0,42 m; trapgat in de vloer = een band van twee rijen (3,9 m) langs één zijde van het vak.
+- **Trap (T)**: sleep langs een rasterlijn van onder naar boven. Breedte 1 rij (1,95 m) of 2 rijen (3,9 m); de steek ligt links of rechts naast de lijn (of erop).
+  Altijd 16 treden per 3 m (`N = round(hoogte / 0,1875)`), aantrede = lengte/16 (bij 3 zijden 42 cm). Treden zweven: elk blok van `top − optrede − 0,3` tot `top`.
+  Bovenaan een gelijkzijdig driehoekig bordes met zijde = de breedte. Leuning aan beide kanten (schuine stang op 0,95 m, palen op 0, ½ en 1).
+  Tijdens het slepen: "3 zijden · 6,75 m · 16 treden van 42 cm · goede trap" (onder 25 cm aantrede: te steil, boven 50 cm: erg flauw).
+- **Bordestrap (U)**: twee steken naast elkaar, elk één rij breed, samen een band van 2 rijen naast de getekende lijn; 2 × 8 treden; het bordes op 1,5 m ligt over beide rijen
+  en is aan het eind onder 60° afgesneden (de lange kant is `2·breedte/√3` langer, bij 1,95 m precies één rasterzijde), net als de rand van een zeshoek. Leuningen buitenom, tussen de steken en rond het bordes.
+- **Trapgat vanzelf**: op de verdieping boven een trap (rechte steek, bordestrap, helling) verdwijnen de vloerdriehoeken waarvan het zwaartepunt boven de trap ligt
+  (rechte steek: van 30 % van de lengte tot het eind; bordestrap: rij 1 vanaf 30 %, rij 2 helemaal, tot voorbij het bordes). Een trap van één rij breed haalt precies die rij weg.
+- Gemeten: rechte steek 0 → 3,02 m en bordestrap 3 → 6,02 m met de loopbotsing, grootste stap 0,19 m, nergens geblokkeerd; de vloer erboven sluit aan op de bovenste trede.
+- **Weer**: zolang de Raatbouwer open is, staat het weer op helder en de tijd op 13:00 (sneeuw bedekt anders de vloer); bij sluiten komt het oude weer en de oude tijd terug.
+- **Interface**: werkbalk met korte namen onder de iconen, in groepen (kiezen · vloer · muren en openingen · trappen · dak en voorwerpen · gum); weergave (2D/3D, tot deze verdieping,
+  zoom, passend) als zwevend paneel rechtsboven in het tekenvlak; keuzes zonder kleur als gewone keuzeknoppen.
+  Gum: wat er onder de muis weggaat licht rood op vóór je klikt (`eraseTarget`, dezelfde volgorde als het weghalen: voorwerp → muur → trap/helling → dak → vloer), met een label "Weghalen: …"; in 3D de hele wand en het schuine trapvlak.
+
+- **Wenteltrap (J)** in de Raatbouwer: klik op een rasterpunt (het midden), sleep naar de kant waar je onderaan instapt (`d` = richting 0–5); keuze linksom/rechtsom omhoog (`side`).
+  Item `{a, d, n:1, w:1.5, k:'spiral', side}`; dezelfde zeshoekige wenteltrap als §2 (12 treden van 25 cm om een zeshoekige kern). De zeshoek staat met zijn hoekpunten
+  op de rasterlijnen (zijmiddens op `a0 + 30° + 60°·n`, apothema 1,9 m), dus hij valt precies over de zes driehoeken om het rasterpunt; het trapgat erboven is die zeshoek min het uitstapdriehoekje.
+- **Plaatsen per driehoekje** (`sectorDir`, `hoverStair`): al vóór het klikken staat de trap als voorbeeld onder de muis. Het driehoekje onder de muis bepaalt het rasterpunt (de dichtstbijzijnde hoek)
+  en de richting: een trap links van zijn lijn loopt langs de eerste rib van die 60°-sector, rechts langs de tweede, zodat de trap altijd over dat driehoekje begint (wenteltrap: daar stap je in).
+  Een klik zonder slepen zet een trap van 3 zijden neer; slepen kiest een andere lengte of richting. De bezette driehoeken (`coverTris`: driehoek ∩ trapvorm, bedekt deel 0–1) zijn oranje,
+  vol = helemaal bezet, lichter = deels; het gat erboven rood gestippeld.
+- **Trapgat precies afgeknipt** (`mv2StairHole(S, ts)` en `mv2ClipKeep` in `08c`): per vloerdriehoek boven een trap is het antwoord "laten staan", "weg" of "deels houden";
+  bij deels wordt de driehoek met een halfvlak geknipt (rechte steek: alles vanaf het eind van de steek, `al ≥ lengte`; bordestrap: voorbij de schuine bordesrand) en als waaier
+  getrianguleerd, met loopvlak. Zo loopt de vloer boven tot precies de bovenste trede en sluit de trap aan. Wenteltrap: binnen 2,15 m van het midden en fase < 330° weg, de uitstap blijft.
+  Unity: knip de vloerpolygoon met hetzelfde halfvlak (Sutherland–Hodgman met één vlak volstaat).
+- **Voorbeeld van het trapgat tijdens slepen** (`stairPreviewCover`): de vloerdriehoeken van de verdieping erboven die blijven liggen (bedekt) en die weggaan (gat) worden
+  met twee kleuren getoond, met dezelfde regels als de bouwer.
+- **Gum in 3D op muren** (`wallRay`): een straal vanuit de camera wordt gesneden met elk wandvlak (rechthoek van lijn × hoogte van de verdieping); de dichtstbijzijnde treffer gaat vóór de vloer.
+  De muur kleurt rood en een klik haalt precies die muur weg.
+
+- **Wenteltrap beklimbaar** (27 okt): twee oorzaken. (1) De botsing keek bij module-loopvlakken (één bundel driehoeken per verdieping) naar de onderkant van de héle bundel;
+  een tree of vloer ver boven je hoofd blokkeerde dan toch. Nu per driehoek (`trisBlock` in `09`): blokkeren doet alleen een driehoek met bovenkant boven de stap (0,4 m)
+  en onderkant (bovenkant − 0,3 m) onder je hoofd (1,2 m). (2) Het vloerdriehoekje boven de laatste twee treden bleef heel liggen en hing zo boven tree 10; nu blijft alleen de helft
+  boven de uitstaptree (fase 330°–360°) liggen (`mv2StairHole`, halfvlak langs de straal op 330°). Gemeten: 0 → 3,02 m en 3 → 6,02 m, grootste stap 0,27 m, nergens geblokkeerd, ook gestapeld.
+- **Voorwerpen** (`08d`): plaatsingsvoorbeeld vóór het klikken: in 3D het echte voorwerp half doorzichtig (`objGhost`: een minimodule met alleen dat voorwerp, `mv2Build`, materialen
+  doorzichtig gekloond), in beide weergaven de omtrek (langwerpig: rechthoek langs de lengte, `OBJ_FOOT`; rond: cirkel, `OBJ_R`) en een pijltje naar de voorkant
+  (lokaal +z, in de wereld `(−sin rot, cos rot)`). Draaien per 30° (twaalf richtingen): Q/E, Shift+scroll, knoppen ↺/↻; ingedrukt houden en slepen richt de voorkant naar de muis
+  (`rot = atan2(−dx, dz)`, met Ctrl vrij); op een bestaand voorwerp draait een klik 30° (Shift-klik terug) en slepen richt het. De laatst gebruikte draaiing geldt voor het volgende voorwerp.
+
+## 23. Aanwijzen in de stad (`15g-aanwijzen.js`, toets V, knop met de muispijl linksonder)
+- Een eigen gereedschap `kies` naast de gum: geen bouwvoorbeeld; wat je aanwijst (een module-exemplaar of het bovenste blok van een vak) licht op als draadmodel van zeshoekige
+  prisma's (per vak van het exemplaar, van de laag waarop het staat tot de bovenkant, plus 2,5 m bij een schuin dak), met de naam bij de muis.
+- Klik: een optiekaart bij de muis. Module: **Draai links / rechts** (60°, `rot ± 1`), **Spiegelen** (`mir`), **Andere variant** (`swapInst`: de volgende module die op de buren aansluit),
+  **Bewerken** (opent de module in de Raatbouwer; bewaren past alle exemplaren aan), **Meer hiervan** (pipet: module, draaiing en spiegeling in je hand), **Verplaatsen** (oppakken: weghalen
+  en meteen in je hand), **Weghalen**. Blok: **Meer hiervan** en **Bovenste weg**. De kaart blijft open na draaien/spiegelen/variant, zodat je door kunt klikken.
+- Opnieuw neerzetten (`kiesReplace`): exemplaar uit de lijst, `modTopRefresh()` (de bovenste module per vak opnieuw bepalen, anders ziet de plaatsingscontrole het oude exemplaar nog),
+  `placeCore` met de nieuwe draaiing; past het niet, dan blijft het oude staan. Dezelfde fout zat in `swapInst` (een variant die niet paste haalde het exemplaar weg); ook opgelost.
+- Unity: een selectiestand met raycast op de module-exemplaren, een outline per vak en een klein contextmenu met dezelfde acties.
+
+## 24. Bibliotheek opnieuw gebouwd en uitgebreid (lib10, 28 okt; `08d9-bibliotheek-uitbreiding.js`, `08e-modules-bibliotheek.js`)
+- **Controle per module** (`test/visueel/bieb_audit.js`): module los in een lege stad, vloedvulling op een raster van 0,45 m vanaf de straat met de echte
+  botsing (stap ≤ 0,4 m, val ≤ 0,6 m); per verdieping moet ≥ 85 % van de vloer (zonder trapgaten) bereikbaar zijn. Verder: voorwerpen niet zwevend, niet in
+  een muur, niet buiten het gebied, niet op elkaar; geen hek/muur zonder vloer ernaast; elke trap komt boven bereikbaar uit. Alle 151 modules slagen.
+- **Gevonden en opgelost in de motor**: een opening in een haag of hek was dicht (nu een gat, met stevige palen bij een hek); trapgat voor trappen die niet
+  op een rij driehoeken liggen (ook driehoeken met een hoekpunt in de baan horen bij het gat); hellingen hadden het bovenvlak naar onderen; trapgaten
+  doet de bouwer nu altijd zelf (`mv2StairHole`) en het loopnetwerk en de balustrades gebruiken dezelfde vloer zonder gaten (`mv2FloorPolys`);
+  een sectorknoop boven een gat schuift naar het dichtstbijzijnde stuk vloer; wenteltrap in het netwerk: rondje over de treden (straal 1,1 m), de leuning als
+  muur, lopers worden tussen 0,6 en 1,5 m van de kern gehouden; botsing met module-vloeren per driehoek (`trisBlock`).
+- **Nieuwe trapsoorten**: `trib` (tribune: volle zitrijen ± 0,85 m diep met zitplank, leuning boven) en `esc` (roltrap: metalen treden in een schuine bak,
+  glazen zijkanten, zwarte leuning). Beide gebruiken `S.k`; `esc` krijgt een trapgat zoals een rechte trap, `trib` niet.
+- **Nieuwe voorwerpen** (`08c` `switch (O.t)`, materialen per kleur gedeeld via `om()`): bed, sofa, desk, kitchen, screen, car, pump, charger, solar (ook op een
+  dak: `ROOF_GREEN`), turbine (22 m), chimney (16 m), container, goal, grave, boat, shelter, slide, swing, sheep. Botsing: langwerpig als lijnstuk (`OLEN`),
+  rond als kruis (`ORAD`, `08f`).
+- **Inrichting** (`libOldDetails`, `libExtraDetails`): hulpjes `atWall` (tegen de muur van een zeshoek met de normaal op een hoek, voorkant naar binnen:
+  rot = hoek + 90°), `bedAt` (hoofdeinde tegen de muur), `home` (keuken, tafel, bank, bedden, bureau op hoeken die vrij zijn van deur en trap),
+  `officeFloor`, `shopFloor`, `solarRoof`. `pruneNearStairs` haalt elk voorwerp weg dat bij een trap staat (instap, baan, uitstap, gat erboven).
+- **Bijwerken** (`raatstad-lib10`): vervangen alleen als de speler de module nooit bewaarde (`_sig`); koppelen op precieze naam, dan `was`, dan de naam zonder
+  achtervoegsel als die uniek is. Exemplaren in een stad volgen via `m.lib` in `buildModNet`. Let op de laadvolgorde: `08d9` staat vóór `08e`, omdat 08e bij het
+  laden al installeert (de `const`-hulpjes moeten dan bestaan).
+- Unity: dezelfde controle is handig als editor-test (NavMesh-bereikbaarheid per verdieping en overlap van props met wanden).
+
+## 25. Raatbouwer: kiezen, controleren, daken die de muren volgen (28 okt; `08d-module-maker.js`, `08c-modules-v2.js`)
+- **Kiezen**: een selectie is per verdieping een verzameling sleutels (`f` driehoeken, `w` muren, `s` trapindexen, `o` voorwerpindexen, `r` vakken).
+  Bewerkingen werken op een "clip" (de gegevens zelf): eruit halen, omzetten, terugzetten. Verplaatsen = (di, dj) rasterstappen optellen; voorwerpen
+  schuiven met `P(di, dj)`. Een verschuiving is een hele-vakken-verschuiving als (di − dj) en (di + 2dj) deelbaar zijn door 3n (n = R/ts); alleen dan
+  gaan daken en schansen mee. Draaien 60° om rasterpunt (i0, j0): (a, b) → (−b, a + b) op de verschillen; trapsrichting d + 1; zadeldaknok as + 1;
+  driehoeken via hun gedraaide zwaartepunt; muren via hun gedraaide eindpunten (`keyFromSeg`). Een "ruimte" kiezen = vloedvulling over driehoeken
+  met dezelfde vloer, niet over een muur zonder opening.
+- **Controleren** (`checkModule`): graaf van vloerdriehoeken (zonder trapgaten), randen tussen buren tenzij er een dichte muur op ligt, "buiten" =
+  het maaiveld naast de begane grond, trappen als verbinding (wenteltrappen boven elkaar sluiten op elkaar aan). Onbereikbare driehoeken op de
+  verdiepingen (niet het dak) worden rood; voorwerpen en muren zoals in de bibliotheekcontrole. Wordt gewist bij de volgende wijziging.
+- **Daken** (`mv2RoofFit`): straal = kleinste zeshoek (stappen van ts) om de muren van dat vak op die verdieping, met 35 cm overstek als hij kleiner
+  is dan het vak. Schilddak = piramide (hoogte 5 m × r/R); zadeldak `gable0..2` = nok van hoek a naar a + 3 (twee vlakke dakvlakken) plus vier
+  driehoeken muur boven de nokhoeken; plat dak volgt dezelfde straal. Spiegelen zet de nok om: as a → [2, 1, 0][a].
+- **Gevonden onderweg**: het loopnetwerk kreeg platgedrukte driehoekjes uit het afknippen van trapgaten (die lijken overal "binnen"), daardoor
+  kwamen knopen boven een gat en vielen mensen in het winkelcentrum; nu weggelaten (oppervlak > 0,02 m²). Op een wenteltrap houden we lopers
+  alleen tussen kern en leuning als ze al op de trap staan (anders sprongen ze er soms heen), en de leuning van de tweede tree telt mee als muur.
+
+## 26. Raatbouwer: spiegelen, materiaal van een keuze, rondlopen (28 okt; `08d-module-maker.js`)
+- **Spiegelen** om rasterpunt (i0, j0): boven ↕ onder = (a, b) → (a, −a − b) op de verschillen (zelfde als `mv2Mirror`, z → −z);
+  links ↔ rechts = die spiegeling plus 180° draaien. Trapsrichting d → 5 − d, `off` en `side` keren om; voorwerpen z → 2·z0 − z en rot → −rot;
+  zadeldaknok a → [2, 1, 0][a]; daken alleen als het spiegelpunt een vakmidden is.
+- **Gevonden**: een wenteltrap of bordestrap zonder `side` (= 1) bleef bij spiegelen dezelfde kant op draaien, ook bij gespiegeld geplaatste
+  modules in de stad. Nu wordt `side` altijd −(side || 1) voor `spiral` en `u`.
+- **Rondlopen**: bouwt de hele module met `mv2Build` en gebruikt de loopvlakken (`surfaces`, driehoeken) en `walls` daarvan met dezelfde
+  functies als de stad (`surfTop`, `trisBlock`, `segDist`; stap 0,4 m, romp 1,2 m, straal 0,25 m). Bewegen in stapjes van ≤ 0,12 m zodat je niet
+  door een dunne muur schiet; een vloer tot 0,4 m hoger is een trede. Camera op 1,62 m. In Unity: een CharacterController met stepOffset 0,4.
+
+## 27. Raatbouwer: voorwerpen tegen de muur, controle na elke wijziging (28 okt; `08d-module-maker.js`)
+- Voorwerp-assen: lokale x = lengte (wereld (cos rot, sin rot)), rug = lokale −z (wereld (sin rot, −cos rot)); bed: hoofdeinde = lokale −x.
+  `OBJ_BACK` geeft per soort de afstand midden–rug. Dichtstbijzijnde muur (geen deur/doorgang) binnen rug + 1 m: rot zo dat de rug naar de muur
+  wijst, midden op voetpunt + normaal × (muurdikte/2 + rug + 2 cm). Verschuiven/draaien/spiegelen ronden voorwerpen niet meer af op 0,25 m (dan
+  blijft iets tegen de muur ook tegen de muur).
+- Controle: `checkModule` draait 350 ms na elke wijziging; de knop krijgt `data-st` ok/bad (groen/rood bolletje).
+
+## 28. Fijn verplaatsen, wenteltrap-balustrade, minder sloop door de kogel (28 okt)
+- **Raken van voorwerpen** (`objectAt`, 08d): langwerpige voorwerpen als georiënteerde rechthoek (lengte `CK_LEN` langs (cos rot, sin rot),
+  breedte `CK_RAD` + marge), andere als cirkel. Gaat vóór muur en vloer.
+- **Vrij verplaatsen**: is de keuze precies één voorwerp, dan volgt het de muis met een wereldverschuiving (afgerond op 1 mm) in plaats van
+  rasterstappen; andere keuzes blijven langs het raster.
+- **Wenteltrap**: de leuning langs de treden loopt schuin omhoog en hield je op de bovenverdieping alleen bij de uitstap tegen. Nu staat er op
+  vloerhoogte boven de trap een zeshoekige balustrade (apothema 1,9 m, 0,95 m hoog, ook als botsingsmuur) over 0°–300°; de laatste twee treden
+  (300°–360°) blijven vrij als uitstap, zodat het loopnetwerk erlangs kan.
+- **Kanonskogel** (`collapse.shoot`, 11c): breekt alleen rond de inslag los: straal min(3,2; 0,55 + 0,028·v + 1,1·r) (was tot 10 m), en per stuk
+  een kans die afneemt met de afstand. Wat daarna geen steun meer heeft valt nog steeds via `settle()`. Drie schoten op een stadswoning: 18 stukken
+  los (was: 170, het maximum, en het halve gebouw).
+
+## 29. Spoor en treinen (29 okt; `11e-spoor.js`)
+- **Tekenen**: gereedschap Spoor (tab Wegen). Klik vak na vak; elk stuk loopt van vakmidden naar vakmidden in een van de **twaalf raatrichtingen**: de zes buren
+  (0°, 60° …, stap 15,59 m) en de zes over de hoekpunten (30°, 90° …, stap 27 m), dus richtingen `[1,0] [0,1] [−1,1] [−1,0] [0,−1] [1,−1]` en `[1,1] [−1,2] [−2,1] [−1,−1] [1,−2] [2,−1]`
+  in axiale (q, r). Het punt is de veelvoud k ≥ 1 van de richting die het dichtst bij de muis ligt. Bochten hooguit 90°; rechtdoor schuift het eindpunt op. Rechtermuisknop/Esc of
+  nog eens op het laatste punt stopt; op een bestaand uiteinde (< 6 m) klikken tekent verder; gum op het spoor haalt de hele lijn weg.
+- **Doorloop tot voorbij de horizon**: beide uiteinden worden 2600 m verlengd in hun laatste richting. De stadsgrens is `max(220, straal stad + 160)` m en de mist is dicht
+  op 1150 m van de camera, dus je ziet het spoor nooit ophouden. Alleen het getekende stuk wordt bewaard (`cells.rails = [{p: [[x, z], …]}]`, in de stadsdata `__r`).
+- **Bochten**: cirkelboog die beide rechte stukken raakt, straal 90 m, kleiner als een stuk korter is (raaklengte hooguit 0,48 × het kortste stuk).
+  Daarna verdicht tot een punt per 2 m; hoogte = maaiveld (nooit < 0), eerst maximum over ±3 punten, dan drie keer gladgestreken (1-2-1).
+- **Opbouw** (dubbelspoor, spoorhartafstand 4,1 m): ballast als trapezium (onder ±4,3 m op −0,25, boven ±3,4 m op 0,34), dwarsliggers 2,5 × 0,14 × 0,24 m om de 0,65 m
+  (InstancedMesh), rails 0,1 × 0,16 m op ±0,72 m van het spoorhart. Alles één mesh per materiaal; opnieuw bouwen alleen als punten of hoogteprofiel veranderen (~60 ms per lijn).
+- **Treinen**: per lijn twee, **rechts rijden** (spoor rechts van de rijrichting). Vier rijtuigen van 16,6 m (wit, rode band, donkere ruitband, draaistellen op ±5,2 m);
+  de kop is een driehoekig prisma. Positie per rijtuig uit twee draaistelpunten op de lijn (gieren en hellen). Max 24 m/s, optrekken 0,9 m/s², remmen 2,25 m/s².
+  Halte: een module met *treinstation* in de naam binnen 40 m van het spoorhart; remmen volgens `v = √(2·0,9·afstand)`, midden van de trein bij het station, 12 s stil, hoorn (`fx('toot')`:
+  twee zaagtanden 311 en 370 Hz, kort en lang). Is de trein de stad voorbij en > 1300 m buiten de stadsgrens, dan wacht hij 15–40 s en komt aan het begin (> 1250 m buiten de grens) weer uit de mist.
+  De eerste trein staat bij het laden 120 m buiten de grens, zodat je hem meteen ziet aankomen.
+- **Startstadje**: een rechte lijn op r = 11 (z = 148,5 m) van vak (−22, 11) tot (11, 11), het treinstation (7 vakken) op (−5, 9) en een korte straat van de ring naar het station.
+- Unity: spline per lijn (bijv. Splines-pakket) met dezelfde verlenging; dwarsliggers via GPU instancing; treinen als wagons die twee punten op de spline volgen.
+
+## 30. Gelaagde stad: wegen op wegdekken, modules boven de weg (29 okt; `08l-wegdek.js`)
+- **Wegdek** = module met een plat dak waar een weg over mag: `Wegdek · laag/hoog/extra hoog` (1 vak, 1–3 lagen = 3/6/9 m), `Wegdek · 7 vakken laag/hoog`, en elke `Parkeergarage`. Opbouw: begane grond klinkers, zeshoekige pijlers (r 0,45–0,5 m, 6 zijden) op 6,6 m van elk vakmidden onder 30° + k·60°, doorlopend tot het dak; dak = betonvloer op laag n.
+- **Weghoogte**: per monsterpunt (1,5 m) van de middenlijn dat in een wegdekvak ligt: hoogte = dak + 0,06 m. Daarbuiten oprit: `h = h + (T − h)·smoothstep(1 − d/L)`, `L = max(18, (T − h)/0,12)` (12 %). Waar de weg zo is opgetild geen grondwal maar een verticale wand tot het maaiveld; onder het dek blijft het maaiveld vlak. Auto's en voetgangers gebruiken gewoon het hoogteprofiel.
+- **Module boven de weg**: laag = `max(2, ceil((wegtop − G + 4,5)/3))`. Toegestaan op vakken zonder module eronder als de onderkant ≥ wegtop + 4,5 m. Poten op hoekpunten (op R − 0,6 m) en vakmidden, niet binnen rijbaan + 0,9 m van een weg, van maaiveld (of een lager wegdek) tot onderkant vloer (laag·3 − 0,2 m). Instorten: helemaal op poten → alleen pootvoeten zijn grond.
+- **Dakweg** (`path.dak`): begint de sleep op een plat dak, dan telt elk plat dak (bovenste module per vak, `modMeta.top === 'plat'`) als dek voor die weg; die modules blijven staan. Voorwerpen op het dak binnen 1,5 m van het wegoppervlak vervallen. Slepen meet op een horizontaal vlak op dakhoogte.
+- **Bereikbaarheid**: (1) module op een wegdek = gewoon gestapeld; (2) een open dak- of deksectorknoop binnen 3,2 m van een stoep op ±0,5 m dezelfde hoogte koppelt aan die stoep; (3) trappenhuis-poot bij een helemaal zwevende module: wenteltrap met 12 treden van 30° per 3 m (rise/N, N = max(12, round(rise/0,25))), apothema kern 0,32 en treden 1,75 m, de bovenste tree eindigt in de richting van de deur; middelpunt 2,55 m buiten de deur (of 2,5/5/7,5 m opzij), niet binnen 2,2 m van een rijbaan of ander gebouw; bordes = bolle omhullende van deur ± 1 m en vier punten op de trap.
+- Unity: wegdek als prefab met een `RoadDeck`-component (dakhoogte per vak); het wegprofiel neemt het maximum van terrein en dekken met dezelfde oprit; poten als GPU-instanced prisma's.
+
+## 21. Open punten
 - Unity: noord- en zuidpool op de bol (vraag staat open); `unity/README.md` is niet bijgewerkt sinds het planeet-wegensysteem.
-- Web: modulehuizen hebben platte daken, blokhuizen rode kappen (keuze nog open); doorsluipjes kruisen elkaar soms; oude parkblokken en laanbomen houden nog geen rekening met wegen; water- en verkeerslichtgeluiden nog niet.
+- Web: eerste klap op een gebouw geeft een korte hapering (omzetten naar stukken); mensen ontwijken brokstukken niet en het loopnetwerk kent de gaten niet; instortingen worden niet bewaard; jagers maken soms nog sprongetjes van 3–7 m.
+- Web (ouder): modulehuizen hebben platte daken, blokhuizen rode kappen (keuze nog open); doorsluipjes kruisen elkaar soms; oude parkblokken en laanbomen houden nog geen rekening met wegen; water- en verkeerslichtgeluiden nog niet.
 - Alles is getest in een headless browser (playwright, swiftshader); niets is op een echte telefoon nagekeken.
 
 ## Bestanden in de webversie
 `08j-generator.js` generator · `08c-modules-v2.js` modules, wenteltrap, offSpot · `08e-modules-bibliotheek.js` modulebibliotheek, `stairwell` ·
-`11-0-lowpoly-voertuigen.js` carrosserieën · `11-autos.js` rijgedrag, roekeloos, achteruit · `13-camera-modus-geluid.js` geluid · `15f-geluid-haken.js` haken ·
-`test/visueel/{generator,voertuigen,roekeloos,achteruit,geluid}.js` tests.
+`11-0-lowpoly-voertuigen.js` carrosserieën · `11-autos.js` rijgedrag, chaos, schade, rejoin, bloed · `11c-instorten.js` instorten · `11e-spoor.js` spoor en treinen · `08k-oud-omzetten.js` oude blokken ·
+`10-mensen.js` / `10b-stadspraat.js` paniek · `12-bouwacties-schoonheid.js` score · `13-camera-modus-geluid.js` geluid · `15f-geluid-haken.js` haken ·
+`test/visueel/{generator,voertuigen,roekeloos,achteruit,geluid,instorten,zien,brand2,rejoin,slip,berg,cam,camklik,chaos2}.js` tests.

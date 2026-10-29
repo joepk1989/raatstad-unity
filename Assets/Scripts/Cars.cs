@@ -8,24 +8,13 @@ public class Cars : MonoBehaviour
     readonly List<Car> list = new List<Car>();
     public int Count => list.Count;
     float spawnT;
-    static readonly Color[] Paint = { new Color(0.8f, 0.2f, 0.2f), new Color(0.2f, 0.4f, 0.75f), new Color(0.9f, 0.85f, 0.3f), new Color(0.9f, 0.9f, 0.92f), new Color(0.2f, 0.2f, 0.22f), new Color(0.25f, 0.6f, 0.4f) };
 
     Car Spawn(RoadPath p)
     {
         var c = new Car { path = p, s = Random.value * Nav.Length(p), dir = Random.value < 0.5f ? 1 : -1, speed = 6f + Random.value * 4f };
         var root = new GameObject("Auto").transform; root.SetParent(transform, false); c.root = root;
-        int k = Random.Range(0, Paint.Length);
-        Box(root, new Vector3(0, 0.55f, 0), new Vector3(1.8f, 0.6f, 4.2f), Mats.Get("auto" + k, Paint[k]));
-        Box(root, new Vector3(0, 1.1f, -0.2f), new Vector3(1.5f, 0.5f, 2.2f), Mats.Get("autoglas", new Color(0.18f, 0.25f, 0.32f)));
-        Box(root, new Vector3(0, 0.25f, 1.3f), new Vector3(1.9f, 0.3f, 0.5f), Mats.Get("autowiel", new Color(0.1f, 0.1f, 0.1f)));
-        Box(root, new Vector3(0, 0.25f, -1.3f), new Vector3(1.9f, 0.3f, 0.5f), Mats.Get("autowiel", new Color(0.1f, 0.1f, 0.1f)));
+        LowPolyCar.Build(root);   // een van de zeven low-poly modellen van de webversie
         Place(c, 0f); return c;
-    }
-
-    static void Box(Transform parent, Vector3 pos, Vector3 size, Material m)
-    {
-        var go = GameObject.CreatePrimitive(PrimitiveType.Cube); Object.Destroy(go.GetComponent<Collider>());
-        go.transform.SetParent(parent, false); go.transform.localPosition = pos; go.transform.localScale = size; go.GetComponent<MeshRenderer>().sharedMaterial = m;
     }
 
     void Place(Car c, float dt)

@@ -17,7 +17,6 @@ public class PlanetLife : MonoBehaviour
     public static void ResetStatics() { hum = null; PeopleOn = true; CarsOn = true; }
     float roadsT, spawnT, idleT = 4f;
     PlanetWalker walker;
-    static readonly Color[] Paint = { new Color(0.8f, 0.2f, 0.2f), new Color(0.2f, 0.4f, 0.75f), new Color(0.9f, 0.85f, 0.3f), new Color(0.9f, 0.9f, 0.92f), new Color(0.2f, 0.2f, 0.22f), new Color(0.25f, 0.6f, 0.4f) };
 
     void Awake() { I = this; if (GetComponent<Traffic>() == null) gameObject.AddComponent<Traffic>(); }
 
@@ -77,11 +76,7 @@ public class PlanetLife : MonoBehaviour
         var c = new Car { b = roads[Random.Range(0, roads.Count)], speed = 7f + Random.value * 4f, s = Random.value };
         c.a = PrevRoad(c.b); c.c = NextRoad(c.b, c.a); c.n = NextRoad(c.c, c.b); c.v = c.speed;
         var root = new GameObject("Auto").transform; root.SetParent(transform, false); c.root = root; root.gameObject.layer = Layers.Mens;
-        int k = Random.Range(0, Paint.Length);
-        Box(root, new Vector3(0, 0.55f, 0), new Vector3(1.8f, 0.6f, 4.2f), Mats.Get("auto" + k, Paint[k]));
-        Box(root, new Vector3(0, 1.1f, -0.2f), new Vector3(1.5f, 0.5f, 2.2f), Mats.Get("autoglas", new Color(0.18f, 0.25f, 0.32f)));
-        Box(root, new Vector3(0, 0.25f, 1.3f), new Vector3(1.9f, 0.3f, 0.5f), Mats.Get("autowiel", new Color(0.1f, 0.1f, 0.1f)));
-        Box(root, new Vector3(0, 0.25f, -1.3f), new Vector3(1.9f, 0.3f, 0.5f), Mats.Get("autowiel", new Color(0.1f, 0.1f, 0.1f)));
+        LowPolyCar.Build(root);   // een van de zeven low-poly modellen van de webversie
         if (hum == null) hum = MakeHum();
         c.audio = root.gameObject.AddComponent<AudioSource>(); c.audio.clip = hum; c.audio.loop = true; c.audio.spatialBlend = 1f; c.audio.rolloffMode = AudioRolloffMode.Linear; c.audio.minDistance = 4f; c.audio.maxDistance = 70f; c.audio.volume = 0.35f; c.audio.pitch = 0.9f + c.speed / 25f; c.audio.Play();
         PlaceCar(c, 0f); return c;
@@ -99,12 +94,6 @@ public class PlanetLife : MonoBehaviour
             d[i] = lp * 0.8f + nz * 0.25f;
         }
         var clip = AudioClip.Create("zoem", n, 1, sr, false); clip.SetData(d, 0); return clip;
-    }
-
-    static void Box(Transform parent, Vector3 pos, Vector3 size, Material m)
-    {
-        var go = GameObject.CreatePrimitive(PrimitiveType.Cube); Destroy(go.GetComponent<Collider>());
-        go.transform.SetParent(parent, false); go.transform.localPosition = pos; go.transform.localScale = size; go.GetComponent<MeshRenderer>().sharedMaterial = m;
     }
 
     // Positie op de boog door vak b: een kwadratische Bézier van het midden van rand a-b, via het hart van b, naar het midden van rand b-c.
