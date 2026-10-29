@@ -963,7 +963,8 @@ public class PlanetBuilder : MonoBehaviour
         if (Ui.CardButton(new Rect(x + half + 8f, y + 56f, half, 48f), "Geluid", Babble.Muted ? "uit" : "aan", !Babble.Muted, Babble.Muted ? "stil" : "geluid")) ToggleSound();
         if (Ui.CardButton(new Rect(x, y + 112f, half, 48f), "Bediening", "Alle toetsen op een rij (?)", false, "boek")) { helpOpen = true; menuOpen = false; }
         if (Ui.CardButton(new Rect(x + half + 8f, y + 112f, half, 48f), "Welkom", "Het beginscherm", false, "zon")) { welcome = true; menuOpen = false; }
-        y += 3 * 56f + 4f;
+        if (Ui.CardButton(new Rect(x, y + 168f, half, 48f), "Totale chaos", PlanetLife.Chaos ? "racers, ontwijkers en jagers" : "uit: netjes verkeer", PlanetLife.Chaos, "auto")) { PlanetLife.Chaos = !PlanetLife.Chaos; Say(PlanetLife.Chaos ? "Totale chaos: racers, ontwijkers en jagers op de weg" : "Netjes verkeer"); }
+        y += 4 * 56f + 4f;
         Ui.Label(new Rect(x, y, iw, 16f), "Alles is op ware grootte: een vak is 15,6 m breed, een verdieping 3 m, de planeet 3,8 km rond.", Ui.T.Dim, null, null, 11);
         if (Ui.DimClick()) menuOpen = false;
     }

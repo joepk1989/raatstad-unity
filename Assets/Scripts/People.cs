@@ -64,7 +64,7 @@ public class Person
     public bool paused; public float pauseT, chatT, talkT, greetCool, socT, waveT, yaw;
     public Person partner; public Vector2 lookAt; public bool hasLook;
     public AudioSource audio;
-    public int cellA = -1, cellB = -1, prevCell = -1; public float ct;   // op de planeet: van vak A naar vak B
+    public int cellA = -1, cellB = -1, prevCell = -1; public float ct, downT;   // op de planeet: van vak A naar vak B; downT: omvergereden, even liggen
     public Vector3 Head => root.position + root.up * (1.95f * scale);
 }
 

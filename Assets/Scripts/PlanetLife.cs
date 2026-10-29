@@ -4,17 +4,24 @@ using UnityEngine;
 // Leven op de planeet: mensen lopen over de stoepen van wegvak naar wegvak (rechts houden), groeten elkaar,
 // doen een praatje (met brabbeltaal en spreekballon) en groeten de speler. Auto's rijden over het asfalt.
 // Alles staat recht op de bol: "omhoog" is de richting vanuit het middelpunt.
-public class PlanetLife : MonoBehaviour
+public partial class PlanetLife : MonoBehaviour
 {
     public static PlanetLife I;
     public readonly List<Person> People = new List<Person>();
-    class Car { public Transform root; public int a, b, c, n; public float s, speed, v; public AudioSource audio; public Vector3 fwd; }   // rijdt over een boog: rand(a,b) → hart b → rand(b,c)
+    class Car   // rijdt over een boog: rand(a,b) → hart b → rand(b,c); los daarvan (free) glijdt hij vrij over de bol (zie PlanetLife.Chaos)
+    {
+        public Transform root; public int a, b, c, n; public float s, speed, v; public AudioSource audio; public Vector3 fwd; public string type;
+        public int persona; public float lat, latT;   // persona 0 netjes, 1 racer, 2 ontwijker, 3 jager; lat: zijwaarts naast de rijlijn (negatief = links)
+        public float ovT, dodgeT, huntT, huntRest, waitT, backT, aroundT, aroundAll, oppWait, ghostT, stillT, freeT, blendT, dmgCool, burnT = -1f, beepT, fxAcc, hp = 100f, late = 1f;
+        public bool free, air, blocked, atLight, dead; public Vector3 vel, tumbleAxis, fromPos; public float vy, w, fric, tumbleW; public Quaternion tumble = Quaternion.identity, fromRot;
+        public Car ovOther, stuckCar; public Transform prey;
+    }
     readonly List<Car> cars = new List<Car>();
     public int CarCount => cars.Count;
     readonly List<int> roads = new List<int>(), walks = new List<int>();
     static AudioClip hum;
     public static bool PeopleOn = true, CarsOn = true;   // aan/uit in het tijdpaneel en het menu
-    public static void ResetStatics() { hum = null; PeopleOn = true; CarsOn = true; }
+    public static void ResetStatics() { hum = null; PeopleOn = true; CarsOn = true; Chaos = false; boomClip = hornClip = beepClip = null; ico = null; }
     float roadsT, spawnT, idleT = 4f;
     PlanetWalker walker;
 
@@ -76,7 +83,8 @@ public class PlanetLife : MonoBehaviour
         var c = new Car { b = roads[Random.Range(0, roads.Count)], speed = 7f + Random.value * 4f, s = Random.value };
         c.a = PrevRoad(c.b); c.c = NextRoad(c.b, c.a); c.n = NextRoad(c.c, c.b); c.v = c.speed;
         var root = new GameObject("Auto").transform; root.SetParent(transform, false); c.root = root; root.gameObject.layer = Layers.Mens;
-        LowPolyCar.Build(root);   // een van de zeven low-poly modellen van de webversie
+        c.type = LowPolyCar.Build(root);   // een van de zeven low-poly modellen van de webversie
+        GivePersona(c);
         if (hum == null) hum = MakeHum();
         c.audio = root.gameObject.AddComponent<AudioSource>(); c.audio.clip = hum; c.audio.loop = true; c.audio.spatialBlend = 1f; c.audio.rolloffMode = AudioRolloffMode.Linear; c.audio.minDistance = 4f; c.audio.maxDistance = 70f; c.audio.volume = 0.35f; c.audio.pitch = 0.9f + c.speed / 25f; c.audio.Play();
         PlaceCar(c, 0f); return c;
@@ -132,37 +140,15 @@ public class PlanetLife : MonoBehaviour
 
     void PlaceCar(Car c, float dt)
     {
-        Arc(c.a, c.b, c.c, c.s, Mathf.Lerp(Lane(c.a, c.b), Lane(c.b, c.c), c.s), 0.10f, out Vector3 pos, out Vector3 fwd, out Vector3 up);
+        Arc(c.a, c.b, c.c, c.s, Mathf.Lerp(Lane(c.a, c.b), Lane(c.b, c.c), c.s) + c.lat, 0.10f, out Vector3 pos, out Vector3 fwd, out Vector3 up);
         float hs = PlanetCity.SurfaceH(c.b, pos), ha = PlanetCity.SurfaceH(c.b, pos + fwd * 1.5f);   // op het hellende asfalt, met de neus mee omhoog of omlaag
         pos += up * hs; fwd = (fwd + up * ((ha - hs) / 1.5f)).normalized;
         c.root.position = pos; c.fwd = fwd; Quaternion target = Geo.Look(fwd, up);
         c.root.rotation = dt <= 0f ? target : Quaternion.Slerp(c.root.rotation, target, Mathf.Min(1f, dt * 10f));
-    }
-
-    // Snelheid: afremmen voor een bocht en voor een auto vlak vooruit; weer optrekken op een recht stuk
-    void DriveCar(Car c, float dt)
-    {
-        float want = c.speed * Mathf.Lerp(1f, 0.45f, Mathf.Max(Bend(c.a, c.b, c.c) * (c.s < 0.6f ? 1f : 0.3f), c.s > 0.6f ? Bend(c.b, c.c, c.n) : 0f));
-        foreach (var o in cars)
+        if (c.blendT > 0f)   // na het terugvinden: van de vrije stand rustig naar de rijlijn
         {
-            if (o == c) continue; Vector3 d = o.root.position - c.root.position; float ahead = Vector3.Dot(d, c.fwd);
-            if (ahead < 0.5f || ahead > 11f) continue; float lat = (d - c.fwd * ahead).magnitude; if (lat > 2.2f) continue;
-            want = Mathf.Min(want, Mathf.Max(0f, (ahead - 4.5f) * 1.2f));
+            float k = Mathf.SmoothStep(0f, 1f, 1f - c.blendT / 1.2f); c.root.position = Vector3.Lerp(c.fromPos, pos, k); c.root.rotation = Quaternion.Slerp(c.fromRot, target, k); c.blendT -= dt;
         }
-        float len = Mathf.Max(1f, ArcLen(c.a, c.b, c.c));
-        if (c.c != c.b && Traffic.IsJunction(c.c))   // verkeerslicht aan het eind van deze boog: remmen voor rood, en voor geel als dat nog kan
-        {
-            var ts = Traffic.State(c.c, c.b);
-            if (ts != Traffic.S.Groen)
-            {
-                float d = Mathf.Max(0f, (1f - c.s) * len - 1.2f);
-                if (ts == Traffic.S.Rood || d > c.v * c.v / 10f) want = Mathf.Min(want, Mathf.Sqrt(2f * 4f * d));
-            }
-        }
-        c.v = Mathf.MoveTowards(c.v, want, (want > c.v ? 4f : 9f) * dt);
-        c.s += c.v * dt / len;
-        while (c.s >= 1f) { c.s -= 1f; c.a = c.b; c.b = c.c; c.c = PlanetCity.IsRoad(c.n) ? c.n : NextRoad(c.b, c.a); c.n = NextRoad(c.c, c.b); }
-        if (c.audio != null) c.audio.pitch = 0.85f + c.v / 22f;
     }
 
     // een stap langs de boog van a naar b; aan het eind het volgende vak kiezen
@@ -196,6 +182,7 @@ public class PlanetLife : MonoBehaviour
             var a = People[i];
             if (a.greetCool > 0) a.greetCool -= dt; if (a.waveT > 0) a.waveT -= dt;
             if (!PlanetCity.IsWalk(a.cellA)) { Destroy(a.root.gameObject); People.RemoveAt(i); continue; }   // de weg is weg
+            if (a.downT > 0f) { a.downT -= dt; PlacePerson(a, 0f); a.root.rotation = Quaternion.AngleAxis(-88f, a.root.right) * a.root.rotation; continue; }   // omvergereden: even liggen
             if (a.paused)
             {
                 a.pauseT -= dt; if (a.pauseT <= 0f) { a.paused = false; a.partner = null; a.chatT = 0f; }
@@ -210,14 +197,23 @@ public class PlanetLife : MonoBehaviour
             global::People.Animate(a, dt, a.cellA != a.cellB); PlacePerson(a, dt);
             a.socT -= dt; if (a.socT <= 0f) { a.socT = 0.4f; Social(a); }
         }
+        if (Chaos != chaosWas) { chaosWas = Chaos; foreach (var c in cars) GivePersona(c); }
+        MakeChaosClips();
         for (int i = cars.Count - 1; i >= 0; i--)
         {
             var c = cars[i];
-            if (!PlanetCity.IsRoad(c.b) || (c.c == c.b && c.s > 0.5f)) { Destroy(c.root.gameObject); cars.RemoveAt(i); continue; }   // weg weg, of doodlopend eenrichtingsstuk
-            if (!PlanetCity.IsRoad(c.a)) c.a = c.b; if (!PlanetCity.IsRoad(c.c)) { c.c = NextRoad(c.b, c.a); c.n = NextRoad(c.c, c.b); }
-            DriveCar(c, dt);
-            PlaceCar(c, dt); if (c.audio != null) c.audio.volume = Ambience.Muted ? 0f : 0.35f;
+            if (c.dead || (!c.free && (!PlanetCity.IsRoad(c.b) || (c.c == c.b && c.s > 0.5f)))) { Destroy(c.root.gameObject); cars.RemoveAt(i); continue; }   // ontploft, weg weg, of doodlopend eenrichtingsstuk
+            if (c.free) UpdateFree(c, dt);
+            else
+            {
+                if (!PlanetCity.IsRoad(c.a)) c.a = c.b; if (!PlanetCity.IsRoad(c.c)) { c.c = NextRoad(c.b, c.a); c.n = NextRoad(c.c, c.b); }
+                DriveCar(c, dt);
+                if (!c.free) PlaceCar(c, dt);
+            }
+            CarFx(c, dt); HitPeople(c);
+            if (c.audio != null) c.audio.volume = Ambience.Muted ? 0f : 0.35f;
         }
+        if (Chaos) Collide();
 
         // af en toe een opmerking van iemand dichtbij de camera
         idleT -= dt;
