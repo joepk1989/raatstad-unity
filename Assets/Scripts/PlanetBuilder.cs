@@ -440,7 +440,7 @@ public class PlanetBuilder : MonoBehaviour
             if (lv != 0 && k + 1 < cells.Count)   // de strook van hart tot hart, de zijkanten tot op het maaiveld van het vak
             {
                 int b = cells[k + 1]; Vector3 bd = Planet.Cells[b].dir, along = (bd - ad - ad * Vector3.Dot(bd - ad, ad)).normalized, ax = Vector3.Cross(ad, along).normalized, bx = Vector3.Cross(bd, along).normalized;
-                float tb = PlanetCity.LevelTarget(b, lv), gb = PlanetCity.G(b), wa = hw + Mathf.Abs(ta - ga), wb = hw + Mathf.Abs(tb - gb), y = 0.12f;   // zijkanten onder 45°
+                float tb = PlanetCity.LevelTarget(b, lv), gb = PlanetCity.G(b), wa = hw + Mathf.Abs(ta - ga) / PlanetCity.FieldK, wb = hw + Mathf.Abs(tb - gb) / PlanetCity.FieldK, y = 0.12f;   // zijkanten onder de hoek van het schuifje Talud
                 m.Quad(P(ad, ax, -hw, ta + y), P(ad, ax, hw, ta + y), P(bd, bx, hw, tb + y), P(bd, bx, -hw, tb + y), ad);   // bodem of kruin
                 m.Quad(P(ad, ax, -hw, ta + y), P(ad, ax, hw, ta + y), P(bd, bx, hw, tb + y), P(bd, bx, -hw, tb + y), -ad);
                 for (int sg = -1; sg <= 1; sg += 2)   // de zijkanten onder 45°
@@ -685,6 +685,7 @@ public class PlanetBuilder : MonoBehaviour
         if (catOpen && !walking) Catalogue(W, H);
         if (TerrTool && hasHover && !walking && !Modal) TerrLabel();
         if (LevelTool && PlanetCity.DragLevel != 0 && !walking && !catOpen) LevelBadge(W, H);
+        if (LevelTool && !walking && !catOpen) SlopeSlider(W, H);
         if (Time.time < msgT) Ui.Toast(msg, Mathf.Clamp01((msgT - Time.time) / 0.5f), catOpen ? CatBottom + CatHeight(W) + 12f : walking ? G + 52f : 150f);
         if (scoreOpen) ScorePanel(W, H);
         if (menuOpen) Menu(W, H);
@@ -821,6 +822,17 @@ public class PlanetBuilder : MonoBehaviour
         float w = Ui.Width(t, Ui.T.Bold) + 28f; var r = new Rect((W - w) * 0.5f, H - 12f - (SlotH + 10f) - 6f - 32f - 8f - 42f - 8f - 30f, w, 30f);
         Ui.Panel(r, true, 15f); Ui.Label(r, t, Ui.T.Bold, Ui.Signal, TextAnchor.MiddleCenter);
     }
+    // naast het niveau: de hoek van de kant langs een weg of pad op een niveau (20°–70°), om te kijken hoe het terrein afloopt
+    void SlopeSlider(float W, float H)
+    {
+        if (slopeDeg < 0f) slopeDeg = Mathf.Round(Mathf.Atan(PlanetCity.FieldK) * Mathf.Rad2Deg); string t = "Talud " + Mathf.RoundToInt(slopeDeg) + "°";
+        var r = new Rect(W * 0.5f + 170f, H - 12f - (SlotH + 10f) - 6f - 32f - 8f - 42f - 8f - 30f, 250f, 30f);
+        Ui.Panel(r, true, 15f); Ui.Label(new Rect(r.x + 14f, r.y, 80f, r.height), t, Ui.T.Bold, Ui.Signal, TextAnchor.MiddleLeft);
+        slopeDeg = 20f + Mathf.Round(Ui.Slider(new Rect(r.x + 96f, r.y + 6f, r.width - 112f, r.height - 12f), (slopeDeg - 20f) / 50f) * 50f);
+        float k = Mathf.Tan(slopeDeg * Mathf.Deg2Rad);   // het terrein volgt hooguit 8 keer per seconde, het schuifje meteen
+        if (Mathf.Abs(k - PlanetCity.FieldK) > 1e-4f && Time.unscaledTime > slopeT) { slopeT = Time.unscaledTime + 0.12f; PlanetCity.SetFieldK(k); }
+    }
+    float slopeT, slopeDeg = -1f;
     void TerrLabel()
     {
         string t = (Mathf.Round(PlanetCity.G(hover) * 2f) / 2f).ToString("0.0") + " m" + (PlanetCity.Plateau(hover) ? " · bebouwd, blijft liggen" : sculpting ? "" : " · " + TerrHints[terrMode]);

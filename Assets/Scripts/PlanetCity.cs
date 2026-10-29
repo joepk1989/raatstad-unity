@@ -161,7 +161,7 @@ public static partial class PlanetCity
             Lin T = new Lin { a = Vector3.Dot(o3 - q.a, across), x = Vector3.Dot(c.east, across), y = Vector3.Dot(c.north, across) };
             Lin S = new Lin { a = Vector3.Dot(o3 - q.a, along), x = Vector3.Dot(c.east, along), y = Vector3.Dot(c.north, along) };
             if (Mathf.Abs(T.a) > q.hw + FieldReach + c.radius + 1f || S.a < -c.radius - 1f || S.a > len + c.radius + 1f) continue;
-            float hr = Mathf.Lerp(q.ha, q.hb, Mathf.Clamp01(S.a / len)), dz = Mathf.Max(0.3f, Mathf.Abs(hr - hc0));   // de voet van de kant: waar hij het terrein raakt
+            float hr = Mathf.Lerp(q.ha, q.hb, Mathf.Clamp01(S.a / len)), dz = Mathf.Max(0.3f, Mathf.Abs(hr - hc0)) / FieldK;   // de voet van de kant: waar hij het terrein raakt
             foreach (var f in new[] { T - Lin.C(q.hw), T + Lin.C(q.hw), T - Lin.C(q.hw + dz), T + Lin.C(q.hw + dz), S, S - Lin.C(len), S + Lin.C(dz), S - Lin.C(len + dz) })
             {
                 var next = new List<List<Vector2>>(); foreach (var pl in polys) if (!SplitBy(pl, f, next)) next.Add(pl); polys = next;
@@ -170,7 +170,7 @@ public static partial class PlanetCity
         foreach (var q in caps)
         {
             if ((o3 - q.c).magnitude > q.hw * 1.2f + FieldReach + c.radius + 1f) continue;
-            float dz = Mathf.Max(0.3f, Mathf.Abs(q.h - hc0));
+            float dz = Mathf.Max(0.3f, Mathf.Abs(q.h - hc0)) / FieldK;
             foreach (var n in q.n)
             {
                 Lin N = new Lin { a = Vector3.Dot(o3 - q.c, n), x = Vector3.Dot(c.east, n), y = Vector3.Dot(c.north, n) };
@@ -399,7 +399,16 @@ public static partial class PlanetCity
         caps.Add(new Cap { c = cell.dir * Planet.R, dir = cell.dir, n = n, h = h, hw = hw });
     }
     static float CapDist(Cap q, Vector3 w) { Vector3 v = w - q.c; float d = float.MinValue; foreach (var n in q.n) d = Mathf.Max(d, Vector3.Dot(v, n)); return d; }   // zeshoekige afstand tot het hart
-    const float FieldReach = 14f;   // tot zover naast de weg kan de grond nog omhoog of omlaag lopen (45°: twee niveaus plus de marge)
+    // de helling van de kant langs een weg op een niveau (hoogte per meter opzij; 1 = 45°), in te stellen met het schuifje Talud
+    public static float FieldK = 1f;
+    static float FieldReach => Mathf.Min(14f / FieldK, 40f);   // tot zover naast de weg kan de grond nog omhoog of omlaag lopen (45°: twee niveaus plus de marge)
+    public static void SetFieldK(float k)
+    {
+        if (Mathf.Abs(k - FieldK) < 1e-4f) return; FieldK = k;
+        var seen = new HashSet<int>(); var ring = new List<int>(levelled);   // de vakken binnen drie stappen van een weg op een niveau opnieuw
+        for (int r = 0; r < 3 && ring.Count > 0; r++) { var next = new List<int>(); foreach (int i in ring) if (seen.Add(i)) { Touch(i); foreach (int j in Planet.Cells[i].nb) next.Add(j); } ring = next; }
+        Rebuild();
+    }
     static bool NearSeg(Vector3 dir)
     {
         Vector3 w = dir * Planet.R;
@@ -420,13 +429,13 @@ public static partial class PlanetCity
                 Vector3 ab = q.b - q.a; float l2 = ab.sqrMagnitude; if (l2 < 1e-4f) continue; float len = Mathf.Sqrt(l2), u = Vector3.Dot(w - q.a, ab) / l2;
                 Vector3 dv = w - (q.a + ab * u); dv -= dir * Vector3.Dot(dv, dir); float lat = dv.magnitude, over = Mathf.Max(0f, Mathf.Max(-u, u - 1f) * len);   // naast het stuk, en voorbij een eind
                 if (lat > q.hw + FieldReach || over > FieldReach || (u < 0f && q.capA) || (u > 1f && q.capB)) continue;   // voorbij een kop: die doet het
-                float hr = Mathf.Lerp(q.ha, q.hb, Mathf.Clamp01(u)), rise = Mathf.Max(Mathf.Max(0f, lat - q.hw), over) * SideK;   // de kant, of de kop (recht, onder 45°)
+                float hr = Mathf.Lerp(q.ha, q.hb, Mathf.Clamp01(u)), rise = Mathf.Max(Mathf.Max(0f, lat - q.hw), over) * FieldK;   // de kant, of de kop
                 if (pass == 0 && hr > base_ + 0.01f) { float v = hr - rise; if (v > h) { h = v; slope = rise > 0f; } }        // talud
                 else if (pass == 1 && hr < base_ - 0.01f) { float v = hr + rise; if (v < h) { h = v; slope = rise > 0f; } }   // uitgraving
             }
             foreach (var q in caps)
             {
-                float rise = Mathf.Max(0f, CapDist(q, w) - q.hw) * SideK; if (rise > FieldReach) continue;
+                float rise = Mathf.Max(0f, CapDist(q, w) - q.hw) * FieldK; if (rise > FieldReach * FieldK) continue;
                 if (pass == 0 && q.h > base_ + 0.01f) { float v = q.h - rise; if (v > h) { h = v; slope = rise > 0f; } }
                 else if (pass == 1 && q.h < base_ - 0.01f) { float v = q.h + rise; if (v < h) { h = v; slope = rise > 0f; } }
             }
