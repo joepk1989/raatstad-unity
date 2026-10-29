@@ -108,7 +108,12 @@ public class PlanetBuilder : MonoBehaviour
         Say("Naar de andere kant van de bol: " + Mathf.Abs(lat).ToString("0") + "° " + (lat >= 0f ? "N" : "Z") + " " + Mathf.Abs(lon).ToString("0") + "° " + (lon >= 0f ? "O" : "W") + " (K: terug)");
     }
     void GoPole() { bool north = Vector3.Dot(focus, Planet.Cells[Planet.North].dir) < 0.999f; focus = Planet.Cells[north ? Planet.North : Planet.South].dir; Say(north ? "Naar de noordpool (N, nog een keer: zuidpool)" : "Naar de zuidpool (N)"); }
-    void Sample() { Push(); PlanetCity.Sample(Planet.Nearest(focus)); Changed(); Say("Voorbeeldstad geplaatst (Ctrl+Z haalt hem weg)"); }
+    void Sample()
+    {
+        Push(); string why = PlanetCity.Sample(Planet.Nearest(focus));
+        if (why != null) { undo.RemoveAt(undo.Count - 1); Say(why); return; }   // geen ruimte: niets veranderd
+        Changed(); Say("Voorbeeldstad geplaatst (Ctrl+Z haalt hem weg)");
+    }
     // de startstad op de dichtstbijzijnde vrije startplek (vlag), en de camera erheen
     void StartTown()
     {

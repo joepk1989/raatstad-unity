@@ -37,26 +37,29 @@ public class Ambience : MonoBehaviour
         var cam = Camera.main; if (cam == null || !Planet.Ready) return;
         float night = DayNight.Night;
         // wat staat er in de buurt van de camera? (vakken binnen ~80 m)
-        int c0 = Planet.Nearest(cam.transform.position); int green = 0, roads = 0;
+        int c0 = Planet.Nearest(cam.transform.position); int green = 0, built = 0;
         foreach (int j in Planet.Cells[c0].nb)
         {
-            Count(j, ref green, ref roads);
-            foreach (int k in Planet.Cells[j].nb) Count(k, ref green, ref roads);
+            Count(j, ref green, ref built);
+            foreach (int k in Planet.Cells[j].nb) Count(k, ref green, ref built);
         }
-        Count(c0, ref green, ref roads);
+        Count(c0, ref green, ref built);
         float height = cam.transform.position.magnitude - Planet.R;
         float far = Mathf.Clamp01(1f - (height - 40f) / 200f);   // hoog boven de stad hoor je weinig
         float up = Mathf.Clamp01(Vector3.Dot(cam.transform.forward, cam.transform.position.normalized));   // omhoog kijken = wind
         float vol = Muted ? 0f : 1f;
-        if (birds != null) birds.volume = vol * (0.15f + Mathf.Min(1f, green / 6f) * 0.5f) * far * (1f - 0.92f * night);
-        if (wind != null) wind.volume = vol * (0.08f + 0.25f * up + 0.3f * Mathf.Clamp01(height / 200f));
-        if (city != null) city.volume = vol * Mathf.Min(1f, roads / 8f) * 0.18f * far;
+        // omgevingsgeluid alleen waar iets staat: vogels bij bomen en parken, stadsruis bij gebouwen; op een leeg veld alleen wind
+        if (birds != null) birds.volume = vol * Mathf.Min(1f, green / 6f) * 0.65f * far * (1f - 0.92f * night);
+        if (wind != null) wind.volume = vol * (0.04f + 0.12f * up + 0.15f * Mathf.Clamp01(height / 200f));   // de ruis van de wind: half zo hard als eerst
+        if (city != null) city.volume = vol * Mathf.Min(1f, built / 8f) * 0.09f * far;   // stadsruis bij gebouwen, half zo hard als eerst
     }
 
-    static void Count(int i, ref int green, ref int roads)
+    static void Count(int i, ref int green, ref int built)
     {
         if (!PlanetCity.Cells.TryGetValue(i, out var l) || l.Count == 0) return;
-        if (l[0] == "weg") roads++; else if (l[0] == "park" || l[0] == "meer") green++;
+        string b = l[0];
+        if (b == "park") green++;   // bomen
+        else if (b != "weg" && b != "pad" && b != "wegdeel" && b != "meer" && b != "water" && b != "kuil") built++;   // een gebouw
     }
 }
 
