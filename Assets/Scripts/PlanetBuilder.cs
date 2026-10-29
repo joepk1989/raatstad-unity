@@ -414,8 +414,8 @@ public class PlanetBuilder : MonoBehaviour
         var t = ghostF.transform; t.position = origin + origin.normalized * (lvG * PlanetCity.StepH); t.localScale = Vector3.one * scale;   // net iets groter, zodat het niet door het echte blok flikkert
         ghostR.enabled = mesh != null;
     }
-    // Voorbeeld tijdens het slepen van een weg of pad: de bak (blauw) of het plateau (oranje) als een doorzichtige strook langs de lijn,
-    // met de bodem zo breed als de weg en rechte keermuren, zoals hij komt; en waar de lijn een weg kruist die een niveau
+    // Voorbeeld tijdens het slepen van een weg of pad: de uitgraving (blauw) of het talud (oranje) als een doorzichtige strook langs de
+    // lijn, met de bodem zo breed als de weg en zijkanten onder 45°, zoals hij komt; en waar de lijn een weg kruist die een niveau
     // hoger of lager ligt (ook op niveau 0, over een verdiepte weg), alvast de brug: een dek met twee portalen (amber).
     MeshFilter lvlF, brgF; MeshRenderer lvlR, brgR; string lvlKey;
     void ShowLevelGhost(List<int> cells)
@@ -440,10 +440,10 @@ public class PlanetBuilder : MonoBehaviour
             if (lv != 0 && k + 1 < cells.Count)   // de strook van hart tot hart, de zijkanten tot op het maaiveld van het vak
             {
                 int b = cells[k + 1]; Vector3 bd = Planet.Cells[b].dir, along = (bd - ad - ad * Vector3.Dot(bd - ad, ad)).normalized, ax = Vector3.Cross(ad, along).normalized, bx = Vector3.Cross(bd, along).normalized;
-                float tb = PlanetCity.LevelTarget(b, lv), gb = PlanetCity.G(b), wa = hw, wb = hw, y = 0.12f;   // keermuren: de zijkanten staan recht omhoog
+                float tb = PlanetCity.LevelTarget(b, lv), gb = PlanetCity.G(b), wa = hw + Mathf.Abs(ta - ga), wb = hw + Mathf.Abs(tb - gb), y = 0.12f;   // zijkanten onder 45°
                 m.Quad(P(ad, ax, -hw, ta + y), P(ad, ax, hw, ta + y), P(bd, bx, hw, tb + y), P(bd, bx, -hw, tb + y), ad);   // bodem of kruin
                 m.Quad(P(ad, ax, -hw, ta + y), P(ad, ax, hw, ta + y), P(bd, bx, hw, tb + y), P(bd, bx, -hw, tb + y), -ad);
-                for (int sg = -1; sg <= 1; sg += 2)   // de keermuren
+                for (int sg = -1; sg <= 1; sg += 2)   // de zijkanten onder 45°
                 {
                     Vector3 q0 = P(ad, ax, sg * hw, ta + y), q1 = P(ad, ax, sg * wa, ga + y), q2 = P(bd, bx, sg * wb, gb + y), q3 = P(bd, bx, sg * hw, tb + y);
                     m.Quad(q0, q1, q2, q3, ad); m.Quad(q0, q1, q2, q3, -ad);

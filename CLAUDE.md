@@ -43,7 +43,7 @@ Erbij gekomen op 25 oktober 2026:
 
 Erbij gekomen op 28 oktober 2026:
 - Bediening gelijk aan de webversie: Q/E draaien, WASD/pijltjes schuiven, +/− zoomen, rechts of Shift slepen schuift, middelste knop of Alt slepen draait; P pauze, O weer, N polen, I eenrichting, M menu, ? bediening. Het venster Bediening (`PlanetBuilder.Help`) hoort gelijk te blijven met de code.
-- Wegen en paden op een niveau (`PlanetCity.DragLevel`, Page Up/Down, halve stappen van 2,25 m): een vak op een niveau is een vlak vak op zijn eigen hoogte met keermuren langs de randen (zoals de sokkel van een bebouwd vak); een aanloopvak helt mee met de weg. Een kruising met een weg op een ander niveau wordt vanzelf ongelijkvloers (`SetLevel`); een bestaande weg wordt nooit verzet. Weghalen zet het terrein terug (`preLevel`). Automatische test: `Assets/Scripts/LevelTest.cs` (niet in git) met `niveautest.txt` in persistentDataPath.
+- Wegen en paden op een niveau (`PlanetCity.DragLevel`, Page Up/Down, halve stappen van 2,25 m): het terrein langs zo'n weg komt uit één hoogtefunctie (`PlanetCity.GroundField`, zoals Cities: Skylines 2): onder de weg plus een marge op weghoogte, daarbuiten onder 45° terug naar het terrein; de vakken erlangs worden gesneden op de knikken van die functie (`LineGround`), zodat de kanten strakke vlakken zijn en gedeelde randen kloppen. Een kruising met een weg op een ander niveau wordt vanzelf ongelijkvloers (`SetLevel`); een bestaande weg wordt nooit verzet. Weghalen zet het terrein terug (`preLevel`). Automatische test: `Assets/Scripts/LevelTest.cs` (niet in git) met `niveautest.txt` in persistentDataPath.
 
 Nog te doen:
 1. Modules als JSON met edge-codes (nu nog in code)
