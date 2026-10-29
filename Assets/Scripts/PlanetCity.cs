@@ -85,7 +85,7 @@ public static partial class PlanetCity
         if (h == float.MaxValue) h = Mathf.Min(G(i), Mathf.Min(G(a), G(b)));
         return h;
     }
-    public static float OwnCorner(int i, int k) => FieldBridge(i) ? G(i) : fieldCells.Contains(i) && NearSeg(Planet.Cells[i].corners[k]) ? GroundField(Planet.Cells[i].corners[k], CornerBase(i, k)) : FlatGround(i) ? G(i) : CornerH(i, k);   // zoals het vak zelf getekend wordt
+    public static float OwnCorner(int i, int k) => fieldCells.Contains(i) && NearSeg(Planet.Cells[i].corners[k]) ? GroundField(Planet.Cells[i].corners[k], CornerBase(i, k)) : FlatGround(i) ? G(i) : CornerH(i, k);   // zoals het vak zelf getekend wordt
     public static float MinCornerNoCut(int i) { Topo(); float m = G(i); for (int k = 0; k < Planet.Cells[i].corners.Length; k++) { int a = cnA[i][k], b = cnB[i][k]; if (!carved.Contains(a)) m = Mathf.Min(m, G(a)); if (!carved.Contains(b)) m = Mathf.Min(m, G(b)); } return m; }
     // een vlak plateau op de eigen hoogte (bebouwd), behalve een half wegvak dat in een geul ligt
     static bool FlatGround(int i) => Plateau(i) && !InCut(i) && !(IsHalf(i) && Cells[i].Count == 1 && fieldCells.Contains(i) && NearSeg(Planet.Cells[i].dir));   // een half wegvak langs een weg op een niveau volgt de hoogtefunctie
@@ -189,17 +189,6 @@ public static partial class PlanetCity
                 {
                     var next = new List<List<Vector2>>(); foreach (var pl in polys) if (!SplitBy(pl, f, next)) next.Add(pl); polys = next;
                 }
-            }
-        }
-        foreach (var q in decks)
-        {
-            if ((o3 - q.c).magnitude > FlatL + q.open + 40f + c.radius) continue;
-            Vector3 across = Vector3.Cross(q.dir, q.along).normalized; float toe = FlatL + Mathf.Max(0.3f, q.h - q.floor) / AbutK;
-            Lin A = new Lin { a = Vector3.Dot(o3 - q.c, q.along), x = Vector3.Dot(c.east, q.along), y = Vector3.Dot(c.north, q.along) };
-            Lin B = new Lin { a = Vector3.Dot(o3 - q.c, across), x = Vector3.Dot(c.east, across), y = Vector3.Dot(c.north, across) };
-            foreach (var f in new[] { A - Lin.C(FlatL), A + Lin.C(FlatL), A - Lin.C(toe), A + Lin.C(toe), B - Lin.C(q.open), B + Lin.C(q.open), B - Lin.C(q.open + AbutW), B + Lin.C(q.open + AbutW) })
-            {
-                var next = new List<List<Vector2>>(); foreach (var pl in polys) if (!SplitBy(pl, f, next)) next.Add(pl); polys = next;
             }
         }
         System.Func<Vector2, Vector3> Dir = q2 => { float b1 = (q2.x * L2.y - q2.y * L2.x) / det, b2 = (L1.x * q2.y - L1.y * q2.x) / det; return (D0 * (1f - b1 - b2) + D1 * b1 + D2 * b2).normalized; };
@@ -335,17 +324,10 @@ public static partial class PlanetCity
     // de portalen van alle onderdoorgangen (rechte door een wegvak en schuine over een rand)
     static void CollectCuts(List<Cut> o, Dictionary<int, Cut> side)
     {
-        decks.Clear();
         foreach (var x in EdgeCrossings())
         {
             float hw = x.road ? RoadHW : PathHW;
-            if (x.swap ? WalkLevel(x.u) != 0 && WalkLevel(x.v) != 0 : WalkLevel(x.b1) != 0 && WalkLevel(x.b2) != 0)   // de onderste ligt op een niveau: eigen stroken,
-            {                                                                                                                  // en een landhoofd tussen de portalen (grond op de brug)
-                int l1 = x.swap ? x.u : x.b1, l2 = x.swap ? x.v : x.b2, h1 = x.swap ? x.b1 : x.u, h2 = x.swap ? x.b2 : x.v;
-                Vector3 md = (Planet.Cells[l1].dir + Planet.Cells[l2].dir).normalized;
-                decks.Add(new Deck { c = md * Planet.R, dir = md, along = Tan(Planet.Cells[l2].dir - Planet.Cells[l1].dir, md), h = Mathf.Max(G(h1), G(h2)), floor = Mathf.Min(G(l1), G(l2)), open = x.road ? RoadHW : PathHW, cell = Planet.Nearest(md * Planet.R) });
-                continue;
-            }
+            if (x.swap ? WalkLevel(x.u) != 0 && WalkLevel(x.v) != 0 : WalkLevel(x.b1) != 0 && WalkLevel(x.b2) != 0) continue;   // de onderste ligt op een niveau: eigen bak, het betonblok tekent de brug (BridgeBlock)
             if (x.swap)   // de schuine weg u–v gaat onder de weg b1–b2 door: portalen langs de rand, 7,8 m voor en na het midden
             {
                 float deck = Mathf.Max(G(x.b1), G(x.b2)), floor = Mathf.Min(deck - UnderClear, Mathf.Min(G(x.u), G(x.v)));
@@ -367,12 +349,7 @@ public static partial class PlanetCity
         {
             if (!Underpass(kv.Key) || !Low.TryGetValue(kv.Key, out var lo)) continue; int i = kv.Key; var cell = Planet.Cells[i]; Topo();
             bool road = kv.Value == "weg";
-            if (UnderIsLevelled(i, road))   // wat eronderdoor gaat ligt zelf op een niveau: zijn eigen stroken vormen de geul, geen portaalhelling
-            {
-                var ops = Openings(i); if (ops.Count == 0) continue;   // tussen de portalen blijft de grond op de hoogte van de bovenste weg (landhoofd)
-                decks.Add(new Deck { c = cell.dir * Planet.R, dir = cell.dir, along = Tan(ops[0], cell.dir), h = G(i), floor = lo, open = road ? RoadHW : PathHW, cell = i });
-                continue;
-            }
+            if (UnderIsLevelled(i, road)) continue;   // wat eronderdoor gaat ligt zelf op een niveau: eigen bak, het betonblok tekent de brug (BridgeBlock)
             foreach (var od in Openings(i))
             {
                 Vector3 rw = SkewFor(i, od), mdir = (cell.dir * Planet.R + od * FlatL).normalized, out3 = Tan(od, mdir), tt = Vector3.Cross(mdir, out3).normalized;
@@ -438,18 +415,6 @@ public static partial class PlanetCity
     struct Cap { public Vector3 c, dir; public Vector3[] n; public float h, hw; }
     static readonly List<Cap> caps = new List<Cap>();
     static bool HasField => segs.Count > 0 || caps.Count > 0;
-    // het landhoofd van een brug over een weg of pad op een niveau: tussen de portalen (FlatL voor en na het hart, langs de weg
-    // eronder) ligt de grond op de hoogte van de bovenste weg, behalve de opening van de koker; bij de portalen bijna recht omlaag
-    struct Deck { public Vector3 c, dir, along; public float h, floor, open; public int cell; }   // cell: het vak dat de plaat over de koker tekent
-    static readonly List<Deck> decks = new List<Deck>();
-    const float AbutK = 8f, AbutW = 0.6f;   // de wanden bij de portalen en naast de koker: bijna recht (8 op 1), 60 cm breed
-    static float DeckRaise(Deck q, Vector3 w, out bool slope)
-    {
-        Vector3 v = w - q.c, across = Vector3.Cross(q.dir, q.along); float sAl = Mathf.Abs(Vector3.Dot(v, q.along)), lat = Mathf.Abs(Vector3.Dot(v, across));
-        slope = false; if (lat > q.open + 40f || sAl > FlatL + 40f) return float.MinValue;
-        float a = Mathf.Max(0f, sAl - FlatL) * AbutK, b = Mathf.Max(0f, q.open + AbutW - lat) * AbutK; slope = a > 0f || b > 0f;   // bij de portalen bijna recht omlaag: de bak loopt onder de brug door tot het beton
-        return q.h - a - b;   // de opening van de koker blijft vrij (de grond is een hoogteveld: een wand erin zou de koker dichtzetten); de plaat erover tekent BuildGround
-    }
     static void AddCap(int i, float h, float hw)
     {
         var cell = Planet.Cells[i]; var n = new Vector3[cell.nb.Length];
@@ -499,7 +464,6 @@ public static partial class PlanetCity
                 else if (pass == 1 && q.h < base_ - 0.01f) { float v = q.h + rise; if (v < h) { h = v; slope = rise > 0f; } }
             }
         }
-        foreach (var q in decks) { float v = DeckRaise(q, w, out bool sl); if (v > h) { h = v; slope = sl; } }   // landhoofden van bruggen erover
         if (carved.Count > 0 && cuts.Count > 0) h = Mathf.Min(h, Carve(dir));
         return h;
     }
@@ -1310,7 +1274,7 @@ public static partial class PlanetCity
             {
                 var c = Planet.Cells[i]; int m = c.corners.Length; bool pent = m == 5;
                 bool cut = (Cells.TryGetValue(i, out var stack) && stack.Count > 0 && (stack[0] == "meer" || stack[0] == "kuil"))
-                        || (Under.TryGetValue(i, out var und) && (und == "meer" || und == "kuil" || und == "pad" || und == "weg"));   // meer, uitgraving of brug daarover: geen bodem
+                        || (Under.TryGetValue(i, out var und) && (und == "meer" || und == "kuil" || und == "pad" || und == "weg")) && !FieldBridge(i);   // meer, uitgraving of brug daarover: geen bodem
                 float g = G(i), RG = Planet.R + g; bool plat = FlatGround(i);
                 // hoogte van het midden en de hoeken; onder een weg of pad een kom tot de laagste hoek, zodat het maaiveld nooit door de hellende weg steekt
                 var hk = new float[m]; for (int k = 0; k < m; k++) hk[k] = OwnCorner(i, k);
@@ -1353,29 +1317,7 @@ public static partial class PlanetCity
                         Emit(mid, A, B, hc, ha, hb);
                     }
                 }
-                // brugvak boven een weg of pad op een niveau (zoals het model overpass_path): het vak blijft vlak op de hoogte van de
-                // bovenste weg, de koker loopt van portaal tot portaal (de randen van het vak) en langs de randen loopt het beton door
-                // tot op de bodem van de bak ernaast; alleen de opening van de koker blijft vrij
-                bool fieldBridge = FieldBridge(i);
-                if (fieldBridge)
-                {
-                    for (int k = 0; k < m; k++) mb0.Tri(c.dir * RG, c.corners[k] * RG, c.corners[(k + 1) % m] * RG, c.dir);
-                    var ops = Openings(i); float open = (Under[i] == "weg" ? RoadHW : PathHW) + 3.75f;   // binnen de grote zeshoek van het portaal: dat beton dekt het al
-                    for (int k = 0; k < m; k++)
-                    {
-                        Vector3 ca = c.corners[k], cb = c.corners[(k + 1) % m]; float ba = CornerBase(i, k), bb = CornerBase(i, (k + 1) % m); const int N = 24;
-                        for (int t = 0; t < N; t++)
-                        {
-                            Vector3 pa = Vector3.Lerp(ca, cb, t / (float)N).normalized, pb = Vector3.Lerp(ca, cb, (t + 1) / (float)N).normalized, pmid = (pa + pb).normalized;
-                            bool inOpen = false; foreach (var od in ops) { Vector3 al = Tan(od, c.dir), v = (pmid - c.dir) * Planet.R; if (Vector3.Dot(v, al) > 0f && Mathf.Abs(Vector3.Dot(v, Vector3.Cross(c.dir, al))) < open) inOpen = true; }
-                            if (inOpen) continue;   // de opening van de koker
-                            float ha = GroundField(pa, Mathf.Lerp(ba, bb, t / (float)N)), hb2 = GroundField(pb, Mathf.Lerp(ba, bb, (t + 1) / (float)N));
-                            if (ha > g - 0.02f && hb2 > g - 0.02f) continue;
-                            TB("sokkel").Quad(pa * RG, pb * RG, pb * (Planet.R + Mathf.Min(hb2, g) - 0.05f), pa * (Planet.R + Mathf.Min(ha, g) - 0.05f), (pa + pb) * 0.5f - c.dir);
-                        }
-                    }
-                }
-                else if (cut && Underpass(i))   // brugvak: het stuk buiten een portaal is gewoon de geul
+                if (cut && Underpass(i))   // brugvak: het stuk buiten een portaal is gewoon de geul
                 {
                     var loc = new List<Vector2>(c.local);
                     foreach (var od in Openings(i))
@@ -1389,7 +1331,7 @@ public static partial class PlanetCity
                     skewRoad = Vector2.zero;
                 }
                 // sokkel: een plateau boven het maaiveld krijgt stenen wanden tot op het maaiveld ernaast (tussen twee plateaus: een keermuur)
-                if ((plat || cut) && !fieldBridge)
+                if (plat || cut)
                     for (int k = 0; k < m; k++)
                     {
                         int j = edN[i][k]; if (Plateau(j) && G(j) >= g - 0.01f) continue;
@@ -1416,13 +1358,6 @@ public static partial class PlanetCity
                         float ga = CornerH(i, k), gb = CornerH(i, (k + 1) % m); if (g - ga < 0.01f && g - gb < 0.01f) continue;
                         TB("sokkel").Quad(a * RG, b * RG, b * (Planet.R + gb), a * (Planet.R + ga), (a + b) * 0.5f - c.dir);
                     }
-                foreach (var q in decks)
-                {
-                    if (q.cell != i || FieldBridge(i)) continue;
-                    Vector3 ac = Vector3.Cross(q.dir, q.along).normalized; float wl = q.open + AbutW + 0.3f, rr = Planet.R + q.h + 0.02f;
-                    Vector3 P(float sa, float sl) => (q.c + q.along * sa + ac * sl).normalized * rr;
-                    mb0.Quad(P(-FlatL, -wl), P(FlatL, -wl), P(FlatL, wl), P(-FlatL, wl), q.dir);   // de plaat over de koker, op dekhoogte
-                }
                 if (pole) PoleMarker(PM, c, g, i == Planet.North);
                 if (start && !pole)   // startplek (op een pool staat de poolpaal): lichtblauw vak met een witte paal van 30 m en een vlaggetje
                 {
@@ -1842,6 +1777,70 @@ public static partial class PlanetCity
             M(v == 0 ? "steen" : "tunnel").Quad(q0, q1, q2, q3, axis - (q0 + q1 + q2 + q3) * 0.25f);   // naar binnen gekeerd
         }
     }
+    // de hoogte van het maaiveld zoals het getekend wordt (BuildGround) op punt dir: het waaierdriehoekje van het vak daar, met de
+    // hoogtefunctie langs wegen op een niveau
+    static float TerrainAt(Vector3 dir)
+    {
+        int i = Planet.Nearest(dir * Planet.R); var c = Planet.Cells[i]; int m = c.corners.Length;
+        Vector3 v = (dir - c.dir) * Planet.R; Vector2 q = new Vector2(Vector3.Dot(v, c.east), Vector3.Dot(v, c.north));
+        float hc = 0f; for (int k = 0; k < m; k++) hc += CornerBase(i, k); hc = levelled.Contains(i) ? hc / m : G(i);
+        for (int k = 0; k < m; k++)
+        {
+            Vector2 L1 = c.local[k], L2 = c.local[(k + 1) % m]; float det = L1.x * L2.y - L1.y * L2.x; if (Mathf.Abs(det) < 1e-6f) continue;
+            float b1 = (q.x * L2.y - q.y * L2.x) / det, b2 = (L1.x * q.y - L1.y * q.x) / det; if (b1 < -0.02f || b2 < -0.02f || b1 + b2 > 1.02f) continue;
+            if (fieldCells.Contains(i) && !FlatGround(i) && NearSeg(c.dir)) return GroundField(dir, hc * (1f - b1 - b2) + CornerBase(i, k) * b1 + CornerBase(i, (k + 1) % m) * b2);
+            if (FlatGround(i)) return G(i);
+            return hc * (1f - b1 - b2) + OwnCorner(i, k) * b1 + OwnCorner(i, (k + 1) % m) * b2;
+        }
+        return G(i);
+    }
+    // Het betonblok van een brug over een weg of pad op een niveau (model overpass_path): één blok van portaal tot portaal, los van
+    // het terrein (dat is een hoogteveld en kan niet tegelijk grond boven en een koker eronder hebben; de bak loopt gewoon onder de
+    // brug door en verdwijnt in het blok). Doorsnede: de grote zeshoek van het portaal (onder ±(tubeW+3,75) op 2,17 m onder de vloer,
+    // op halve hoogte 30° breder), bovenop vlak op dekhoogte (y = 0) met gras, minstens zo breed als de bak bovenaan (trench), zodat
+    // er naast de weg geen gat in het dek valt. De koker zelf (TubeSeg) en de portalen (Portal) tekenen de binnenkant en de randen.
+    static void BridgeBlock(System.Func<string, MeshBuilder> M, Frame flat, Vector2 p0, Vector2 p1, float fl, float top, float trench)
+    {
+        Vector2 dd = (p1 - p0).normalized, tg = new Vector2(-dd.y, dd.x); float k = SkewK(dd, tg);
+        float yB = fl - 2.17f, yO = top + 2.17f, co = (yO - yB) * 0.5f * 0.577f, ym = (yB + yO) * 0.5f, wb = tubeW + 3.75f, wm = wb + co;
+        float wt = Mathf.Max(wm - co * (0f - ym) / (yO - ym), trench), yt = -0.04f;   // tot de rand van de bak (daar sluit het maaiveld aan), net onder het wegdek
+        var o = new[] { new Vector2(wb, yB), new Vector2(wm, ym), new Vector2(wt, yt), new Vector2(-wt, yt), new Vector2(-wm, ym), new Vector2(-wb, yB) };
+        var t = TubeProf(fl, top);   // (-w,fl) (w,fl) (wm,ym) (w,top) (-w,top) (-wm,ym)
+        // op de bol (zoals de wegen): het platte vlak van de tekening raakt de bol alleen in het midden; 13 m opzij ligt het maaiveld al
+        // zo'n 15 cm lager, en dan staat de rand van het blok erboven uit
+        float r0 = (flat.o).magnitude;
+        System.Func<Vector2, Vector2, Vector3> At = (pos, q) => { Vector2 x = pos + tg * q.x + dd * (q.x * k); return flat.P(x.x, q.y, x.y).normalized * (r0 + q.y); };
+        Vector2 pm = (p0 + p1) * 0.5f; Vector3 axis = flat.P(pm.x, ym, pm.y);
+        // de bovenkant gesnapt op het terrein: op een raster neemt elk punt de hoogte van het maaiveld daar (TerrainAt), nooit lager dan
+        // het dek; zo sluit de rand precies aan, ook als het terrein glooit. De zijkanten eronder volgen dezelfde bovenrand.
+        const int nA = 8, nX = 12;
+        System.Func<float, float, Vector3> Top = (fa, fx) =>
+        {
+            Vector2 pos = Vector2.Lerp(p0, p1, fa); float xx = Mathf.Lerp(-wt, wt, fx); Vector2 x = pos + tg * xx + dd * (xx * k);
+            Vector3 d = flat.P(x.x, 0f, x.y).normalized; return d * Mathf.Max(r0 + yt, Planet.R + TerrainAt(d) - 0.05f);
+        };
+        for (int a = 0; a < nA; a++)
+            for (int b = 0; b < nX; b++)
+                M("bodem0").Quad(Top(a / (float)nA, b / (float)nX), Top((a + 1) / (float)nA, b / (float)nX), Top((a + 1) / (float)nA, (b + 1) / (float)nX), Top(a / (float)nA, (b + 1) / (float)nX), flat.u);   // dezelfde kleur als het terrein
+        for (int v = 0; v < 5; v++)   // de buitenkant: twee schuine zijden per kant (de bovenste tot de gesnapte rand)
+        {
+            if (v == 2) continue;
+            for (int a = 0; a < nA; a++)
+            {
+                float fa0 = a / (float)nA, fa1 = (a + 1) / (float)nA; Vector2 pa = Vector2.Lerp(p0, p1, fa0), pb = Vector2.Lerp(p0, p1, fa1);
+                Vector3 q0 = v == 3 ? Top(fa0, 0f) : At(pa, o[v]), q1 = v == 3 ? Top(fa1, 0f) : At(pb, o[v]);
+                Vector3 q3 = v == 1 ? Top(fa0, 1f) : At(pa, o[v + 1]), q2 = v == 1 ? Top(fa1, 1f) : At(pb, o[v + 1]);
+                M("steen").Quad(q0, q1, q2, q3, (q0 + q1 + q2 + q3) * 0.25f - axis);
+            }
+        }
+        int[] map = { 1, 2, 3, 4, 5, 0 };   // welk hoekpunt van de koker bij welk hoekpunt van de buitenkant hoort
+        foreach (var (pe, sg) in new[] { (p0, -1f), (p1, 1f) })   // de kopse kanten, van de buitenkant tot de koker (achter het portaal)
+            for (int v = 0; v < 6; v++)
+            {
+                int w = (v + 1) % 6; Vector3 a0 = At(pe, o[v]), a1 = At(pe, o[w]), b1 = At(pe, t[map[w]]), b0 = At(pe, t[map[v]]);
+                M("steen").Quad(a0, a1, b1, b0, flat.D(dd.x * sg, 0f, dd.y * sg));
+            }
+    }
     // portaal: een zeshoekige betonnen lijst met een scherpe voorrand 1,44 m voor de opening (m, naar buiten nr); van die rand loopt
     // het beton schuin terug naar de grote zeshoek achter en naar de opening, onder de vloer 2,17 m diep en boven tot net boven het dek
     static void Portal(System.Func<string, MeshBuilder> M, Frame flat, Vector2 m, Vector2 nr, float yE, float top)
@@ -1907,8 +1906,10 @@ public static partial class PlanetCity
         var f = CrossFrame(x, out float lo, out float L); float top = -DeckT; tubeW = x.road ? RoadHW : PathHW;
         TubeSeg(M, f, new Vector2(-L, 0f), new Vector2(L, 0f), lo, lo, top);
         Portal(M, f, new Vector2(-L, 0f), new Vector2(-1f, 0f), lo, top); Portal(M, f, new Vector2(L, 0f), new Vector2(1f, 0f), lo, top);
+        int low = x.swap ? x.u : x.b1; bool lev = x.swap ? WalkLevel(x.u) != 0 && WalkLevel(x.v) != 0 : WalkLevel(x.b1) != 0 && WalkLevel(x.b2) != 0;
+        if (lev) BridgeBlock(M, f, new Vector2(-L, 0f), new Vector2(L, 0f), lo, top, (x.road ? WalkHW(low) : PathHW) - lo / FieldK);   // de onderste op een niveau: het betonblok (overpass_path)
         tubeW = PathHW;
-        if (x.swap) return;   // de koker ligt onder de wegvakken b1 en b2: daar is gewoon grond
+        if (x.swap || lev) return;   // de koker ligt onder de wegvakken b1 en b2: daar is gewoon grond
         // het dek: de helft van elk padvak aan de kant van de weg (tot de portalen), op de bol en op de hoogte van de weg, zodat
         // het naadloos aansluit op het maaiveld van de vakken ernaast
         float deckR = Planet.R + (G(x.u) + G(x.v)) * 0.5f; Vector3 X = f.o;
@@ -1975,7 +1976,11 @@ public static partial class PlanetCity
             if (!roadUnder) Disc(M("pad"), uf, 1.3f, 0.1f);
             var open = mids;
             System.Func<string, MeshBuilder> MM = M;
-            if (open.Count == 2 && Vector2.Dot(mids[0].normalized, mids[1].normalized) < -0.95f) { skewRoad = skews[0]; TubeSeg(MM, flat, mids[0], mids[1], floors[0], floors[1], top); }   // rechtdoor: één koker van rand tot rand
+            if (open.Count == 2 && Vector2.Dot(mids[0].normalized, mids[1].normalized) < -0.95f)
+            {
+                skewRoad = skews[0]; TubeSeg(MM, flat, mids[0], mids[1], floors[0], floors[1], top);
+                if (FieldBridge(i)) { int le = tends != null && tends.Count > 0 ? tends[0] : i; BridgeBlock(MM, flat, mids[0], mids[1], lo, top, (roadUnder ? WalkHW(le) : PathHW) - lo / FieldK); }   // het betonblok (overpass_path)
+            }   // rechtdoor: één koker van rand tot rand
             else for (int q = 0; q < open.Count; q++)
             {
                 skewRoad = skews[q]; TubeSeg(MM, flat, Vector2.zero, mids[q], lo, floors[q], top, false, true);
@@ -2186,6 +2191,7 @@ public static partial class PlanetCity
             case "paal": return new Color(0.25f, 0.27f, 0.3f); case "rand": return new Color(0.7f, 0.68f, 0.62f); case "lamp": return new Color(0.85f, 0.85f, 0.8f);
             case "kantoor": return new Color(0.58f, 0.68f, 0.78f); case "glas": return new Color(0.20f, 0.30f, 0.40f);
             case "plat": return new Color(0.50f, 0.50f, 0.53f); case "gras": return new Color(0.52f, 0.74f, 0.33f);
+            case "bodem0": return new Color(0.64f, 0.78f, 0.45f);   // hetzelfde materiaal als het gewone terrein (p_bodem0), voor de bovenkant van een brugblok
             case "water": return new Color(0.20f, 0.50f, 0.78f); case "zand": return new Color(0.86f, 0.79f, 0.55f);
             case "pad": return new Color(0.82f, 0.76f, 0.63f); case "blad": return new Color(0.20f, 0.50f, 0.22f);
             case "steen": return new Color(0.62f, 0.60f, 0.58f); case "tunnel": return new Color(0.30f, 0.30f, 0.31f); case "stoep": return new Color(0.88f, 0.84f, 0.72f);
