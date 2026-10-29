@@ -196,7 +196,8 @@ public static partial class PlanetCity
             if ((o3 - q.c).magnitude > FlatL + q.open + 40f + c.radius) continue;
             Vector3 across = Vector3.Cross(q.dir, q.along).normalized; float toe = FlatL + Mathf.Max(0.3f, q.h - q.floor) / AbutK;
             Lin A = new Lin { a = Vector3.Dot(o3 - q.c, q.along), x = Vector3.Dot(c.east, q.along), y = Vector3.Dot(c.north, q.along) };
-            foreach (var f in new[] { A - Lin.C(FlatL), A + Lin.C(FlatL), A - Lin.C(toe), A + Lin.C(toe) })
+            Lin B = new Lin { a = Vector3.Dot(o3 - q.c, across), x = Vector3.Dot(c.east, across), y = Vector3.Dot(c.north, across) };
+            foreach (var f in new[] { A - Lin.C(FlatL), A + Lin.C(FlatL), A - Lin.C(toe), A + Lin.C(toe), B - Lin.C(q.open), B + Lin.C(q.open), B - Lin.C(q.open + AbutW), B + Lin.C(q.open + AbutW) })
             {
                 var next = new List<List<Vector2>>(); foreach (var pl in polys) if (!SplitBy(pl, f, next)) next.Add(pl); polys = next;
             }
@@ -342,7 +343,7 @@ public static partial class PlanetCity
             {                                                                                                                  // en een landhoofd tussen de portalen (grond op de brug)
                 int l1 = x.swap ? x.u : x.b1, l2 = x.swap ? x.v : x.b2, h1 = x.swap ? x.b1 : x.u, h2 = x.swap ? x.b2 : x.v;
                 Vector3 md = (Planet.Cells[l1].dir + Planet.Cells[l2].dir).normalized;
-                decks.Add(new Deck { c = md * Planet.R, dir = md, along = Tan(Planet.Cells[l2].dir - Planet.Cells[l1].dir, md), h = Mathf.Max(G(h1), G(h2)), floor = Mathf.Min(G(l1), G(l2)), open = x.road ? RoadHW : PathHW });
+                decks.Add(new Deck { c = md * Planet.R, dir = md, along = Tan(Planet.Cells[l2].dir - Planet.Cells[l1].dir, md), h = Mathf.Max(G(h1), G(h2)), floor = Mathf.Min(G(l1), G(l2)), open = x.road ? RoadHW : PathHW, cell = Planet.Nearest(md * Planet.R) });
                 continue;
             }
             if (x.swap)   // de schuine weg u–v gaat onder de weg b1–b2 door: portalen langs de rand, 7,8 m voor en na het midden
@@ -369,7 +370,7 @@ public static partial class PlanetCity
             if (UnderIsLevelled(i, road))   // wat eronderdoor gaat ligt zelf op een niveau: zijn eigen stroken vormen de geul, geen portaalhelling
             {
                 var ops = Openings(i); if (ops.Count == 0) continue;   // tussen de portalen blijft de grond op de hoogte van de bovenste weg (landhoofd)
-                decks.Add(new Deck { c = cell.dir * Planet.R, dir = cell.dir, along = Tan(ops[0], cell.dir), h = G(i), floor = lo, open = road ? RoadHW : PathHW });
+                decks.Add(new Deck { c = cell.dir * Planet.R, dir = cell.dir, along = Tan(ops[0], cell.dir), h = G(i), floor = lo, open = road ? RoadHW : PathHW, cell = i });
                 continue;
             }
             foreach (var od in Openings(i))
@@ -439,15 +440,15 @@ public static partial class PlanetCity
     static bool HasField => segs.Count > 0 || caps.Count > 0;
     // het landhoofd van een brug over een weg of pad op een niveau: tussen de portalen (FlatL voor en na het hart, langs de weg
     // eronder) ligt de grond op de hoogte van de bovenste weg, behalve de opening van de koker; bij de portalen bijna recht omlaag
-    struct Deck { public Vector3 c, dir, along; public float h, floor, open; }
+    struct Deck { public Vector3 c, dir, along; public float h, floor, open; public int cell; }   // cell: het vak dat de plaat over de koker tekent
     static readonly List<Deck> decks = new List<Deck>();
-    const float AbutK = 8f;   // de wand bij de portalen: bijna recht (8 op 1)
+    const float AbutK = 8f, AbutW = 0.6f;   // de wanden bij de portalen en naast de koker: bijna recht (8 op 1), 60 cm breed
     static float DeckRaise(Deck q, Vector3 w, out bool slope)
     {
         Vector3 v = w - q.c, across = Vector3.Cross(q.dir, q.along); float sAl = Mathf.Abs(Vector3.Dot(v, q.along)), lat = Mathf.Abs(Vector3.Dot(v, across));
         slope = false; if (lat > q.open + 40f || sAl > FlatL + 40f) return float.MinValue;
-        float a = Mathf.Max(0f, sAl - FlatL) * AbutK; slope = a > 0f;   // bij de portalen bijna recht omlaag: de bak loopt onder de brug door tot het beton
-        return q.h - a;   // ook boven de koker dicht op dekhoogte: de koker ligt eronder, in het beton
+        float a = Mathf.Max(0f, sAl - FlatL) * AbutK, b = Mathf.Max(0f, q.open + AbutW - lat) * AbutK; slope = a > 0f || b > 0f;   // bij de portalen bijna recht omlaag: de bak loopt onder de brug door tot het beton
+        return q.h - a - b;   // de opening van de koker blijft vrij (de grond is een hoogteveld: een wand erin zou de koker dichtzetten); de plaat erover tekent BuildGround
     }
     static void AddCap(int i, float h, float hw)
     {
@@ -1056,7 +1057,13 @@ public static partial class PlanetCity
 
     public static void Save()
     {
-        try
+        try { File.WriteAllText(FilePath, Snapshot()); }
+        catch (Exception e) { Debug.LogWarning("Opslaan mislukt: " + e.Message); }
+    }
+    // de hele stad als tekst (zoals het opslagbestand): ook verbindingen, bruggen en de terreinhoogtes van voor een geul of niveau,
+    // zodat ongedaan maken alles terugzet (Restore)
+    public static string Snapshot()
+    {
         {
             var sd = new PSaveData { m = Planet.M, r = Planet.R };
             foreach (var kv in Cells) if (kv.Value.Count > 0) sd.cells.Add(new PCellSave { i = kv.Key, items = kv.Value.ToArray() });
@@ -1070,9 +1077,8 @@ public static partial class PlanetCity
             foreach (var kv in Low) { sd.low.Add(kv.Key); sd.low.Add(Mathf.RoundToInt(kv.Value * 100f)); }
             foreach (long k in OneWay) { sd.oneway.Add((int)(k >> 20)); sd.oneway.Add((int)(k & 0xFFFFF)); }
             foreach (var kv in Terr) { sd.terr.Add(kv.Key); sd.terr.Add(Mathf.RoundToInt(kv.Value * 100f)); }
-            File.WriteAllText(FilePath, JsonUtility.ToJson(sd));
+            return JsonUtility.ToJson(sd);
         }
-        catch (Exception e) { Debug.LogWarning("Opslaan mislukt: " + e.Message); }
     }
 
     public static bool Load()
@@ -1080,7 +1086,15 @@ public static partial class PlanetCity
         try
         {
             if (!File.Exists(FilePath)) return false;
-            var sd = JsonUtility.FromJson<PSaveData>(File.ReadAllText(FilePath)); if (sd == null || sd.m != Planet.M) return false;
+            return Restore(File.ReadAllText(FilePath));
+        }
+        catch (Exception e) { Debug.LogWarning("Laden mislukt: " + e.Message); return false; }
+    }
+    public static bool Restore(string json)
+    {
+        try
+        {
+            var sd = JsonUtility.FromJson<PSaveData>(json); if (sd == null || sd.m != Planet.M) return false;
             Cells = new Dictionary<int, List<string>>();
             foreach (var c in sd.cells) if (c.items != null && c.items.Length > 0 && c.i >= 0 && c.i < Planet.Cells.Length) Cells[c.i] = new List<string>(c.items);
             ClearLinks();
@@ -1402,6 +1416,13 @@ public static partial class PlanetCity
                         float ga = CornerH(i, k), gb = CornerH(i, (k + 1) % m); if (g - ga < 0.01f && g - gb < 0.01f) continue;
                         TB("sokkel").Quad(a * RG, b * RG, b * (Planet.R + gb), a * (Planet.R + ga), (a + b) * 0.5f - c.dir);
                     }
+                foreach (var q in decks)
+                {
+                    if (q.cell != i || FieldBridge(i)) continue;
+                    Vector3 ac = Vector3.Cross(q.dir, q.along).normalized; float wl = q.open + AbutW + 0.3f, rr = Planet.R + q.h + 0.02f;
+                    Vector3 P(float sa, float sl) => (q.c + q.along * sa + ac * sl).normalized * rr;
+                    mb0.Quad(P(-FlatL, -wl), P(FlatL, -wl), P(FlatL, wl), P(-FlatL, wl), q.dir);   // de plaat over de koker, op dekhoogte
+                }
                 if (pole) PoleMarker(PM, c, g, i == Planet.North);
                 if (start && !pole)   // startplek (op een pool staat de poolpaal): lichtblauw vak met een witte paal van 30 m en een vlaggetje
                 {

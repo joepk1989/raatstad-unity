@@ -12,7 +12,7 @@ public class PlanetBuilder : MonoBehaviour
     Vector3 focus = Vector3.up, fwd = Vector3.forward;
     float pitch = 55f, dist = 260f;
     int hover = -1; bool hasHover;
-    readonly List<(Dictionary<int, List<string>> cells, Dictionary<int, float> terr)> undo = new List<(Dictionary<int, List<string>>, Dictionary<int, float>)>();
+    readonly List<string> undo = new List<string>();   // de hele stad per stap (PlanetCity.Snapshot): ook verbindingen, bruggen en terrein van voor een niveau
     LineRenderer outline; PlanetWalker walker; bool walking; string msg = ""; float msgT;
     int lastPainted = -1; bool painting;
     int lineStart = -1; List<int> linePlan; readonly List<LineRenderer> planLines = new List<LineRenderer>();   // weg slepen: een rechte lijn van vakken (30°-richtingen)
@@ -83,13 +83,12 @@ public class PlanetBuilder : MonoBehaviour
     }
 
     void Say(string s) { msg = s; msgT = Time.time + 4f; if (flying) { flyNote = s; flyBadgeT = Time.time; } }   // in de cameramodus op het label
-    void Push() { undo.Add((PlanetCity.Clone(PlanetCity.Cells), new Dictionary<int, float>(PlanetCity.Terr))); if (undo.Count > 100) undo.RemoveAt(0); }
+    void Push() { undo.Add(PlanetCity.Snapshot()); if (undo.Count > 100) undo.RemoveAt(0); }
     void Undo()
     {
         if (undo.Count == 0) return;
         var u = undo[undo.Count - 1]; undo.RemoveAt(undo.Count - 1);
-        PlanetCity.Cells = u.cells; PlanetCity.Terr.Clear(); foreach (var kv in u.terr) PlanetCity.Terr[kv.Key] = kv.Value;
-        PlanetCity.TouchAll(); Changed(); PlanetCity.RebuildGrid(); Say("Ongedaan gemaakt");
+        PlanetCity.Restore(u); PlanetCity.TouchAll(); Changed(); Say("Ongedaan gemaakt");
     }
     void Changed() { PlanetCity.Rebuild(); PlanetCity.RebuildGrid(); PlanetCity.Save(); beautyT = -99f; }
     void ToggleSound() { Babble.Muted = !Babble.Muted; Ambience.Muted = Babble.Muted; Say(Babble.Muted ? "Geluid uit" : "Geluid aan"); }
