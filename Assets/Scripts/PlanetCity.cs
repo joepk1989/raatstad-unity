@@ -479,7 +479,7 @@ public static partial class PlanetCity
     public static float GroundField(Vector3 dir, float base_, out bool slope) => GroundField(dir, base_, out slope, segs, caps);
     static float GroundField(Vector3 dir, float base_, out bool slope, List<Seg> segs, List<Cap> caps)   // slope: het punt ligt op de schuine kant van een weg
     {
-        float h = base_; Vector3 w = dir * Planet.R; slope = false; float onLevelH = float.MaxValue;   // op de weg zelf van een weg op een niveau: de laagste daarvan
+        float h = base_; Vector3 w = dir * Planet.R; slope = false; float onLevelH = float.MaxValue, lowRoad = float.MaxValue;   // op de weg zelf van een weg op een niveau: de laagste daarvan; en de laagste weg die hier de grond omlaag haalt
         for (int pass = 0; pass < 2; pass++)
         {
             foreach (var q in segs)
@@ -490,7 +490,7 @@ public static partial class PlanetCity
                 float hr = Mathf.Lerp(q.ha, q.hb, Mathf.Clamp01(u)), rise = Mathf.Max(Mathf.Max(0f, lat - q.hw), over) * FieldK;   // de kant, of de kop
                 if (lat <= q.hw) onLevelH = Mathf.Min(onLevelH, hr);
                 if (pass == 0 && hr > base_ + 0.01f) { float v = hr - rise; if (v > h) { h = v; slope = rise > 0f; } }        // talud
-                else if (pass == 1 && hr < base_ - 0.01f) { float v = hr + rise; if (v < h) { h = v; slope = rise > 0f; } }   // uitgraving
+                else if (pass == 1 && hr < base_ - 0.01f) { float v = hr + rise; lowRoad = Mathf.Min(lowRoad, hr); if (v < h) { h = v; slope = rise > 0f; } }   // uitgraving
             }
             foreach (var q in caps)
             {
@@ -507,7 +507,8 @@ public static partial class PlanetCity
             Vector3 dv = w - (q.a + ab * Mathf.Clamp01(u)); dv -= dir * Vector3.Dot(dv, dir); float over = Mathf.Max(0f, Mathf.Max(-u, u - 1f) * len);
             float rise = Mathf.Max(Mathf.Max(0f, dv.magnitude - q.hw), over) * FieldK; if (rise > 20f) continue;
             float hr = Mathf.Lerp(q.ha, q.hb, Mathf.Clamp01(u)) - 0.03f; if (onLevelH <= hr + 0.3f) continue;
-            float nh = Mathf.Clamp(h, hr - rise, hr + rise);
+            // gaat hier een weg een heel niveau lager onder deze weg door (een brug), dan mag de bak eronder: alleen geen grond erboven
+            float nh = lowRoad <= hr - LevelH + 0.1f ? Mathf.Min(h, hr + rise) : Mathf.Clamp(h, hr - rise, hr + rise);
             if (Mathf.Abs(nh - h) > 1e-4f) { h = nh; slope = rise > 0f; }
         }
         if (carved.Count > 0 && cuts.Count > 0) h = Mathf.Min(h, Carve(dir));
