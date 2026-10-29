@@ -174,7 +174,8 @@ public static partial class PlanetCity
             foreach (var n in q.n)
             {
                 Lin N = new Lin { a = Vector3.Dot(o3 - q.c, n), x = Vector3.Dot(c.east, n), y = Vector3.Dot(c.north, n) };
-                foreach (var f in new[] { N - Lin.C(q.hw), N - Lin.C(q.hw + dz), N })   // de zijde, de voet, en de graat naar de hoek
+                Vector3 pn = Vector3.Cross(q.dir, n).normalized; Lin P = new Lin { a = Vector3.Dot(o3 - q.c, pn), x = Vector3.Dot(c.east, pn), y = Vector3.Dot(c.north, pn) };
+                foreach (var f in new[] { N - Lin.C(q.hw), N - Lin.C(q.hw + dz), N, P })   // de zijde, de voet, de graat naar de hoek, de vouw in een bocht
                 {
                     var next = new List<List<Vector2>>(); foreach (var pl in polys) if (!SplitBy(pl, f, next)) next.Add(pl); polys = next;
                 }
@@ -356,6 +357,12 @@ public static partial class PlanetCity
         levelled.Clear(); fillN = 0; segs.Clear(); caps.Clear();
         foreach (var kv in Cells) if (WalkLevel(kv.Key) != 0) levelled.Add(kv.Key);
         int WalkN(int i) { int n = 0; foreach (int j in Partners(i)) if (IsWalk(j)) n++; return n; }
+        // een kop (zeshoek rond het hart) bij een doodlopend eind, een bocht of een splitsing; alleen een recht stuk loopt gewoon door
+        bool Capped(int i)
+        {
+            var ws = new List<int>(); foreach (int j in Partners(i)) if (IsWalk(j)) ws.Add(j); if (ws.Count != 2) return true;
+            Vector3 d = Planet.Cells[i].dir; return Vector3.Dot(Tan(Planet.Cells[ws[0]].dir - d, d), Tan(Planet.Cells[ws[1]].dir - d, d)) > -0.95f;
+        }
         foreach (int a in levelled)
         {
             Vector3 ad = Planet.Cells[a].dir; float hw = WalkHW(a); int na = WalkN(a);
@@ -366,13 +373,12 @@ public static partial class PlanetCity
                 // elk stuk loopt een halve wegbreedte door voorbij beide harten: bij een doodlopend eind tot het eind van de weg (rechte
                 // kop), in een bocht vult de overlap de buitenhoek, op een recht stuk valt het samen met het volgende stuk
                 // een doodlopend eind (op een niveau) krijgt een zeshoekige kop rond het hart (AddCap), dan stopt het stuk daar
-                bool capA = na == 1, capB = levelled.Contains(b) && WalkN(b) == 1;
+                bool capA = Capped(a), capB = levelled.Contains(b) && Capped(b);
                 if (!capA) pa = (pa - along * hw).normalized * Planet.R;
                 if (!capB) pb = (pb + Tan(bd - ad, bd) * hw).normalized * Planet.R;
                 segs.Add(new Seg { a = pa, b = pb, ha = G(a), hb = LevelFor(b, a), hw = hw, capA = capA, capB = capB });
-                if (capB) AddCap(b, G(b), WalkHW(b));
             }
-            if (na <= 1) AddCap(a, G(a), hw);   // doodlopend of los vak
+            if (Capped(a)) AddCap(a, G(a), hw);   // doodlopend, bocht, splitsing of los vak
         }
     }
     // halve breedte van de weg met stoep (plus anderhalve meter), of van het pad: zo breed ligt de grond op weghoogte
