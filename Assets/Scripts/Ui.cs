@@ -161,6 +161,20 @@ public static class Ui
         }
         return hit;
     }
+    // knoppenrij met een icoon en de naam ernaast
+    public static int SegIcon(Rect r, string[] labels, string[] icons, int sel)
+    {
+        Box(r, new Color(1f, 1f, 1f, 0.06f), new Color(0, 0, 0, 0), 10f); int n = labels.Length, hit = -1; float w = (r.width - 6f - (n - 1) * 2f) / n;
+        for (int k = 0; k < n; k++)
+        {
+            var b = new Rect(r.x + 3f + k * (w + 2f), r.y + 3f, w, r.height - 6f); bool on = k == sel, hv = Hover(b);
+            if (on || hv) Box(b, on ? Signal : new Color(1f, 1f, 1f, 0.08f), new Color(0, 0, 0, 0), 8f);
+            Color ink = on ? SignalInk : Ink; float tw = Width(labels[k], T.Bold) + 22f, x0 = b.center.x - tw * 0.5f;
+            Tex(new Rect(x0, b.center.y - 9f, 18f, 18f), Icon(icons[k]), ink); Label(new Rect(x0 + 22f, b.y, tw, b.height), labels[k], T.Bold, ink, TextAnchor.MiddleLeft);
+            if (Clicked(b)) hit = k;
+        }
+        return hit;
+    }
     // snelbalkvak: zeshoek met een gekleurd blokje en het cijfer eronder (.hslot)
     public static bool HexSlot(Rect r, Color swatch, string num, bool on)
     {
@@ -229,6 +243,14 @@ public static class Ui
             case "raster": for (int k = 0; k < 6; k++) { float a0 = k * Mathf.PI / 3f, a1 = (k + 1) * Mathf.PI / 3f; sh.Add(L(0.5f + Mathf.Cos(a0) * 0.32f, 0.5f + Mathf.Sin(a0) * 0.32f, 0.5f + Mathf.Cos(a1) * 0.32f, 0.5f + Mathf.Sin(a1) * 0.32f, w)); } break;
             case "huis": sh.Add(L(0.18f, 0.48f, 0.5f, 0.2f, w)); sh.Add(L(0.5f, 0.2f, 0.82f, 0.48f, w)); sh.Add(L(0.28f, 0.4f, 0.28f, 0.8f, w)); sh.Add(L(0.72f, 0.4f, 0.72f, 0.8f, w)); sh.Add(L(0.28f, 0.8f, 0.72f, 0.8f, w)); sh.Add(L(0.44f, 0.8f, 0.44f, 0.6f, w)); sh.Add(L(0.56f, 0.8f, 0.56f, 0.6f, w)); sh.Add(L(0.44f, 0.6f, 0.56f, 0.6f, w)); break;
             case "lopen": sh.Add(D(0.56f, 0.17f, 0.085f)); sh.Add(L(0.52f, 0.32f, 0.46f, 0.58f, 0.11f)); sh.Add(L(0.46f, 0.58f, 0.6f, 0.72f, w)); sh.Add(L(0.6f, 0.72f, 0.58f, 0.88f, w)); sh.Add(L(0.46f, 0.58f, 0.36f, 0.88f, w)); sh.Add(L(0.5f, 0.38f, 0.66f, 0.5f, w)); sh.Add(L(0.5f, 0.38f, 0.34f, 0.48f, w)); break;
+            case "ophogen": sh.Add(L(0.16f, 0.8f, 0.84f, 0.8f, w)); sh.Add(L(0.5f, 0.66f, 0.5f, 0.32f, w)); sh.Add(P(new[] { new Vector2(0.3f, 0.42f), new Vector2(0.5f, 0.16f), new Vector2(0.7f, 0.42f) })); break;
+            case "afgraven": sh.Add(L(0.16f, 0.2f, 0.84f, 0.2f, w)); sh.Add(L(0.5f, 0.34f, 0.5f, 0.68f, w)); sh.Add(P(new[] { new Vector2(0.3f, 0.58f), new Vector2(0.5f, 0.84f), new Vector2(0.7f, 0.58f) })); break;
+            case "egaliseren": sh.Add(L(0.16f, 0.4f, 0.84f, 0.4f, w)); sh.Add(L(0.16f, 0.62f, 0.84f, 0.62f, w)); break;
+            case "gladstrijken": for (int k = 0; k < 8; k++) { float x0 = 0.14f + k * 0.09f, x1 = x0 + 0.09f; sh.Add(L(x0, 0.5f + Mathf.Sin(k * 0.9f) * 0.16f, x1, 0.5f + Mathf.Sin((k + 1) * 0.9f) * 0.16f, w)); } break;
+            case "helling": sh.Add(P(new[] { new Vector2(0.16f, 0.8f), new Vector2(0.84f, 0.8f), new Vector2(0.84f, 0.24f) })); break;
+            case "rand":
+                for (int k = 0; k < 6; k++) { float a0 = k * Mathf.PI / 3f + Mathf.PI / 6f, a1 = (k + 1) * Mathf.PI / 3f + Mathf.PI / 6f; sh.Add(L(0.5f + Mathf.Cos(a0) * 0.34f, 0.5f + Mathf.Sin(a0) * 0.34f, 0.5f + Mathf.Cos(a1) * 0.34f, 0.5f + Mathf.Sin(a1) * 0.34f, k == 1 ? w * 1.9f : w * 0.6f)); }   // een zeshoek met één dikke rand
+                break;
             case "pijl": sh.Add(P(new[] { new Vector2(0.18f, 0.2f), new Vector2(0.86f, 0.5f), new Vector2(0.18f, 0.8f), new Vector2(0.34f, 0.5f) })); break;
             case "zoek": sh.Add(O(0.44f, 0.44f, 0.2f, w)); sh.Add(L(0.59f, 0.59f, 0.8f, 0.8f, 0.11f)); break;
             case "sluit": sh.Add(L(0.28f, 0.28f, 0.72f, 0.72f, w)); sh.Add(L(0.28f, 0.72f, 0.72f, 0.28f, w)); break;

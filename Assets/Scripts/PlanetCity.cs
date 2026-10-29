@@ -8,7 +8,7 @@ using UnityEngine;
 // assenstelsel van het vak gebouwd, zodat gebouwen overal recht op de bol staan. De bodem is één mesh per
 // deel (1024 vakken); blokken en wegen worden per deel opnieuw gemaakt als er iets verandert.
 [Serializable] public class PCellSave { public int i; public string[] items; }
-[Serializable] public class PSaveData { public int m; public float r; public List<PCellSave> cells = new List<PCellSave>(); public List<int> links = new List<int>(); public List<int> style = new List<int>(), under = new List<int>(), oneway = new List<int>(), terr = new List<int>(), low = new List<int>(), tunnel = new List<int>(), lower = new List<int>(), precarve = new List<int>(), prelevel = new List<int>(); }   // paren: vak/stijl, vak/onder (1 meer, 2 water, 3 kuil, 4 pad, 5 weg), van/naar, vak/terreinhoogte in cm
+[Serializable] public class PSaveData { public int m; public float r; public List<PCellSave> cells = new List<PCellSave>(); public List<int> links = new List<int>(); public List<int> style = new List<int>(), under = new List<int>(), oneway = new List<int>(), terr = new List<int>(), low = new List<int>(), tunnel = new List<int>(), lower = new List<int>(), precarve = new List<int>(), prelevel = new List<int>(), corner = new List<int>(), center = new List<int>(); }   // corner: per hoekpunt drie vakken en de verschuiving in cm   // paren: vak/stijl, vak/onder (1 meer, 2 water, 3 kuil, 4 pad, 5 weg), van/naar, vak/terreinhoogte in cm
 
 public static partial class PlanetCity
 {
@@ -18,7 +18,7 @@ public static partial class PlanetCity
     static readonly Dictionary<int, Transform> chunks = new Dictionary<int, Transform>();
     static readonly HashSet<int> dirty = new HashSet<int>();
 
-    public static void ResetAll() { Cells = new Dictionary<int, List<string>>(); Terr.Clear(); cnA = cnB = edN = null; Links.Clear(); partners.Clear(); Style.Clear(); Under.Clear(); Low.Clear(); OneWay.Clear(); TunnelLinks.Clear(); LowerLinks.Clear(); DragUnder = false; DragLevel = 0; DragStyle = 0; DragOneWay = false; Lights = true; chunks.Clear(); groundChunks.Clear(); dirty.Clear(); root = null; groundRoot = null; grid = null; equator = null; GridOn = true; Slot = 1; roadPieces.Clear(); roadRoot = null; }
+    public static void ResetAll() { Cells = new Dictionary<int, List<string>>(); Terr.Clear(); CornerOfs.Clear(); CenterOfs.Clear(); cnA = cnB = edN = null; Links.Clear(); partners.Clear(); Style.Clear(); Under.Clear(); Low.Clear(); OneWay.Clear(); TunnelLinks.Clear(); LowerLinks.Clear(); DragUnder = false; DragLevel = 0; DragStyle = 0; DragOneWay = false; Lights = true; chunks.Clear(); groundChunks.Clear(); dirty.Clear(); root = null; groundRoot = null; grid = null; equator = null; GridOn = true; Slot = 1; roadPieces.Clear(); roadRoot = null; }
     public static bool IsRoad(int i) => Cells.TryGetValue(i, out var l) && l.Count > 0 && l[0] == "weg";
     public static bool IsPath(int i) => Cells.TryGetValue(i, out var l) && l.Count == 1 && l[0] == "pad";
     public static bool IsWalk(int i) => IsRoad(i) || IsPath(i);
@@ -77,7 +77,44 @@ public static partial class PlanetCity
     }
     static readonly HashSet<int> levelled = new HashSet<int>();   // weg- en padvakken op een ander niveau (bijgewerkt met de geulen)
     // idem zonder de geul: het maaiveld op het hoekpunt
-    static float CornerBase(int i, int k)
+    static float CornerBase(int i, int k) => CornerBase0(i, k) + (CornerOfs.Count > 0 && CornerOfs.TryGetValue(CornerKey(i, k), out var o) ? o : 0f);
+    // Zelf verzette hoekpunten (gereedschap Terrein, stand Rand): per gedeeld hoekpunt (de drie vakken eromheen) een verschuiving omhoog
+    // of omlaag op het maaiveld; de vakken eromheen hellen mee
+    public static readonly Dictionary<long, float> CornerOfs = new Dictionary<long, float>();
+    public static long CornerKey(int i, int k)
+    {
+        Topo(); int a = cnA[i][k], b = cnB[i][k]; int x = Mathf.Min(i, Mathf.Min(a, b)), z = Mathf.Max(i, Mathf.Max(a, b)), y = i + a + b - x - z;
+        return ((long)x << 40) | ((long)y << 20) | (uint)z;
+    }
+    public static float CornerOfs1(int i, int k) => CornerOfs.TryGetValue(CornerKey(i, k), out var o) ? o : 0f;
+    // het midden van een vak zelf verzet (een doorkruislijn: twee tegenoverliggende hoekpunten en het midden)
+    public static readonly Dictionary<int, float> CenterOfs = new Dictionary<int, float>();
+    public static float CenterOfs1(int i) => CenterOfs.Count > 0 && CenterOfs.TryGetValue(i, out var o) ? o : 0f;
+    // de doorkruislijn van hoekpunt k door het midden naar hoekpunt k+3 van vak i omhoog of omlaag (alleen een zeshoek)
+    public static void NudgeDiagonal(int i, int k, float d)
+    {
+        int m = Planet.Cells[i].corners.Length; if (m != 6) return;
+        foreach (int kk in new[] { k, (k + 3) % 6 })
+        {
+            long key = CornerKey(i, kk); float v = Mathf.Clamp((CornerOfs.TryGetValue(key, out var o) ? o : 0f) + d, -20f, 20f);
+            if (Mathf.Abs(v) < 0.01f) CornerOfs.Remove(key); else CornerOfs[key] = v;
+            Topo(); foreach (int c in new[] { cnA[i][kk], cnB[i][kk] }) { Touch(c); foreach (int j in Planet.Cells[c].nb) Touch(j); }
+        }
+        float vc = Mathf.Clamp(CenterOfs1(i) + d, -20f, 20f); if (Mathf.Abs(vc) < 0.01f) CenterOfs.Remove(i); else CenterOfs[i] = vc;
+        Touch(i); foreach (int j in Planet.Cells[i].nb) Touch(j);
+    }
+    // de rand k (van hoekpunt k naar k+1) van vak i omhoog of omlaag (meter); de vakken eromheen opnieuw tekenen
+    public static void NudgeEdge(int i, int k, float d)
+    {
+        int m = Planet.Cells[i].corners.Length;
+        foreach (int kk in new[] { k, (k + 1) % m })
+        {
+            long key = CornerKey(i, kk); float v = Mathf.Clamp((CornerOfs.TryGetValue(key, out var o) ? o : 0f) + d, -20f, 20f);
+            if (Mathf.Abs(v) < 0.01f) CornerOfs.Remove(key); else CornerOfs[key] = v;
+            Topo(); foreach (int c in new[] { i, cnA[i][kk], cnB[i][kk] }) { Touch(c); foreach (int j in Planet.Cells[c].nb) Touch(j); }
+        }
+    }
+    static float CornerBase0(int i, int k)
     {
         Topo(); int a = cnA[i][k], b = cnB[i][k];
         if (carved.Count == 0) return Mathf.Min(G(i), Mathf.Min(G(a), G(b)));
@@ -399,7 +436,7 @@ public static partial class PlanetCity
                 bool capA = Capped(a), capB = levelled.Contains(b) && Capped(b);
                 segs.Add(new Seg { a = pa, b = pb, ha = G(a), hb = LevelFor(b, a), hw = hw, capA = capA, capB = capB });
             }
-            if (Capped(a)) AddCap(a, G(a), hw);   // doodlopend, bocht, splitsing of los vak
+            if (Capped(a)) AddCap(a, G(a), na <= 1 && IsRoad(a) ? hw + HeadExtra(a) : hw);   // doodlopend, bocht, splitsing of los vak; doodlopend: ruim genoeg voor het keerrondje
         }
         // gewone wegen en paden (niet op een niveau) in de buurt: onder zo'n weg ligt de grond op de hoogte van die weg, wat het talud
         // ernaast ook doet (zoals Cities: Skylines 2), anders loopt een talud bij een kruispunt over de weg heen
@@ -436,6 +473,8 @@ public static partial class PlanetCity
         }
     }
     // halve breedte van de weg met stoep (plus anderhalve meter), of van het pad: zo breed ligt de grond op weghoogte
+    // hoeveel het keerrondje van een doodlopende weg buiten de gewone breedte (WalkHW) komt, plus een halve meter
+    static float HeadExtra(int i) { Dims(StyleOf(i), out _, out float sw); float head = sw + (StyleOf(i) == 0 ? 2.1f : 0.3f) + 0.8f; return Mathf.Max(0f, head - WalkHW(i)); }
     static float WalkHW(int i) { if (!IsRoad(i)) return PathHW; Dims(StyleOf(i), out _, out float sw); return sw + 1.5f; }
     public static float WalkHalfWidth(string type) { if (type != "weg") return PathHW; Dims(DragStyle, out _, out float sw); return sw + 1.5f; }   // voor het voorbeeld
     // ---------- de hoogtefunctie langs wegen op een niveau ----------
@@ -489,8 +528,8 @@ public static partial class PlanetCity
                 if (lat > q.hw + FieldReach || u < 0f || u > 1f) continue;   // alleen naast het stuk: voorbij het eind doet de kop het, of het volgende stuk (een rechte kop gaf daar een trapje)
                 float hr = Mathf.Lerp(q.ha, q.hb, Mathf.Clamp01(u)), rise = Mathf.Max(Mathf.Max(0f, lat - q.hw), over) * FieldK;   // de kant, of de kop
                 if (lat <= q.hw) onLevelH = Mathf.Min(onLevelH, hr);
-                if (pass == 0 && hr > base_ + 0.01f) { float v = hr - rise; if (v > h) { h = v; slope = rise > 0f; } }        // talud
-                else if (pass == 1 && hr < base_ - 0.01f) { float v = hr + rise; lowRoad = Mathf.Min(lowRoad, hr); if (v < h) { h = v; slope = rise > 0f; } }   // uitgraving
+                if (pass == 0 && hr > base_ + 0.01f) { float v = hr - rise - 0.05f; if (v > h) { h = v; slope = rise > 0f; } }        // talud (5 cm onder het wegdek: geen streepje gras op de weg)
+                else if (pass == 1 && hr < base_ - 0.01f) { float v = hr + rise - 0.05f; lowRoad = Mathf.Min(lowRoad, hr); if (v < h) { h = v; slope = rise > 0f; } }   // uitgraving
             }
             foreach (var q in caps)
             {
@@ -1044,7 +1083,21 @@ public static partial class PlanetCity
         foreach (int i in line) { DigTrench(i); Touch(i); }   // een onderdoorgang in de lijn: de geul erbij
         foreach (int i in cross) { DigTrench(i); Touch(i); }
         DigCrossings();   // een schuine weg over een pad: de geul onder de brug
+        if (line.Count >= 2) { JoinEnd(line[0], line[1], type); JoinEnd(line[line.Count - 1], line[line.Count - 2], type); }
         return ok;
+    }
+    // Begint of eindigt een gesleepte lijn precies in het verlengde van een doodlopende weg (of pad) van dezelfde soort, dan horen ze
+    // bij elkaar: verbinden (anders liggen er twee losse eindes met een kier ertussen). Op een ander niveau wordt het daar een helling.
+    static void JoinEnd(int e, int inner, string type)
+    {
+        if (!IsWalk(e)) return;
+        foreach (int x in Planet.Cells[e].nb)
+        {
+            if (x == inner || MidCell(x, inner) != e || Linked(e, x) || Underpass(x)) continue;   // het vak dat de lijn zou vervolgen
+            bool same = type == "weg" ? IsRoad(x) : IsPath(x); if (!same) continue;
+            int n = 0; foreach (int j in Partners(x)) if (IsWalk(j)) n++;
+            if (n <= 1) { Link(e, x); Touch(e); Touch(x); }   // een doodlopend eind (of los vak): aansluiten
+        }
     }
 
     public static string LastNote;   // een melding over de laatst gelegde lijn (of null)
@@ -1061,7 +1114,7 @@ public static partial class PlanetCity
     // Alles weg (lege bouwgrond): de gegevens én alle getekende stukken, zodat er nooit iets van de oude stad blijft staan
     public static void ClearAll()
     {
-        Cells = new Dictionary<int, List<string>>(); Terr.Clear(); ClearLinks();
+        Cells = new Dictionary<int, List<string>>(); Terr.Clear(); CornerOfs.Clear(); CenterOfs.Clear(); ClearLinks();
         if (root != null) foreach (Transform t in root) UnityEngine.Object.Destroy(t.gameObject);
         chunks.Clear();
         if (roadRoot != null) foreach (Transform t in roadRoot) UnityEngine.Object.Destroy(t.gameObject);
@@ -1096,6 +1149,8 @@ public static partial class PlanetCity
             foreach (var kv in Low) { sd.low.Add(kv.Key); sd.low.Add(Mathf.RoundToInt(kv.Value * 100f)); }
             foreach (long k in OneWay) { sd.oneway.Add((int)(k >> 20)); sd.oneway.Add((int)(k & 0xFFFFF)); }
             foreach (var kv in Terr) { sd.terr.Add(kv.Key); sd.terr.Add(Mathf.RoundToInt(kv.Value * 100f)); }
+            foreach (var kv in CornerOfs) { sd.corner.Add((int)(kv.Key >> 40)); sd.corner.Add((int)((kv.Key >> 20) & 0xFFFFF)); sd.corner.Add((int)(kv.Key & 0xFFFFF)); sd.corner.Add(Mathf.RoundToInt(kv.Value * 100f)); }
+            foreach (var kv in CenterOfs) { sd.center.Add(kv.Key); sd.center.Add(Mathf.RoundToInt(kv.Value * 100f)); }
             return JsonUtility.ToJson(sd);
         }
     }
@@ -1127,7 +1182,9 @@ public static partial class PlanetCity
             if (sd.precarve != null) for (int k = 0; k + 1 < sd.precarve.Count; k += 2) preCarve[sd.precarve[k]] = sd.precarve[k + 1] / 100f;
             if (sd.prelevel != null) for (int k = 0; k + 1 < sd.prelevel.Count; k += 2) preLevel[sd.prelevel[k]] = sd.prelevel[k + 1] / 100f;
             if (sd.oneway != null) for (int k = 0; k + 1 < sd.oneway.Count; k += 2) OneWay.Add(DKey(sd.oneway[k], sd.oneway[k + 1]));
-            Terr.Clear();
+            Terr.Clear(); CornerOfs.Clear(); CenterOfs.Clear();
+            if (sd.center != null) for (int k = 0; k + 1 < sd.center.Count; k += 2) CenterOfs[sd.center[k]] = sd.center[k + 1] / 100f;
+            if (sd.corner != null) for (int k = 0; k + 3 < sd.corner.Count; k += 4) CornerOfs[((long)sd.corner[k] << 40) | ((long)sd.corner[k + 1] << 20) | (uint)sd.corner[k + 2]] = sd.corner[k + 3] / 100f;
             if (sd.terr != null) for (int k = 0; k + 1 < sd.terr.Count; k += 2) if (sd.terr[k] >= 0 && sd.terr[k] < Planet.Cells.Length && sd.terr[k + 1] != 0) Terr[sd.terr[k]] = Mathf.Clamp(sd.terr[k + 1] / 100f, TerrLow, TerrTop);
             // oude heuvelblokken onderaan een stapel worden terreinhoogte (3 m elk), net als terrMigrate in de webversie
             foreach (int k in new List<int>(Cells.Keys))
@@ -1366,7 +1423,7 @@ public static partial class PlanetCity
                 float g = G(i), RG = Planet.R + g; bool plat = FlatGround(i);
                 // hoogte van het midden en de hoeken; onder een weg of pad een kom tot de laagste hoek, zodat het maaiveld nooit door de hellende weg steekt
                 var hk = new float[m]; for (int k = 0; k < m; k++) hk[k] = OwnCorner(i, k);
-                float hc = g; if (IsWalk(i) && !carved.Contains(i) && !levelled.Contains(i)) foreach (float x in hk) hc = Mathf.Min(hc, x);
+                float hc = g + CenterOfs1(i); if (IsWalk(i) && !carved.Contains(i) && !levelled.Contains(i)) foreach (float x in hk) hc = Mathf.Min(hc, x);
                 if (cuts.Count > 0) hc = Mathf.Min(hc, Carve(c.dir));
                 bool hasDeck = deckSide.TryGetValue(i, out var dk);
                 float kk = Mathf.Pow(Mathf.Clamp01((c.distort - 0.04f) / 0.125f), 1.4f);
@@ -1387,7 +1444,7 @@ public static partial class PlanetCity
                     // bij een geul of dijk: het maaiveld zonder geul als vlak, de geul of dijk komt er precies in (ExactGround)
                     if (fieldCells.Contains(i) && !plat && NearSeg(c.dir))
                     {
-                        var hb0 = new float[m]; float hcb0 = 0f; for (int k = 0; k < m; k++) { hb0[k] = CornerBase(i, k); hcb0 += hb0[k]; } hcb0 = levelled.Contains(i) ? hcb0 / m : g;   // het gewone terrein, zonder de weg
+                        var hb0 = new float[m]; float hcb0 = 0f; for (int k = 0; k < m; k++) { hb0[k] = CornerBase(i, k); hcb0 += hb0[k]; } hcb0 = (levelled.Contains(i) ? hcb0 / m : g) + CenterOfs1(i);   // het gewone terrein, zonder de weg
                         for (int k = 0; k < m; k++) LineGround(c, k, hcb0, hb0[k], hb0[(k + 1) % m], Emit2);
                         continue;
                     }
@@ -1884,7 +1941,7 @@ public static partial class PlanetCity
     {
         int i = Planet.Nearest(dir * Planet.R); var c = Planet.Cells[i]; int m = c.corners.Length;
         Vector3 v = (dir - c.dir) * Planet.R; Vector2 q = new Vector2(Vector3.Dot(v, c.east), Vector3.Dot(v, c.north));
-        float hc = 0f; for (int k = 0; k < m; k++) hc += CornerBase(i, k); hc = levelled.Contains(i) ? hc / m : G(i);
+        float hc = 0f; for (int k = 0; k < m; k++) hc += CornerBase(i, k); hc = (levelled.Contains(i) ? hc / m : G(i)) + CenterOfs1(i);
         for (int k = 0; k < m; k++)
         {
             Vector2 L1 = c.local[k], L2 = c.local[(k + 1) % m]; float det = L1.x * L2.y - L1.y * L2.x; if (Mathf.Abs(det) < 1e-6f) continue;

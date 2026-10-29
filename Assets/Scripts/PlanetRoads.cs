@@ -17,7 +17,8 @@ public static partial class PlanetCity
     static Transform roadRoot;
     class RoadPiece { public long sig; public GameObject go; }
     static readonly Dictionary<string, RoadPiece> roadPieces = new Dictionary<string, RoadPiece>();
-    const float BendNode = 75f;   // vanaf deze draaihoek is een wegvak een knik (knoop) in plaats van een ronde bocht in de lijn
+    const float BendNode = 75f;
+    static readonly List<Vector3> crossAt = new List<Vector3>();   // de brugpunten van schuine wegen over een pad (geen diepe stoepzijkant daar)   // vanaf deze draaihoek is een wegvak een knik (knoop) in plaats van een ronde bocht in de lijn
 
     static void RoadsInit(Transform parent) { roadRoot = new GameObject("Wegen").transform; roadRoot.SetParent(parent, false); roadPieces.Clear(); }
 
@@ -72,11 +73,19 @@ public static partial class PlanetCity
         if (roadRoot == null) return;
         RoadGraph(out var nbs, out var nodes, out var chains, out var closed);
         var want = new HashSet<string>();
+        var xs = EdgeCrossings(); crossAt.Clear(); var crossEnds = new HashSet<int>();
+        foreach (var x in xs)
+        {
+            crossAt.Add(CrossPoint(x)); crossEnds.Add(x.u); crossEnds.Add(x.v);
+            string key = "x:" + x.u + "," + x.v; want.Add(key);
+            long sig = 1469598103934665603L; foreach (int c in new[] { x.u, x.v, x.b1, x.b2 }) { sig = Mix(sig, c); sig = Mix(sig, Cm(G(c))); }
+            var xx = x; Piece(key, sig, mb => CrossMesh(mb, xx));
+        }
         for (int c = 0; c < chains.Count; c++)
         {
             var ch = chains[c]; string key = (closed[c] ? "r:" : "c:") + string.Join(",", ch); want.Add(key);
             long sig = 1469598103934665603L;
-            foreach (int i in ch) { sig = Mix(sig, i); sig = Mix(sig, Cm(G(i))); sig = Mix(sig, StyleOf(i)); sig = Mix(sig, Cm(MinCorner(i))); sig = Mix(sig, Under.ContainsKey(i) ? 1 : 0); sig = Mix(sig, nbs[i].Count); }
+            foreach (int i in ch) { sig = Mix(sig, i); sig = Mix(sig, Cm(G(i))); sig = Mix(sig, StyleOf(i)); sig = Mix(sig, Cm(MinCorner(i))); sig = Mix(sig, Under.ContainsKey(i) ? 1 : 0); sig = Mix(sig, nbs[i].Count); sig = Mix(sig, crossEnds.Contains(i) ? 1 : 0); }
             for (int k = 0; k + 1 < ch.Count; k++) sig = Mix(sig, Flow(ch[k], ch[k + 1]));
             Piece(key, sig, mb => ChainMesh(mb, ch, closed[c], nbs, nodes));
         }
@@ -136,7 +145,7 @@ public static partial class PlanetCity
             RP P1 = LerpRP(P, A, d / la), P2 = LerpRP(P, B, d / lb); P1.cell = P.cell; P2.cell = P.cell;
             lineTo(cur, P1);
             int nn = Mathf.Max(4, Mathf.CeilToInt(d / 1.0f));
-            for (int s = 1; s <= nn; s++) { float t = s / (float)nn, u = 1f - t; o.Add(new RP { p = P1.p * (u * u) + P.p * (2f * u * t) + P2.p * (t * t), h = P1.h * (u * u) + P.h * (2f * u * t) + P2.h * (t * t), cell = P.cell }); }
+            for (int s = 1; s <= nn; s++) { float t = s / (float)nn, u = 1f - t; o.Add(new RP { p = P1.p * (u * u) + P.p * (2f * u * t) + P2.p * (t * t), h = t < 0.5f ? Mathf.Lerp(P1.h, P.h, t * 2f) : Mathf.Lerp(P.h, P2.h, t * 2f - 1f), cell = P.cell }); }   // de bocht rond, de hoogte recht van hart tot hart (zoals het terrein): anders zakt de weg bovenaan een helling onder de grond
             cur = P2;
         }
         lineTo(cur, v[v.Count - 1]);
@@ -167,7 +176,9 @@ public static partial class PlanetCity
             up[k] = pts[k].p.normalized; Vector3 t = pts[Mathf.Min(N - 1, k + 1)].p - pts[Mathf.Max(0, k - 1)].p; t -= up[k] * Vector3.Dot(t, up[k]);
             fw[k] = t.normalized; side[k] = Vector3.Cross(up[k], fw[k]).normalized;
             if (k > 0) S[k] = S[k - 1] + Vector3.Distance(pts[k].p, pts[k - 1].p);
-            low[k] = Underpass(pts[k].cell) ? SKB : Mathf.Min(SKB, MinCorner(pts[k].cell) - pts[k].h - 0.35f);   // onderkant van de zijkant: tot onder het maaiveld (niet in de opening van een onderdoorgang)
+            bool overTube = false; foreach (var cx in crossAt) if ((pts[k].p - cx).sqrMagnitude < 8f * 8f) overTube = true;   // boven de koker van een brug
+            bool nearPortal = false; foreach (var q in cuts) if ((pts[k].p - q.p).sqrMagnitude < 14f * 14f) nearPortal = true;   // vlak bij een portaal: de zijkant tot in de geul (anders een kier)
+            low[k] = Underpass(pts[k].cell) || overTube ? SKB : Mathf.Min(SKB, (nearPortal ? MinCorner(pts[k].cell) : MinCornerNoCut(pts[k].cell)) - pts[k].h - 0.35f);   // onderkant van de zijkant: tot onder het maaiveld (niet in de opening van een onderdoorgang)
         }
         System.Func<int, float, float, Vector3> W = (k, off, y) => (pts[k].p + side[k] * off).normalized * (Planet.R + pts[k].h + y);
         for (int k = 0; k + 1 < N; k++)

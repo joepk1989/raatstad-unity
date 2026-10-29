@@ -32,7 +32,7 @@ public class PlanetBuilder : MonoBehaviour
         It("park", "Park", "Groen en water"), It("plein", "Plein", "Groen en water"), It("water", "Gracht", "Groen en water"), It("meer", "Meer", "Groen en water"),
         // kleuren van het penseel zoals TERR_COL in de webversie
         It("t:0", "Ophogen", "Terrein", "terrein", new Color(0.95f, 0.70f, 0.20f)), It("t:1", "Afgraven", "Terrein", "terrein", new Color(0.35f, 0.66f, 0.90f)), It("t:2", "Egaliseren", "Terrein", "terrein", new Color(0.92f, 0.93f, 0.92f)),
-        It("t:3", "Gladstrijken", "Terrein", "terrein", new Color(0.56f, 0.82f, 0.42f)), It("t:4", "Helling", "Terrein", "terrein", new Color(0.94f, 0.54f, 0.36f)), It("kuil", "Uitgraving", "Terrein"),
+        It("t:3", "Gladstrijken", "Terrein", "terrein", new Color(0.56f, 0.82f, 0.42f)), It("t:4", "Helling", "Terrein", "terrein", new Color(0.94f, 0.54f, 0.36f)), It("t:5", "Rand", "Terrein", "terrein", new Color(0.80f, 0.62f, 0.95f)), It("kuil", "Uitgraving", "Terrein"),
     };
     static Item Find(string id) { foreach (var it in Catalog) if (it.id == id) return it; return Catalog[0]; }
     static readonly string[] DefaultBar = { "weg", "pad", "woning", "kantoor", "dak", "park", "water", "t:0", "winkel" };
@@ -182,13 +182,14 @@ public class PlanetBuilder : MonoBehaviour
         hasHover = false;
         if (!OverBar && Physics.Raycast(Cam.ScreenPointToRay(Inp.Pos), out RaycastHit hit, 5000f, Layers.Grond, QueryTriggerInteraction.Ignore))
         {
-            hover = Planet.Nearest(hit.point - hit.normal * 0.3f); hasHover = true;   // net in het vlak dat je raakt: de zijkant van een gebouw hoort bij dat gebouw, niet bij de buur
+            hover = Planet.Nearest(hit.point - hit.normal * 0.3f); hasHover = true; hoverPoint = hit.point;   // net in het vlak dat je raakt: de zijkant van een gebouw hoort bij dat gebouw, niet bij de buur
             ShowOutline(hover);
             if (Inp.Down(K.X)) { Push(); if (PlanetCity.RemoveTop(hover)) Changed(); }
             if (Inp.RightDown) { rightAt = Inp.Pos; rightCell = hover; }
             if (Inp.RightUp && rightCell >= 0 && Vector2.Distance(Inp.Pos, rightAt) < 6f) { Push(); if (PlanetCity.Clear(hover)) { Changed(); Say("Vak leeggemaakt"); } else if (PlanetCity.IsHalf(hover)) Say("Hier loopt een weg overheen: klik met rechts op een wegvak van die weg"); rightCell = -1; }
             bool roadTool = !eraser && (CurBlock == "weg" || CurBlock == "pad");   // met de gum wis je altijd, wat er ook gekozen is
-            if (TerrTool && !eraser) { ShowBrush(hover); if (leftDown) { Push(); SculptStart(hover); } }
+            if (TerrTool && !eraser && terrMode == 5) { ShowBrush(-1); EdgeTool(); }   // een rand omhoog of omlaag
+            else if (TerrTool && !eraser) { ShowBrush(hover); if (leftDown) { Push(); SculptStart(hover); } }
             else if (leftDown) { Push(); painting = !roadTool; lastPainted = -1; lineStart = roadTool ? hover : -1; linePlan = null; }
             if (lineStart >= 0 && Inp.LeftHeld) { linePlan = hover == lineStart ? null : PlanetCity.LinePlan(lineStart, hover); ShowPlan(linePlan); }
             if (painting && Inp.LeftHeld && hover != lastPainted)
@@ -231,8 +232,37 @@ public class PlanetBuilder : MonoBehaviour
     //  Gladstrijken        scherpe overgangen worden zacht (elk vak schuift naar het gemiddelde van zijn buren)
     //  Helling             sleep van A naar B: een gelijkmatige helling van de hoogte bij A naar die bij B
     // Het penseel is 1, 7, 19 of 37 vakken ([ en ]); het midden werkt het hardst. Vakken waar iets op staat blijven liggen.
-    static readonly string[] TerrModes = { "Ophogen", "Afgraven", "Egaliseren", "Gladstrijken", "Helling" };
-    static readonly string[] TerrHints = { "Shift: omlaag", "Shift: omhoog", "Shift: naar de hoogte van het startvak", "slepen om glad te strijken", "sleep van hier naar het andere eind" };
+    static readonly string[] TerrModes = { "Ophogen", "Afgraven", "Egaliseren", "Gladstrijken", "Helling", "Rand" };
+    static readonly string[] TerrIcons = { "ophogen", "afgraven", "egaliseren", "gladstrijken", "helling", "rand" };
+    static readonly string[] TerrHints = { "Shift: omlaag", "Shift: omhoog", "Shift: naar de hoogte van het startvak", "slepen om glad te strijken", "sleep van hier naar het andere eind", "rand of doorkruislijn (door het midden): klik 0,5 m omhoog · Shift+klik omlaag · Page Up/Down 0,25 m" };
+    // stand Rand: de rand van het vak onder de muis die het dichtst bij de muis ligt (twee hoekpunten), omhoog of omlaag
+    int edgeK = -1; bool edgeDiag; Vector3 hoverPoint;
+    // wat ligt het dichtst bij de muis: een rand (hoekpunt k naar k+1) of, in een zeshoek, een doorkruislijn (hoekpunt k door het midden
+    // naar k+3)? In de vlakke coordinaten van het vak, de afstand tot elk lijnstuk.
+    void NearestLine(int c, Vector3 p, out int k, out bool diag)
+    {
+        var cell = Planet.Cells[c]; var L = cell.local; int m = L.Length; Vector3 v = p.normalized * Planet.R - cell.dir * Planet.R;
+        Vector2 q = new Vector2(Vector3.Dot(v, cell.east), Vector3.Dot(v, cell.north)); float bd = float.MaxValue; k = 0; diag = false;
+        float Seg(Vector2 a, Vector2 b) { Vector2 ab = b - a; float t = Mathf.Clamp01(Vector2.Dot(q - a, ab) / ab.sqrMagnitude); return (q - (a + ab * t)).sqrMagnitude; }
+        for (int j = 0; j < m; j++) { float dd = Seg(L[j], L[(j + 1) % m]); if (dd < bd) { bd = dd; k = j; diag = false; } }
+        if (m == 6) for (int j = 0; j < 3; j++) { float dd = Seg(L[j], L[j + 3]); if (dd < bd) { bd = dd; k = j; diag = true; } }
+    }
+    void EdgeTool()
+    {
+        NearestLine(hover, hoverPoint, out edgeK, out edgeDiag); var cs = Planet.Cells[hover].corners; int m = cs.Length, k2 = edgeDiag ? (edgeK + 3) % m : (edgeK + 1) % m;
+        Vector3 Pk(int k) => cs[k] * (Planet.R + PlanetCity.OwnCorner(hover, k) + 0.4f);
+        outline.enabled = true; outline.loop = false; outline.widthMultiplier = 0.6f;
+        if (edgeDiag) { outline.positionCount = 3; outline.SetPosition(0, Pk(edgeK)); outline.SetPosition(1, Planet.Cells[hover].dir * (Planet.R + PlanetCity.G(hover) + PlanetCity.CenterOfs1(hover) + 0.4f)); outline.SetPosition(2, Pk(k2)); }
+        else { outline.positionCount = 2; outline.SetPosition(0, Pk(edgeK)); outline.SetPosition(1, Pk(k2)); }
+        float d = 0f;
+        if (Inp.LeftDown && camDrag == 0 && !Ui.MouseOverUI) d = Inp.Held(K.Shift) ? -0.5f : 0.5f;
+        if (Inp.Down(K.PgUp)) d = 0.25f; if (Inp.Down(K.PgDn)) d = -0.25f;
+        if (d != 0f)
+        {
+            Push(); if (edgeDiag) PlanetCity.NudgeDiagonal(hover, edgeK, d); else PlanetCity.NudgeEdge(hover, edgeK, d); Changed();
+            Say((edgeDiag ? "Doorkruislijn " : "Rand ") + (d > 0f ? "omhoog" : "omlaag") + ": nu " + PlanetCity.CornerOfs1(hover, edgeK).ToString("+0.00;-0.00;0") + " m en " + PlanetCity.CornerOfs1(hover, k2).ToString("+0.00;-0.00;0") + " m t.o.v. het maaiveld" + (edgeDiag ? ", het midden " + PlanetCity.CenterOfs1(hover).ToString("+0.00;-0.00;0") + " m" : ""));
+        }
+    }
     int terrMode, brush = 1; bool sculpting; int sA = -1, sLast = -1; float sHa, sHv, sAcc, sCost; bool sInv;
     readonly Dictionary<int, float> sPrior = new Dictionary<int, float>(); readonly HashSet<int> sTouched = new HashSet<int>();
     static int BrushSize(int b) => 1 + 3 * b * (b + 1);
@@ -518,6 +548,7 @@ public class PlanetBuilder : MonoBehaviour
     void ShowOutline(int i)
     {
         var c = Planet.Cells[i]; float h = PlanetCity.StackHeight(i) + 0.3f; bool plat = PlanetCity.Plateau(i);
+        outline.loop = true; outline.widthMultiplier = 0.35f;   // (de stand Rand tekent er één rand mee)
         if (Planet.IsPole(i) && Time.time > msgT) Say(i == Planet.North ? "De noordpool: hier gaat de as van de planeet doorheen" : "De zuidpool: hier gaat de as van de planeet doorheen");
         else if (c.corners.Length == 5 && Time.time > msgT) Say("Dit is een van de 12 vijfhoeken (oranje): op een bol passen niet alleen zeshoeken");
         else if (Time.time > msgT && System.Array.IndexOf(Planet.Starts, i) >= 0) Say("Startplek (een van de 20): zo ver mogelijk van de vijfhoeken, hier is het raster het netst");
@@ -811,9 +842,11 @@ public class PlanetBuilder : MonoBehaviour
         }
         else if (TerrTool)
         {
-            float w = 520f + 8f + 130f + 20f; var r = new Rect((W - w) * 0.5f, y, w, 42f); Ui.Panel(r, false, 12f); float x = r.x + 10f;
-            int s = Ui.Seg(new Rect(x, r.y + 5f, 520f, 32f), TerrModes, terrMode); if (s >= 0 && s != terrMode) { terrMode = s; SetVariant("t:" + s); Say("Terrein: " + TerrModes[s] + " · " + TerrHints[s]); } x += 528f;
-            if (Ui.Button(new Rect(x, r.y + 5f, 130f, 32f), "Penseel " + BrushSize(brush))) brush = (brush + 1) % 4;
+            bool useBrush = terrMode <= 3;   // het penseel doet alleen iets bij ophogen, afgraven, egaliseren en gladstrijken
+            float segW = 0f; foreach (var t in TerrModes) segW += Ui.Width(t, Ui.T.Bold) + 44f;
+            float w = segW + 20f + (useBrush ? 138f : 0f); var r = new Rect((W - w) * 0.5f, y, w, 42f); Ui.Panel(r, false, 12f); float x = r.x + 10f;
+            int s = Ui.SegIcon(new Rect(x, r.y + 5f, segW, 32f), TerrModes, TerrIcons, terrMode); if (s >= 0 && s != terrMode) { terrMode = s; SetVariant("t:" + s); Say("Terrein: " + TerrModes[s] + " · " + TerrHints[s]); } x += segW + 8f;
+            if (useBrush && Ui.Button(new Rect(x, r.y + 5f, 130f, 32f), "Penseel " + BrushSize(brush))) brush = (brush + 1) % 4;
         }
         else if (eraser)
         {
