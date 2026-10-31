@@ -56,8 +56,13 @@ Erbij gekomen op 31 oktober 2026:
 
 - Mensen: realistische figuren uit Microsoft Rocketbox (MIT, `Assets/Resources/Mensen`, licentie erbij) met Rocketbox-animaties (lopen, stilstaan, zwaaien, zitten), als Humanoid geïmporteerd (`Assets/Editor/MensenImport.cs`), afgespeeld in `Rocketbox.cs`. Voetgangers sturen vloeiend naar hun route en wijken voor elkaar uit (`PlacePerson`). Fiets- en voetpad 6,4 m breed (3,2 m fietsdeel).
 
+- Fietsers houden het stuur vast en trappen mee: na de animatie buigen arm en been (twee botten, cosinusregel) naar handvat en pedaal (`PlanetLife.LateUpdate`); omafietsstuur, trappers draaien met de wielen mee.
+- Voertuigen en rijgedrag van de webversie: zeven low-poly auto's uit zeshoekige doorsneden; netjes verkeer komt los achter een stilstaande auto; Totale chaos (menu) geeft elke auto een persona (racer, ontwijker, jager), met slippen, botsen, schade, brand en mensen omverrijden.
+- Interface: zes vaste bouwcategorieën (1–6) met een lade, Tab vasthouden voor een zeshoekig keuzewiel, middelste klik als pipet, vooraf het effect op de schoonheid bij de muis en een TIP voor het zwakste onderdeel; blokpatronen, laagkiezer, uitleg bij aanwijzen (`Ui.Tip`), interfacegrootte in het menu, ongelukjesteller.
+
 Nog te doen:
 1. Modules als JSON met edge-codes (nu nog in code)
-2. Onderdelen uit `docs/overdracht-webversie.md` bouwen: stadsgenerator, wenteltrap, low-poly voertuigen, roekeloos rijgedrag, geluiden
+2. Onderdelen uit `docs/overdracht-webversie.md` bouwen: stadsgenerator, wenteltrap, geluiden
 3. Laadscherm (`Assets/Scripts/UI/HexLoadingScreen.cs`) in de startscène hangen
-4. Terrein: hoogtelijnen tijdens het boetseren; een weg tussen twee vakken met een groot hoogteverschil ligt nog in een kom
+4. Terrein: hoogtelijnen tijdens het boetseren; een weg tussen twee vakken met een groot hoogteverschil ligt nog in een kom; bruine driehoek naast de stoep bij een schuine onderdoorgang
+5. Ragdolls voor mensen die bij de chaos worden geraakt
