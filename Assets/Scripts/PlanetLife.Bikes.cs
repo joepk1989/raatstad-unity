@@ -5,10 +5,12 @@ using UnityEngine;
 // naar vak zoals de mensen lopen, maar alleen over fietspaden (ook door een onderdoorgang of schuin onder een brug door).
 public partial class PlanetLife
 {
-    class Rider { public Transform root, wheelF, wheelB; public Person who; public int a, b, prev; public float t, speed, pedal; }
+    class Rider { public Transform root, wheelF, wheelB, crank; public Transform[] legL, legR, armL, armR; public Transform spine, chest, fingerL, fingerR; public Person who; public int a, b, prev; public float t, speed, pedal; }
     readonly List<Rider> riders = new List<Rider>();
     readonly List<int> bikeCells = new List<int>();
-    static Mesh frameMesh, wheelMesh;
+    static Mesh frameMesh, wheelMesh, crankMesh;
+    const float CrankR = 0.17f, Gear = 2.4f;   // trapper 17 cm van de trapas; één omwenteling van de trappers is 2,4 wielomwentelingen
+    static readonly Vector3 CrankAt = new Vector3(0, 0.32f, -0.02f), PedalL = new Vector3(-0.13f, 0, CrankR), PedalR = new Vector3(0.13f, 0, -CrankR), GripL = new Vector3(-0.27f, 1.0f, 0.18f), GripR = new Vector3(0.27f, 1.0f, 0.18f);
     static readonly Color[] FrameColors = { new Color(0.15f, 0.16f, 0.18f), new Color(0.75f, 0.12f, 0.12f), new Color(0.15f, 0.35f, 0.65f), new Color(0.9f, 0.9f, 0.88f), new Color(0.2f, 0.5f, 0.3f), new Color(0.85f, 0.6f, 0.15f) };
 
     void RefreshBikes() { bikeCells.Clear(); foreach (int c in PlanetCity.Bike) if (PlanetCity.IsBike(c)) bikeCells.Add(c); }
@@ -24,19 +26,25 @@ public partial class PlanetLife
     static void BikeMeshes()
     {
         if (frameMesh != null) return;
-        var f = new MeshBuilder();
+        var f = new MeshBuilder(); var into = f;
         void Bar(Vector3 a, Vector3 b, float w)
         {
             Vector3 d = (b - a).normalized, s = Vector3.Cross(d, Vector3.right).sqrMagnitude > 1e-4f ? Vector3.Cross(d, Vector3.right).normalized * w : Vector3.up * w, u = Vector3.right * w;
             Vector3[] p = { a - s - u, a + s - u, a + s + u, a - s + u, b - s - u, b + s - u, b + s + u, b - s + u }; Vector3 m = (a + b) * 0.5f;
             int[][] q = { new[] { 0, 1, 5, 4 }, new[] { 1, 2, 6, 5 }, new[] { 2, 3, 7, 6 }, new[] { 3, 0, 4, 7 } };
-            foreach (var k in q) f.Quad(p[k[0]], p[k[1]], p[k[2]], p[k[3]], (p[k[0]] + p[k[2]]) * 0.5f - m);
+            foreach (var k in q) into.Quad(p[k[0]], p[k[1]], p[k[2]], p[k[3]], (p[k[0]] + p[k[2]]) * 0.5f - m);
         }
         Vector3 rear = new Vector3(0, 0.34f, -0.52f), front = new Vector3(0, 0.34f, 0.52f), crank = new Vector3(0, 0.32f, -0.02f), seat = new Vector3(0, 0.82f, -0.2f), head = new Vector3(0, 0.88f, 0.38f);
         Bar(rear, crank, 0.018f); Bar(crank, seat, 0.02f); Bar(seat, rear, 0.016f); Bar(seat + new Vector3(0, -0.06f, 0), head, 0.02f); Bar(crank, head, 0.022f); Bar(head, front, 0.018f);
         Bar(new Vector3(-0.08f, 0.86f, -0.26f), new Vector3(0.08f, 0.86f, -0.14f), 0.04f);   // zadel
-        Bar(new Vector3(-0.28f, 0.98f, 0.36f), new Vector3(0.28f, 0.98f, 0.36f), 0.015f); Bar(head, new Vector3(0, 0.98f, 0.36f), 0.018f);   // stuur
+        Bar(head, new Vector3(0, 1.0f, 0.34f), 0.018f); Bar(new Vector3(-0.12f, 1.0f, 0.34f), new Vector3(0.12f, 1.0f, 0.34f), 0.015f);   // stuur: een omafietsstuur, naar achteren gebogen
+        foreach (var g in new[] { GripL, GripR }) { Bar(new Vector3(Mathf.Sign(g.x) * 0.12f, 1.0f, 0.34f), g + new Vector3(0, 0, -0.04f), 0.015f); Bar(g + new Vector3(0, 0, 0.02f), g + new Vector3(0, 0, -0.08f), 0.022f); }
         frameMesh = f.Build();
+        // de trappers: twee cranks tegenover elkaar, met een pedaal eraan (draaien om de trapas, x)
+        var c = new MeshBuilder(); into = c;
+        foreach (var p in new[] { PedalL, PedalR }) { Vector3 arm = new Vector3(Mathf.Sign(p.x) * 0.08f, 0, 0); Bar(arm, arm + new Vector3(0, 0, p.z), 0.014f); Bar(new Vector3(Mathf.Sign(p.x) * 0.09f, 0, p.z), new Vector3(Mathf.Sign(p.x) * 0.17f, 0, p.z), 0.025f); }
+        Bar(new Vector3(-0.08f, 0, 0), new Vector3(0.08f, 0, 0), 0.02f);   // de as
+        crankMesh = c.Build();
         var w = new MeshBuilder(); const int N = 12; const float R = 0.34f, T = 0.025f;
         for (int k = 0; k < N; k++)
         {
@@ -61,10 +69,19 @@ public partial class PlanetLife
         Part("frame", frameMesh, Mats.Get("fiets" + k, FrameColors[k]), Vector3.zero, out _);
         var band = Mats.Get("fietsband", new Color(0.08f, 0.08f, 0.09f));
         Part("voorwiel", wheelMesh, band, new Vector3(0, 0.34f, 0.52f), out r.wheelF); Part("achterwiel", wheelMesh, band, new Vector3(0, 0.34f, -0.52f), out r.wheelB);
+        Part("trappers", crankMesh, band, CrankAt, out r.crank); r.crank.localRotation = Quaternion.Euler(r.pedal * Mathf.Rad2Deg, 0, 0);
         // de fietser: een gewoon mens, op het zadel, met de handen aan het stuur
         r.who = global::People.MakePerson(r.root); r.who.sit = true; r.who.root.localRotation = Quaternion.identity;
         r.who.root.localPosition = r.who.rb != null ? new Vector3(0, 0.84f - 0.5f, -0.28f) : new Vector3(0, 0.84f - 0.9f * r.who.scale, -0.2f);   // een realistisch figuur zit (de heup op stoelhoogte, 0,5 m)
         if (r.who.audio != null) Object.Destroy(r.who.audio);
+        var an = r.who.rb != null ? r.who.rb.Anim : null;
+        if (an != null && an.isHuman)
+        {
+            Transform B(HumanBodyBones h) => an.GetBoneTransform(h);
+            r.legL = new[] { B(HumanBodyBones.LeftUpperLeg), B(HumanBodyBones.LeftLowerLeg), B(HumanBodyBones.LeftFoot) }; r.legR = new[] { B(HumanBodyBones.RightUpperLeg), B(HumanBodyBones.RightLowerLeg), B(HumanBodyBones.RightFoot) };
+            r.armL = new[] { B(HumanBodyBones.LeftUpperArm), B(HumanBodyBones.LeftLowerArm), B(HumanBodyBones.LeftHand) }; r.armR = new[] { B(HumanBodyBones.RightUpperArm), B(HumanBodyBones.RightLowerArm), B(HumanBodyBones.RightHand) };
+            r.spine = B(HumanBodyBones.Spine); r.chest = B(HumanBodyBones.Chest); r.fingerL = B(HumanBodyBones.LeftMiddleProximal); r.fingerR = B(HumanBodyBones.RightMiddleProximal);
+        }
         PlaceRider(r, 0f); return r;
     }
 
@@ -75,6 +92,42 @@ public partial class PlanetLife
         pos += up * (r.t < 0.5f ? PlanetCity.SurfaceH(r.a, r.b, pos) : PlanetCity.SurfaceH(r.b, r.a, pos)) + up * ((ra || rb) ? 0.15f : 0f);
         r.root.position = dt <= 0f ? pos : Vector3.Lerp(r.root.position, pos, Mathf.Min(1f, dt * 8f)); Quaternion target = Geo.Look(fwd, up);   // vloeiend, geen sprongetje op een vakrand
         r.root.rotation = dt <= 0f ? target : Quaternion.Slerp(r.root.rotation, target, Mathf.Min(1f, dt * 6f));
+    }
+
+    // Na de animatie (LateUpdate): de fietser buigt voorover, de handen pakken het stuur en de voeten staan op de trappers.
+    // Arm en been zijn elk twee botten: de hoek in elleboog of knie volgt uit de afstand (cosinusregel), de buigrichting uit een hint.
+    void LateUpdate()
+    {
+        foreach (var r in riders)
+        {
+            if (r.legL == null || r.who.rb == null) continue;
+            Transform b = r.root; Vector3 up = b.up, fw = b.forward, rt = b.right;
+            if (r.spine != null) r.spine.rotation = Quaternion.AngleAxis(8f, rt) * r.spine.rotation;   // iets voorover naar het stuur (rechtop, zoals op een omafiets)
+            if (r.chest != null) r.chest.rotation = Quaternion.AngleAxis(6f, rt) * r.chest.rotation;
+            foreach (var (leg, ped, s) in new[] { (r.legL, PedalL, -1f), (r.legR, PedalR, 1f) })
+            {
+                Vector3 p = r.crank.TransformPoint(ped) + up * 0.07f - fw * 0.04f;   // de enkel net boven en achter het pedaal
+                TwoBone(leg, p, leg[0].position + fw * 0.8f + up * 0.3f + rt * s * 0.05f);   // knie naar voren
+            }
+            foreach (var (arm, grip, s, fin) in new[] { (r.armL, GripL, -1f, r.fingerL), (r.armR, GripR, 1f, r.fingerR) })
+            {
+                TwoBone(arm, b.TransformPoint(grip - new Vector3(0, 0, 0.03f)), arm[0].position + rt * s * 0.35f - up * 0.4f - fw * 0.1f);   // elleboog naar buiten en omlaag
+                if (fin != null && arm[2] != null) arm[2].rotation = Quaternion.FromToRotation(fin.position - arm[2].position, fw - up * 0.3f + rt * s * 0.2f) * arm[2].rotation;   // vingers naar voren, om het handvat
+            }
+        }
+    }
+    static void TwoBone(Transform[] c, Vector3 target, Vector3 hint)
+    {
+        Transform a = c[0], m = c[1], e = c[2]; if (a == null || m == null || e == null) return;
+        Quaternion keep = e.rotation;
+        float la = Vector3.Distance(a.position, m.position), lb = Vector3.Distance(m.position, e.position);
+        Vector3 to = target - a.position; float d = Mathf.Clamp(to.magnitude, Mathf.Abs(la - lb) + 1e-3f, la + lb - 1e-3f); Vector3 dir = to.normalized;
+        Vector3 bend = hint - a.position; bend -= dir * Vector3.Dot(bend, dir); if (bend.sqrMagnitude < 1e-8f) bend = Vector3.Cross(dir, Vector3.right); bend.Normalize();
+        float ang = Mathf.Acos(Mathf.Clamp((la * la + d * d - lb * lb) / (2f * la * d), -1f, 1f));
+        Vector3 mid = a.position + (dir * Mathf.Cos(ang) + bend * Mathf.Sin(ang)) * la;
+        a.rotation = Quaternion.FromToRotation(m.position - a.position, mid - a.position) * a.rotation;
+        m.rotation = Quaternion.FromToRotation(e.position - m.position, a.position + dir * d - m.position) * m.rotation;
+        e.rotation = keep;
     }
 
     void UpdateBikes(float dt)
@@ -91,7 +144,7 @@ public partial class PlanetLife
             r.t += r.speed * dt / len;
             while (r.t >= 1f) { r.t -= 1f; r.prev = r.a; r.a = r.b; r.b = NextBike(r.a, r.prev); if (r.a == r.b) { r.t = 0f; break; } }
             // trappen en de wielen laten draaien (een wiel van 0,34 m: 1/0,34 rad per meter)
-            float spin = r.speed * dt / 0.34f * Mathf.Rad2Deg; r.wheelF.Rotate(Vector3.right, spin, Space.Self); r.wheelB.Rotate(Vector3.right, spin, Space.Self);
+            float spin = r.speed * dt / 0.34f * Mathf.Rad2Deg; r.wheelF.Rotate(Vector3.right, spin, Space.Self); r.wheelB.Rotate(Vector3.right, spin, Space.Self); r.crank.Rotate(Vector3.right, spin / Gear, Space.Self);
             if (r.who.rb != null) { global::People.Animate(r.who, dt, false); PlaceRider(r, dt); continue; }
             r.pedal += r.speed * dt * 2.2f; float sw = Mathf.Sin(r.pedal) * 20f;   // de benen gaan op en neer rond de trapas (zonder knie: schuin naar voren)
             r.who.legL.localRotation = Quaternion.Euler(-52f + sw, 0, 0); r.who.legR.localRotation = Quaternion.Euler(-52f - sw, 0, 0);

@@ -93,11 +93,12 @@ public class RbPerson : MonoBehaviour
 {
     PlayableGraph graph; AnimationMixerPlayable mix; AnimationClipPlayable[] cp = new AnimationClipPlayable[4]; float[] w = new float[4], want = new float[4];
     public float WalkClip => walkClipSpeed;
+    public Animator Anim { get; private set; }   // voor de botten (handen en voeten aan stuur en trappers)
     float walkClipSpeed = 1.35f;   // zo snel loopt de animatie op de plek (m/s, gemeten): bij een andere snelheid sneller of trager afspelen
     public void Init(AnimationClip idle, AnimationClip walk, AnimationClip wave, AnimationClip sit, float natural)
     {
         walkClipSpeed = natural;
-        var an = gameObject.GetComponent<Animator>(); if (an == null) an = gameObject.AddComponent<Animator>(); an.applyRootMotion = false; an.cullingMode = AnimatorCullingMode.CullCompletely;   // (geen ??: Unity-objecten zijn soms "nep-null")
+        var an = gameObject.GetComponent<Animator>(); if (an == null) an = gameObject.AddComponent<Animator>(); an.applyRootMotion = false; an.cullingMode = AnimatorCullingMode.CullCompletely; Anim = an;   // (geen ??: Unity-objecten zijn soms "nep-null")
         graph = PlayableGraph.Create("mens"); graph.SetTimeUpdateMode(DirectorUpdateMode.GameTime);
         mix = AnimationMixerPlayable.Create(graph, 4);
         var list = new[] { idle, walk, wave, sit ?? idle };
