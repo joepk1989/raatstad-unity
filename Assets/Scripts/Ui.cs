@@ -104,7 +104,7 @@ public static class Ui
         }
         var s = new GUIStyle { border = new RectOffset { left = radius + 2, right = radius + 2, top = radius + 2, bottom = radius + 2 } }; s.normal.background = t; return s;
     }
-    static void Box(Rect r, Color fill, Color border, float radius)
+    public static void Box(Rect r, Color fill, Color border, float radius)
     {
         if (Event.current.type != EventType.Repaint) return;
         int rad = Mathf.Clamp(Mathf.RoundToInt(Mathf.Min(radius, Mathf.Min(r.width, r.height) * 0.5f)), 2, 40);

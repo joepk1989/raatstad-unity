@@ -6,7 +6,7 @@ using UnityEngine;
 public static class Beauty
 {
     public class Row { public string name, detail, tip; public float w; public float v = -1f; }
-    public class Result { public int score; public string label, tip; public List<Row> rows = new List<Row>(); public int blocks; public float top; }
+    public class Result { public int score; public float raw; public string label, tip; public List<Row> rows = new List<Row>(); public int blocks; public float top; }
 
     static bool IsBld(string t) => t == "woning" || t == "kantoor" || t == "winkel";
     static float C01(float v) => Mathf.Clamp01(v);
@@ -71,7 +71,7 @@ public static class Beauty
         rows.Add(new Row { name = "Samenhang", w = 0.16f, v = C01(1f - (holes * 0.7f + loose) / Mathf.Max(4f, N * 0.12f)), detail = holes + " lege gaten tussen de bebouwing, " + loose + " losse blokken", tip = "Vul lege gaten tussen gebouwen op en haal losse blokken weg." });
         float sw = 0f, sv = 0f; Row weakest = null;
         foreach (var r in rows) { if (r.v < 0f) continue; sw += r.w; sv += r.w * r.v; if (weakest == null || r.v * r.w < weakest.v * weakest.w) weakest = r; }
-        res.score = Mathf.RoundToInt(Mathf.Pow(sv / Mathf.Max(0.01f, sw), 1.4f) * 100f);
+        res.raw = Mathf.Pow(sv / Mathf.Max(0.01f, sw), 1.4f) * 100f; res.score = Mathf.RoundToInt(res.raw);   // raw: niet afgerond, voor het effect van één blok vooraf
         res.label = res.score >= 85 ? "Prachtig" : res.score >= 70 ? "Mooi" : res.score >= 55 ? "Gezellig" : res.score >= 35 ? "Gewoon" : "Rommelig";
         res.tip = weakest != null && weakest.v < 0.9f ? weakest.tip : "Een prachtige stad. Loop er eens doorheen!";
         return res;
