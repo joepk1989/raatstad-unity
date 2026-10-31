@@ -1989,7 +1989,7 @@ public static partial class PlanetCity
     public static bool PolePos(int i, int p, out Vector3 pos)
     {
         pos = Vector3.zero; if (!IsRoad(i)) return false;
-        var fr = new Frame(i); float a, s; Dims(StyleOf(i), out a, out s); float old = hwS; hwS = s;
+        var fr = new Frame(i); float a, s; Dims(ArmStyle(i, p), out a, out s); float old = hwS; hwS = s;
         Vector3 d3 = Planet.Cells[p].dir * Planet.R - fr.o; Vector2 q = new Vector2(Vector3.Dot(d3, fr.e), Vector3.Dot(d3, fr.n)) * 0.5f; Vector2 d = (-q).normalized;   // armen van een kruising lopen naar het hart
         Vector2 pp = PoleAt(q, d); hwS = old; pos = fr.P(pp.x, 3.75f, pp.y); return true;
     }
@@ -2307,7 +2307,8 @@ public static partial class PlanetCity
     static void RoadNode(Dictionary<string, MeshBuilder> mb, Frame fr, int i, List<Vector2> ends, List<int> ids)
     {
         System.Func<string, MeshBuilder> M = k => { if (!mb.TryGetValue(k, out var x)) { x = new MeshBuilder(); mb[k] = x; } return x; };
-        styleNow = StyleOf(i); Dims(styleNow, out hwA, out hwS); bridgeNow = Under.ContainsKey(i) && !Underpass(i);   // een onderdoorgang heeft geen balustrade: de portalen liggen gelijk met het maaiveld skb = SkirtDepth(i);
+        styleNow = StyleOf(i); Dims(styleNow, out hwA, out hwS); bridgeNow = Under.ContainsKey(i) && !Underpass(i);   // een onderdoorgang heeft geen balustrade: de portalen liggen gelijk met het maaiveld
+        skb = SkirtDepth(i);
         int na = ends.Count; var dirs = new List<Vector2>(); for (int a = 0; a < na; a++) dirs.Add((-ends[a]).normalized);
         if (na == 0)   // los wegvak: een rond pleintje asfalt met stoeprand en stoep eromheen
         {
@@ -2315,6 +2316,13 @@ public static partial class PlanetCity
             for (int k = 0; k < 40; k++) { M("asfalt").Tri(fr.P(0, AY, 0), fr.P(c0[k].x, AY, c0[k].y), fr.P(c0[k + 1].x, AY, c0[k + 1].y), fr.u); Kerb(M("rand"), fr, c0[k], c0[k + 1], c1[k], c1[k + 1], AY); Walk(M("stoep"), fr, c1[k], c1[k + 1], c2[k], c2[k + 1]); }
             return;
         }
+        // elke arm zijn eigen stijl en breedte (die van de lijn erachter): een brede weg die op een gewone aansluit, versmalt
+        // in de stoephoeken van de knoop
+        var stA = new byte[na]; var wA = new float[na]; var wS = new float[na];
+        for (int a = 0; a < na; a++) { stA[a] = ids != null && a < ids.Count ? ArmStyle(i, ids[a]) : styleNow; Dims(stA[a], out wA[a], out wS[a]); }
+        System.Action<int> Use = a => { hwA = wA[a]; hwS = wS[a]; };   // de maten van arm a voor SideWalk, PoleAt en de rest
+        // laag: 0 rand van het asfalt, 1 bovenkant stoeprand, 2 buitenkant stoep, 3 plek van de lantaarn
+        System.Func<int, int, float> Lat = (a, layer) => layer == 0 ? wA[a] : layer == 1 ? wA[a] + KW : layer == 2 ? wS[a] : wS[a] - 0.6f;
         // Kruising, doodlopend eind of scherpe knik, zoals in de webversie: alle armen samen zijn één vlak asfalt. Tussen twee
         // opeenvolgende armen (tegen de klok in) loopt de stoep door met een stoephoek: een kwadratische boog die aan beide
         // stoepranden raakt, met hun snijpunt als trekpunt; recht als de randen (bijna) in elkaars verlengde liggen; rond om
@@ -2329,8 +2337,9 @@ public static partial class PlanetCity
             Vector2 e = ends[a], d = dirs[a], r = new Vector2(d.y, -d.x), en = e.normalized, p0 = e + r * lat; float den = Vector2.Dot(d, en);
             return p0 + d * ((Mathf.Abs(den) < 1e-4f ? 0f : Vector2.Dot(e - p0, en) / den) + s);
         };
-        // per hoek (van arm order[c] naar arm order[c+1]): soort (0 boog, 1 recht, 2 rond), waar de stoepranden ophouden, middelpunt en straal
-        var kind = new int[na]; var sA = new float[na]; var sB = new float[na]; var cc = new Vector2[na]; var rr = new float[na];
+        // per hoek (van arm order[c] naar arm order[c+1]): soort (0 boog, 1 recht, 2 rond), waar de stoepranden ophouden, middelpunt
+        // en straal van een ronde hoek (rb + lat: de cirkel die op afstand lat aan de arm raakt)
+        bool taper = false; var nArc = new int[na]; var kind = new int[na]; var sA = new float[na]; var sB = new float[na]; var cc = new Vector2[na]; var rb = new float[na];
         float maxPerp = 0f; for (int a = 0; a < na; a++) maxPerp = Mathf.Max(maxPerp, Mathf.Abs(Vector2.Dot(ends[a], new Vector2(dirs[a].y, -dirs[a].x))));
         System.Func<int, float, Vector2, float, float> hitS = (a, lat, c, rad) =>   // waar de lijn op afstand lat van arm a de cirkel (c, rad) voor het eerst raakt
         {
@@ -2344,27 +2353,35 @@ public static partial class PlanetCity
             if (na == 1 || phi > Mathf.PI * 200f / 180f)
             {
                 kind[c] = 2;
-                if (na == 1) { cc[c] = P(a, 0f, Vector2.Dot(-P(a, 0f, 0f), dirs[a])); rr[c] = hwA + (styleNow == 0 ? 2.1f : 0.3f); }   // ronde kop op de as, waar de weg het dichtst bij het hart komt
-                else { cc[c] = Vector2.zero; rr[c] = hwA + maxPerp; }   // buitenkant van een knik: een cirkel om het hart die precies aan beide stoepranden raakt (vecBend)
-                sA[c] = hitS(a, hwA, cc[c], rr[c]); sB[c] = hitS(b, -hwA, cc[c], rr[c]);
+                if (na == 1) { cc[c] = P(a, 0f, Vector2.Dot(-P(a, 0f, 0f), dirs[a])); rb[c] = stA[a] == 0 ? 2.1f : 0.3f; }   // ronde kop op de as, waar de weg het dichtst bij het hart komt
+                else { cc[c] = Vector2.zero; rb[c] = maxPerp; }   // buitenkant van een knik: een cirkel om het hart die precies aan beide stoepranden raakt (vecBend)
+                // de rechte stoep houdt op waar de eerste laag de cirkel raakt (de buitenkant); elke laag loopt daarvandaan recht door tot
+                // zijn eigen cirkel (anders blijft er een driehoekje gras tussen de rechte en de ronde stoep)
+                sA[c] = Mathf.Min(hitS(a, wA[a], cc[c], rb[c] + wA[a]), hitS(a, wS[a], cc[c], rb[c] + wS[a])); sB[c] = Mathf.Min(hitS(b, -wA[b], cc[c], rb[c] + wA[b]), hitS(b, -wS[b], cc[c], rb[c] + wS[b]));
+                Vector2 h0 = P(a, wA[a], hitS(a, wA[a], cc[c], rb[c] + wA[a])) - cc[c], h1 = P(b, -wA[b], hitS(b, -wA[b], cc[c], rb[c] + wA[b])) - cc[c];
+                float g0 = Mathf.Atan2(h0.y, h0.x), g1 = Mathf.Atan2(h1.y, h1.x); if (g1 <= g0 + 0.01f) g1 += Mathf.PI * 2f; nArc[c] = Mathf.Max(6, Mathf.CeilToInt((g1 - g0) / 0.15f));   // alle lagen evenveel punten
                 continue;
             }
-            Vector2 pa = P(a, hwA, 0f), pb = P(b, -hwA, 0f); float cr = Cross(dirs[a], dirs[b]);
+            Vector2 pa = P(a, wA[a], 0f), pb = P(b, -wA[b], 0f); float cr = Cross(dirs[a], dirs[b]);
             float t = Mathf.Abs(cr) > 0.05f ? Cross(pb - pa, dirs[b]) / cr : -1f, u = Mathf.Abs(cr) > 0.05f ? Cross(pb - pa, dirs[a]) / cr : -1f;   // snijpunt van de twee stoepranden
             if (t > 0.4f && u > 0.4f && t < 30f && u < 30f) { kind[c] = 0; sA[c] = Mathf.Max(0.4f, t - 3f); sB[c] = Mathf.Max(0.4f, u - 3f); }
             else { kind[c] = 1; sA[c] = Mathf.Max(0.4f, Vector2.Dot(-pa, dirs[a])); sB[c] = Mathf.Max(0.4f, Vector2.Dot(-pb, dirs[b])); }
+            if (kind[c] == 1 && Mathf.Abs(wA[a] - wA[b]) + Mathf.Abs(wS[a] - wS[b]) > 0.01f) { sA[c] = sB[c] = 0.3f; taper = true; }   // andere breedte in elkaars verlengde: de rand loopt schuin over het hele knoopvak
         }
-        // de stoephoek van hoek c op afstand lat van de armen (hwA: rand van het asfalt, hwA+KW: bovenkant stoeprand, hwS: buitenkant stoep)
-        System.Func<int, float, Vector2[]> corner = (c, lat) =>
+        // de stoephoek van hoek c in een laag (zie Lat); bij armen van verschillende breedte loopt de hoek van de ene maat naar de andere
+        System.Func<int, int, Vector2[]> corner = (c, layer) =>
         {
-            int a = order[c], b = order[(c + 1) % na];
+            int a = order[c], b = order[(c + 1) % na]; float la = Lat(a, layer), lb = Lat(b, layer);
             if (kind[c] == 2)
             {
-                float rad = rr[c] + lat - hwA; Vector2 p = P(a, lat, lat <= hwA + 0.01f ? sA[c] : hitS(a, lat, cc[c], rad)), q = P(b, -lat, lat <= hwA + 0.01f ? sB[c] : hitS(b, -lat, cc[c], rad));
+                float ra = rb[c] + la, rq = rb[c] + lb;
+                Vector2 p = P(a, la, hitS(a, la, cc[c], ra)), q = P(b, -lb, hitS(b, -lb, cc[c], rq));
                 float a0 = Mathf.Atan2(p.y - cc[c].y, p.x - cc[c].x), a1 = Mathf.Atan2(q.y - cc[c].y, q.x - cc[c].x); if (a1 <= a0 + 0.01f) a1 += Mathf.PI * 2f;
-                var arc = Circle(cc[c], rad, a0, a1, Mathf.Max(6, Mathf.CeilToInt((a1 - a0) / 0.15f))); arc[0] = p; arc[arc.Length - 1] = q; return arc;
+                int n = nArc[c]; var arc = new Vector2[n + 3];
+                for (int k = 0; k <= n; k++) { float f = k / (float)n, an = Mathf.Lerp(a0, a1, f); arc[k + 1] = cc[c] + new Vector2(Mathf.Cos(an), Mathf.Sin(an)) * Mathf.Lerp(ra, rq, f); }
+                arc[1] = p; arc[n + 1] = q; arc[0] = P(a, la, sA[c]); arc[n + 2] = P(b, -lb, sB[c]); return arc;   // eerst recht door vanaf het eind van de rechte stoep
             }
-            Vector2 P0 = P(a, lat, sA[c]), Q0 = P(b, -lat, sB[c]); var pts = new Vector2[11];
+            Vector2 P0 = P(a, la, sA[c]), Q0 = P(b, -lb, sB[c]); var pts = new Vector2[11];
             float crs = Cross(dirs[a], dirs[b]), tt = Mathf.Abs(crs) > 0.05f ? Cross(Q0 - P0, dirs[b]) / crs : -1f, uu = Mathf.Abs(crs) > 0.05f ? Cross(Q0 - P0, dirs[a]) / crs : -1f;
             bool curve = kind[c] == 0 && tt > 0.2f && uu > 0.2f && tt < 25f && uu < 25f, crossed = kind[c] == 0 && Mathf.Abs(crs) > 0.05f && tt < 0f && uu < 0f; Vector2 X = P0 + dirs[a] * tt;
             // crossed: de twee randen kruisen elkaar al vóór de hoek (scherpe hoek, buitenkant stoep): de hoek krimpt tot dat kruispunt
@@ -2373,32 +2390,34 @@ public static partial class PlanetCity
         };
         // asfalt: één waaier vanuit het hart (bij een doodlopend eind vanuit het midden van de kop) langs de hele omtrek
         Vector2 hub = na == 1 ? cc[0] : Vector2.zero; var rim = new List<Vector2>();
-        for (int c = 0; c < na; c++) { int a = order[c]; rim.Add(P(a, -hwA, 0f)); rim.Add(P(a, hwA, 0f)); rim.AddRange(corner(c, hwA)); }
+        for (int c = 0; c < na; c++) { int a = order[c]; rim.Add(P(a, -wA[a], 0f)); rim.Add(P(a, wA[a], 0f)); rim.AddRange(corner(c, 0)); }
         for (int k = 0; k < rim.Count; k++) { Vector2 p = rim[k], q = rim[(k + 1) % rim.Count]; M("asfalt").Tri(fr.P(hub.x, AY, hub.y), fr.P(p.x, AY, p.y), fr.P(q.x, AY, q.y), fr.u); }
         // stoeprand en stoep: langs de zijkanten van elke arm tot waar de hoek begint, dan om de hoek heen
         float bestPhi = -1f; Vector2 lampAt = Vector2.zero;
         for (int c = 0; c < na; c++)
         {
             int a = order[c], b = order[(c + 1) % na];
-            SideWalk(M, fr, P, a, 1f, sA[c]); SideWalk(M, fr, P, b, -1f, sB[c]);
-            var k0 = corner(c, hwA); var k1 = corner(c, hwA + KW); var k2 = corner(c, hwS);
+            Use(a); SideWalk(M, fr, P, a, 1f, sA[c]); Use(b); SideWalk(M, fr, P, b, -1f, sB[c]);
+            var k0 = corner(c, 0); var k1 = corner(c, 1); var k2 = corner(c, 2);
             int nk = Mathf.Min(k0.Length, Mathf.Min(k1.Length, k2.Length));
             for (int k = 0; k + 1 < nk; k++) { Kerb(M("rand"), fr, k0[k], k0[k + 1], k1[k], k1[k + 1], AY); Walk(M("stoep"), fr, k1[k], k1[k + 1], k2[k], k2[k + 1]); }
             float phi = na == 1 ? 7f : Mathf.Repeat(angOf(b) - angOf(a), Mathf.PI * 2f);
-            if (phi > bestPhi) { bestPhi = phi; var lc = corner(c, hwS - 0.6f); lampAt = lc[lc.Length / 2]; }
+            if (phi > bestPhi) { bestPhi = phi; var lc = corner(c, 3); lampAt = lc[lc.Length / 2]; }
         }
         if (na != 2) { Cone(M("paal"), fr, lampAt.x, lampAt.y, 0.08f, SY, 5.2f, 0.06f); Cone(M("lamp"), fr, lampAt.x, lampAt.y, 0.28f, 4.9f, 5.35f, 0.2f); }   // lantaarn op de breedste hoek (kruising of kop)
         // per arm: markering, pijlen, middenberm, zebrapaden, verkeerslichten en brugleuningen
         for (int c = 0; c < na; c++)
         {
-            int a = order[c], cp = (c + na - 1) % na; Vector2 e = ends[a], d = dirs[a], r = new Vector2(d.y, -d.x);
+            int a = order[c], cp = (c + na - 1) % na; Vector2 e = ends[a], d = dirs[a], r = new Vector2(d.y, -d.x); byte st = stA[a]; Use(a);
             float L = Mathf.Min(sA[c], sB[cp]);   // zo ver loopt de arm recht door (tot de eerste stoephoek)
             if (na == 1) L = Vector2.Dot(cc[0] - P(a, 0f, 0f), d);
+            if (na == 2 && taper) L = Vector2.Dot(-e, d);   // overgang: de markering loopt door tot het hart
             int flow = Flow(i, ids[a]);   // +1: verkeer verlaat dit vak langs deze arm, -1: komt erlangs binnen
             if (flow != 0) Arrow(M, fr, e + d * Mathf.Min(L * 0.5f, 4.5f), flow > 0 ? -d : d, 2.2f);
-            else if (na <= 2 && styleNow != 2) for (float s0 = 0.6f; s0 + 1.2f < L - 0.5f; s0 += 2.6f) { Vector2 a0 = e + d * s0, a1 = e + d * (s0 + 1.4f); M("lijn").Quad(fr.P(a0.x - r.x * 0.07f, LY, a0.y - r.y * 0.07f), fr.P(a0.x + r.x * 0.07f, LY, a0.y + r.y * 0.07f), fr.P(a1.x + r.x * 0.07f, LY, a1.y + r.y * 0.07f), fr.P(a1.x - r.x * 0.07f, LY, a1.y - r.y * 0.07f), fr.u); }
-            if (styleNow == 1 && na <= 2) for (int ln = -1; ln <= 1; ln += 2) for (float s0 = 0.6f; s0 + 1.2f < L - 0.5f; s0 += 2.6f) { Vector2 off = r * (ln * hwA * 0.5f); Vector2 a0 = e + d * s0 + off, a1 = e + d * (s0 + 1.4f) + off; M("lijn").Quad(fr.P(a0.x - r.x * 0.05f, LY, a0.y - r.y * 0.05f), fr.P(a0.x + r.x * 0.05f, LY, a0.y + r.y * 0.05f), fr.P(a1.x + r.x * 0.05f, LY, a1.y + r.y * 0.05f), fr.P(a1.x - r.x * 0.05f, LY, a1.y - r.y * 0.05f), fr.u); }
-            if (styleNow == 2 && (na == 1 || na >= 3)) Median(M, fr, e + d * 0.2f, e + d * Mathf.Max(0.2f, L - 1f));
+            else if (na <= 2 && st != 2) for (float s0 = 0.6f; s0 + 1.2f < L - 0.5f; s0 += 2.6f) { Vector2 a0 = e + d * s0, a1 = e + d * (s0 + 1.4f); M("lijn").Quad(fr.P(a0.x - r.x * 0.07f, LY, a0.y - r.y * 0.07f), fr.P(a0.x + r.x * 0.07f, LY, a0.y + r.y * 0.07f), fr.P(a1.x + r.x * 0.07f, LY, a1.y + r.y * 0.07f), fr.P(a1.x - r.x * 0.07f, LY, a1.y - r.y * 0.07f), fr.u); }
+            if (st == 1 && na <= 2) for (int ln = -1; ln <= 1; ln += 2) for (float s0 = 0.6f; s0 + 1.2f < L - 0.5f; s0 += 2.6f) { Vector2 off = r * (ln * hwA * 0.5f); Vector2 a0 = e + d * s0 + off, a1 = e + d * (s0 + 1.4f) + off; M("lijn").Quad(fr.P(a0.x - r.x * 0.05f, LY, a0.y - r.y * 0.05f), fr.P(a0.x + r.x * 0.05f, LY, a0.y + r.y * 0.05f), fr.P(a1.x + r.x * 0.05f, LY, a1.y + r.y * 0.05f), fr.P(a1.x - r.x * 0.05f, LY, a1.y - r.y * 0.05f), fr.u); }
+            bool medEnd = na == 2 && stA[order[(c + 1) % na]] != 2;   // een laan die in de knoop overgaat in een smallere weg: de berm houdt daar op
+            if (st == 2 && (na == 1 || na >= 3 || medEnd)) Median(M, fr, e + d * 0.2f, e + d * Mathf.Max(0.2f, L - 1f));
             if (na >= 3 && L > 3f) { int zm = Mathf.FloorToInt((hwA - 0.5f) / 0.95f); for (int z = -zm; z <= zm; z++) { Vector2 off = r * (z * 0.95f); Vector2 a0 = e + d * 0.6f + off - r * 0.28f, b0 = e + d * 0.6f + off + r * 0.28f, c0 = e + d * 2.6f + off + r * 0.28f, e0 = e + d * 2.6f + off - r * 0.28f; M("lijn").Quad(fr.P(a0.x, LY, a0.y), fr.P(b0.x, LY, b0.y), fr.P(c0.x, LY, c0.y), fr.P(e0.x, LY, e0.y), fr.u); } }
             if (signals && CanDrive(ids[a], i)) { Vector2 pp = PoleAt(e, d); Cone(M("paal"), fr, pp.x, pp.y, 0.08f, SY, 3.9f, 0.06f); Cone(M("paal"), fr, pp.x, pp.y, 0.24f, 3.3f, 3.95f, 0.24f); }
             if (bridgeNow) { Parapet(M, fr, P(a, -hwS, 0f), P(a, -hwS, sB[cp]), -r); Parapet(M, fr, P(a, hwS, 0f), P(a, hwS, sA[c]), r); }

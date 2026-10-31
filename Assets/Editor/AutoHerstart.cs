@@ -25,9 +25,9 @@ static class AutoHerstart
 
     static void Tick()
     {
-        // een testverzoek (brugtest.txt of niveautest.txt): Play starten, de test draait dan vanzelf
+        // een testverzoek (brugtest.txt, niveautest.txt of wegvoorbeeld.txt): Play starten, de test draait dan vanzelf
         // (pas als alles gecompileerd is; speelt het al, dan eerst stoppen zodat de test bij de start draait)
-        if (!changed && !EditorApplication.isCompiling && !EditorApplication.isUpdating && (File.Exists(Path.Combine(Application.persistentDataPath, "brugtest.txt")) || File.Exists(Path.Combine(Application.persistentDataPath, "niveautest.txt"))))
+        if (!changed && !EditorApplication.isCompiling && !EditorApplication.isUpdating && (File.Exists(Path.Combine(Application.persistentDataPath, "brugtest.txt")) || File.Exists(Path.Combine(Application.persistentDataPath, "niveautest.txt")) || File.Exists(Path.Combine(Application.persistentDataPath, "wegvoorbeeld.txt"))))
         {
             if (EditorApplication.isPlaying) { EditorApplication.isPlaying = false; return; }
             if (!EditorApplication.isPlayingOrWillChangePlaymode) { EditorApplication.isPlaying = true; return; }

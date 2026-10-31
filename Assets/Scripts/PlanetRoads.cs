@@ -34,12 +34,32 @@ public static partial class PlanetCity
     // tot hier (vanaf het knooppunt) tekent de knoop; daarna begint het lint naar buur j
     static float NodeTrim(int n, int j, int deg) => Mathf.Min(deg == 1 ? 7.0f : 7.5f, CellDist(n, j) * 0.48f);
 
+    // Een knoop: geen twee wegburen, een knik, of een overgang naar een smallere weg (het bredere vak wordt de knoop en tekent
+    // de overgang, zodat elke lijn één breedte heeft)
+    static bool NodeShape(int i, List<int> nb)
+    {
+        if (nb.Count != 2 || TurnAt(i, nb[0], nb[1]) >= BendNode) return true;
+        byte s = StyleOf(i); return (StyleOf(nb[0]) < s && RoadNb(nb[0]).Count == 2) || (StyleOf(nb[1]) < s && RoadNb(nb[1]).Count == 2);   // de stijl van een kruising of eind telt niet: die volgt zijn armen
+    }
+    static bool IsRoadNode(int i) => NodeShape(i, RoadNb(i));
+    // de stijl van de arm van knoop n naar wegbuur j: die van de lijn erachter (het eerste vak ervan). Twee knopen naast elkaar:
+    // die van het vak met twee wegburen (een kruising of eind volgt zijn armen), anders de smalste van de twee
+    static byte ArmStyle(int n, int j)
+    {
+        if (styleOverride >= 0) return (byte)styleOverride;
+        if (!IsRoad(j)) return StyleOf(n);
+        if (!IsRoadNode(j)) return StyleOf(j);
+        bool dn = RoadNb(n).Count == 2, dj = RoadNb(j).Count == 2;
+        return dn && !dj ? StyleOf(n) : dj && !dn ? StyleOf(j) : (byte)Mathf.Min(StyleOf(n), StyleOf(j));
+    }
+    static byte ChainStyle(List<int> ch, bool closed) => closed || ch.Count > 2 ? StyleOf(ch[closed ? 0 : 1]) : ArmStyle(ch[0], ch[ch.Count - 1]);
+
     // ---------- de graaf ----------
     static void RoadGraph(out Dictionary<int, List<int>> nbs, out HashSet<int> nodes, out List<List<int>> chains, out List<bool> closed)
     {
         nbs = new Dictionary<int, List<int>>(); nodes = new HashSet<int>(); chains = new List<List<int>>(); closed = new List<bool>();
         foreach (var kv in Cells) if (kv.Value.Count > 0 && kv.Value[0] == "weg") nbs[kv.Key] = RoadNb(kv.Key);
-        foreach (var kv in nbs) if (kv.Value.Count != 2 || TurnAt(kv.Key, kv.Value[0], kv.Value[1]) >= BendNode) nodes.Add(kv.Key);
+        foreach (var kv in nbs) if (NodeShape(kv.Key, kv.Value)) nodes.Add(kv.Key);
         var done = new HashSet<long>();   // stappen van vak naar vak die al in een lijn zitten (beide richtingen)
         foreach (int n in nodes) foreach (int p in nbs[n])
         {
@@ -93,7 +113,7 @@ public static partial class PlanetCity
         {
             string key = "n:" + n; want.Add(key);
             long sig = Mix(Mix(Mix(Mix(Mix(1469598103934665603L, n), Cm(G(n))), StyleOf(n)), Cm(MinCorner(n))), (Lights ? 2 : 0) + (Under.ContainsKey(n) ? 1 : 0));
-            foreach (int j in Partners(n)) { sig = Mix(sig, j); sig = Mix(sig, Cm(G(j))); sig = Mix(sig, IsRoad(j) ? 1 : IsPath(j) ? 2 : 0); sig = Mix(sig, Flow(n, j)); }
+            foreach (int j in Partners(n)) { sig = Mix(sig, j); sig = Mix(sig, Cm(G(j))); sig = Mix(sig, IsRoad(j) ? 1 : IsPath(j) ? 2 : 0); sig = Mix(sig, Flow(n, j)); sig = Mix(sig, IsRoad(j) ? ArmStyle(n, j) : 0); }
             Piece(key, sig, mb => NodeMesh(mb, n, nbs[n]));
         }
         var gone = new List<string>(); foreach (var kv in roadPieces) if (!want.Contains(kv.Key)) gone.Add(kv.Key);
@@ -164,7 +184,7 @@ public static partial class PlanetCity
     static void ChainMesh(Dictionary<string, MeshBuilder> mb, List<int> ch, bool closed, Dictionary<int, List<int>> nbs, HashSet<int> nodes)
     {
         System.Func<string, MeshBuilder> M = k => { if (!mb.TryGetValue(k, out var x)) { x = new MeshBuilder(); mb[k] = x; } return x; };
-        byte style = 0; foreach (int i in ch) style = (byte)Mathf.Max(style, StyleOf(i));
+        byte style = ChainStyle(ch, closed);
         Dims(style, out hwA, out hwS);
         var line = SmoothLine(ch, closed);
         float t0 = !closed && nodes.Contains(ch[0]) ? NodeTrim(ch[0], ch[1], nbs[ch[0]].Count) : 0f, t1 = !closed && nodes.Contains(ch[ch.Count - 1]) ? NodeTrim(ch[ch.Count - 1], ch[ch.Count - 2], nbs[ch[ch.Count - 1]].Count) : 0f;
