@@ -76,7 +76,7 @@ public class PlanetWalker : MonoBehaviour
         }
         else grounded = false;
         // nooit door de planeet heen
-        float floor = Planet.R + PlanetCity.FloorH(Planet.Nearest(pos)), rad = pos.magnitude;   // het laagste punt van het vak (afgegraven terrein, het pad onder een brug)
+        float floor = Planet.R + Mathf.Min(PlanetCity.FloorH(Planet.Nearest(pos)), PlanetCity.TerrainAt(pos.normalized)), rad = pos.magnitude;   // het laagste punt van het vak (afgegraven terrein, het pad onder een brug), of de grond zoals getekend (de bak en het talud langs een weg op een niveau liggen lager dan de hoeken van het vak)
         if (rad < floor - 0.5f) { pos = pos.normalized * floor; vy = 0f; grounded = true; }
 
         transform.position = pos; up = pos.normalized; fwd = (fwd - up * Vector3.Dot(fwd, up)).normalized;

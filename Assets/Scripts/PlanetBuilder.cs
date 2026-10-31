@@ -114,6 +114,29 @@ public class PlanetBuilder : MonoBehaviour
         if (why != null) { undo.RemoveAt(undo.Count - 1); Say(why); return; }   // geen ruimte: niets veranderd
         Changed(); Say("Voorbeeldstad geplaatst (Ctrl+Z haalt hem weg)");
     }
+    // de hele bol vol stadjes en platteland (vervangt de stad die open is; Ctrl+Z zet hem terug)
+    // in stappen achter het laadscherm (de gele zeshoeken), met de voortgang erop; de bediening staat zolang stil
+    string loading; float loadFrac; HexLoadingScreen loader;
+    void FillPlanet() { if (loading == null) StartCoroutine(FillRoutine()); }
+    System.Collections.IEnumerator FillRoutine()
+    {
+        loading = "Planeet vullen"; loadFrac = 0f;
+        if (loader == null) loader = new GameObject("Laadscherm").AddComponent<HexLoadingScreen>(); else loader.Show();
+        yield return null; yield return null;   // eerst het laadscherm in beeld
+        Push(); var sw = System.Diagnostics.Stopwatch.StartNew();
+        yield return PlanetCity.FillSteps((f, what) => { loadFrac = f * 0.4f; loading = what; });
+        loading = "Tekenen"; yield return PlanetCity.RebuildSteps(f => loadFrac = 0.4f + f * 0.6f);
+        PlanetCity.RebuildGrid(); PlanetCity.Save(); beautyT = -99f;
+        loader.Hide(); loading = null;
+        Say("Planeet vol: " + PlanetCity.FillTowns.Count + " stadjes met platteland ertussen (" + (sw.ElapsedMilliseconds / 1000f).ToString("0") + " s; Ctrl+Z haalt alles weg)");
+    }
+    void LoadingGui(float W, float H)
+    {
+        var r = new Rect((W - 420f) * 0.5f, H * 0.5f + 90f, 420f, 74f); Ui.Panel(r, true, 16f);
+        Ui.Label(new Rect(r.x + 18f, r.y + 10f, r.width - 36f, 26f), loading + "…", Ui.T.Bold);
+        Ui.Label(new Rect(r.x + 18f, r.y + 10f, r.width - 36f, 26f), Mathf.RoundToInt(loadFrac * 100f) + "%", Ui.T.Dim, null, TextAnchor.MiddleRight);
+        var bar = new Rect(r.x + 18f, r.y + 46f, r.width - 36f, 10f); Ui.Tex(bar, Texture2D.grayTexture); Ui.Tex(new Rect(bar.x, bar.y, bar.width * loadFrac, bar.height), Texture2D.whiteTexture);
+    }
     // de startstad op de dichtstbijzijnde vrije startplek (vlag), en de camera erheen
     void StartTown()
     {
@@ -137,6 +160,7 @@ public class PlanetBuilder : MonoBehaviour
 
     void Update()
     {
+        if (loading != null) return;   // de planeet wordt gevuld: geen bediening
         // overal, ook tijdens het lopen en in de cameramodus: P zet de tijd stil, O ander weer (Shift+O het vorige)
         if (Inp.Down(K.P)) { DayNight.ToggleFreeze(); Say(DayNight.Speed > 0f ? "De tijd loopt weer (P)" : "Pauze: de tijd staat stil (P)"); }
         if (Inp.Down(K.O) && Weather.I != null) Say("Weer: " + Weather.I.Cycle(Inp.Held(K.Shift) ? -1 : 1) + " (O, Shift+O terug)");
@@ -708,6 +732,7 @@ public class PlanetBuilder : MonoBehaviour
     void OnGUI()
     {
         Ui.Begin(); float W = Ui.W, H = Ui.H;
+        if (loading != null) { LoadingGui(W, H); Ui.End(); return; }
         if (Time.time - beautyT > 3f) { beauty = Beauty.Compute(); beautyT = Time.time; }
         fpsN++; if (Time.time - fpsT > 0.5f) { fps = fpsN / (Time.time - fpsT); fpsN = 0; fpsT = Time.time; }
         if (flying) { if (!photoFrame) FlyGui(W, H); Ui.End(); return; }   // cameramodus: geen interface
@@ -934,7 +959,7 @@ public class PlanetBuilder : MonoBehaviour
     void Menu(float W, float H)
     {
         Ui.DimBack(0.25f);
-        float w = 440f, h = 640f; var r = new Rect((W - w) * 0.5f, Mathf.Max(16f, (H - h) * 0.5f), w, h); Ui.Panel(r, true, 16f);
+        float w = 440f, h = 696f; var r = new Rect((W - w) * 0.5f, Mathf.Max(16f, (H - h) * 0.5f), w, h); Ui.Panel(r, true, 16f);
         float x = r.x + 18f, iw = w - 36f, y = r.y + 14f, half = (iw - 8f) * 0.5f;
         Ui.Tex(new Rect(x, y + 3f, 20f, 23f), Ui.Hex(Ui.Signal, Ui.Signal, 0f, true)); Ui.Label(new Rect(x + 30f, y, 200f, 28f), "MENU", Ui.T.Title);
         if (Ui.RoundButton(new Rect(r.xMax - 18f - 30f, y - 1f, 30f, 30f), "sluit")) menuOpen = false; y += 40f;
@@ -955,7 +980,8 @@ public class PlanetBuilder : MonoBehaviour
         if (Ui.CardButton(new Rect(x + half + 8f, y, half, 48f), "Naar het midden", "Camera terug naar je stad (H)", false, "kompas")) { GoCentre(); menuOpen = false; }
         if (Ui.CardButton(new Rect(x, y + 56f, half, 48f), "Naar de polen", "Noord- en zuidpool (N)", false, "kompas")) { GoPole(); menuOpen = false; }
         if (Ui.CardButton(new Rect(x + half + 8f, y + 56f, half, 48f), "Startstad", "Een stadje rond een vlag", false, "stad")) { StartTown(); menuOpen = false; }
-        y += 2 * 56f + 8f;
+        if (Ui.CardButton(new Rect(x, y + 112f, iw, 48f), "Hele planeet vol", "Stadjes overal, platteland ertussen (Ctrl+Z terug)", false, "stad")) { FillPlanet(); menuOpen = false; }
+        y += 3 * 56f + 8f;
         section("LEVEN EN INSTELLINGEN");
         if (Ui.CardButton(new Rect(x, y, half, 48f), "Mensen", PlanetLife.PeopleOn ? "aan" : "uit", PlanetLife.PeopleOn, "mensen")) PlanetLife.PeopleOn = !PlanetLife.PeopleOn;
         if (Ui.CardButton(new Rect(x + half + 8f, y, half, 48f), "Auto's", PlanetLife.CarsOn ? "aan" : "uit", PlanetLife.CarsOn, "auto")) PlanetLife.CarsOn = !PlanetLife.CarsOn;
