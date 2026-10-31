@@ -15,11 +15,12 @@ public class WegVoorbeeld : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Boot()
     {
-        if (!File.Exists(Flag)) return; File.Delete(Flag);
+        if (!File.Exists(Flag)) return; mode = File.ReadAllText(Flag).Trim(); File.Delete(Flag);   // tekst "fiets": de fietspaden en de startstad
         Application.runInBackground = true;
         new GameObject("Wegvoorbeeld").AddComponent<WegVoorbeeld>();
     }
 
+    static string mode = ""; readonly List<int> junctions = new List<int>();
     Camera cam; PlanetBuilder pb;
 
     IEnumerator Start()
@@ -33,6 +34,7 @@ public class WegVoorbeeld : MonoBehaviour
 
         int home = At(Planet.South, 1.0f, 160f);
         float D60 = Mathf.PI / 3f;
+        if (mode == "fiets") { yield return Bikes(home); yield break; }
         var scenes = new (string name, int c)[] { ("1_rechtdoor_breed_naar_gewoon", home), ("2_T_breed_met_gewone_zijweg", At(home, 0f, 150f)), ("3_laan_naar_gewone_weg", At(home, 2f * D60, 150f)), ("4_knik_breed_naar_gewoon", At(home, 4f * D60, 150f)), ("5_kruispunt_breed_en_gewoon", At(home, 3f * D60, 150f)) };
         int endBroad = Leg(scenes[0].c, 0f, 1), endNormal = Leg(scenes[0].c, Mathf.PI, 0);
         Leg(scenes[1].c, 0f, 1); Leg(scenes[1].c, Mathf.PI, 1); Leg(scenes[1].c, D60, 0);
@@ -66,6 +68,83 @@ public class WegVoorbeeld : MonoBehaviour
             pb.enabled = true;
         }
         DayNight.Speed = 1f;
+    }
+
+    // fiets- en voetpaden: een Y, een T, een schuin pad (30°) op een recht pad, een fietspad op een gewoon pad en op een weg,
+    // en de startstad met zijn fietspaden; schermafbeeldingen bij elke kruising en knik van een fietspad
+    IEnumerator Bikes(int home)
+    {
+        float D60 = Mathf.PI / 3f, D30 = Mathf.PI / 6f;
+        var scenes = new (string name, int c)[] { ("f1_Y", home), ("f2_T", At(home, 0f, 150f)), ("f3_schuin_op_recht", At(home, 2f * D60, 150f)), ("f4_fiets_op_pad_en_weg", At(home, 4f * D60, 150f)) };
+        PlanetCity.DragBike = true;
+        Pad(scenes[0].c, 0f); Pad(scenes[0].c, 2f * D60); Pad(scenes[0].c, 4f * D60);
+        Pad(scenes[1].c, 0f); Pad(scenes[1].c, Mathf.PI); Pad(scenes[1].c, D60);
+        Pad(scenes[2].c, 0f); Pad(scenes[2].c, Mathf.PI); Pad(scenes[2].c, D30); Pad(scenes[2].c, Mathf.PI + 3f * D30);
+        Pad(scenes[3].c, 0f); PlanetCity.DragBike = false; Pad(scenes[3].c, Mathf.PI); Leg(At(scenes[3].c, D60 * 2f, 40f), 0f, 0);
+        // een weg over een fietspad: recht en schuin (30°); gelijkvloers een oversteek
+        int c5 = At(home, 1f * D60, 150f), c6 = At(home, 5f * D60, 150f);
+        PlanetCity.DragBike = true; Pad(c5, 0f); Pad(c5, Mathf.PI); Pad(c6, 0f); Pad(c6, Mathf.PI); PlanetCity.DragBike = false;
+        RoadLine(At(c5, D60, 45f), At(c5, D60 + Mathf.PI, 45f)); RoadLine(At(c6, Mathf.PI / 2f, 45f), At(c6, -Mathf.PI / 2f, 45f));
+        var extra = new List<(string, int)> { ("f5_weg_over_fietspad", c5), ("f6_schuine_weg_over_fietspad", c6) };
+        PlanetCity.DragBike = false;
+        int st = Planet.Starts[3]; PlanetCity.StartTown(st);
+        PlanetCity.Rebuild(); PlanetCity.Rebuild(); yield return null; yield return null;
+        foreach (var s in scenes) { yield return Shot(s.name + "_a", s.c, Dir2(s.c, 0.4f), 45f, 88f); yield return Shot(s.name + "_b", s.c, Dir2(s.c, 0.4f), 30f, 35f); }
+        foreach (var e in extra) { yield return Shot(e.Item1 + "_a", e.Item2, Dir2(e.Item2, 0.4f), 45f, 88f); yield return Shot(e.Item1 + "_b", e.Item2, Dir2(e.Item2, 0.4f), 30f, 35f); }
+        yield return Shot("s0_startstad", st, Dir2(st, 0.4f), 150f, 70f);
+        // de kruisingen en knikken van fietspaden in de startstad
+        int n = 0;
+        foreach (var kv in PlanetCity.Cells)
+        {
+            int i = kv.Key; if (!PlanetCity.IsBike(i) || (Planet.Cells[i].dir - Planet.Cells[st].dir).magnitude * Planet.R > 200f) continue;
+            var nb = new List<int>(); foreach (int j in PlanetCity.Partners(i)) if (PlanetCity.IsWalk(j)) nb.Add(j);
+            bool bend = nb.Count == 2 && Vector3.Dot((Planet.Cells[nb[0]].dir - Planet.Cells[i].dir).normalized, (Planet.Cells[nb[1]].dir - Planet.Cells[i].dir).normalized) > -0.95f;
+            if (nb.Count == 2 && !bend) continue;
+            yield return Shot("s" + (++n) + "_" + (nb.Count == 2 ? "knik" : "kruising" + nb.Count), i, Dir2(i, 0.4f), 26f, 60f);
+            if (mode == "fiets") junctions.Add(i);
+            if (n >= 10) break;
+        }
+        // van boven, met en zonder terrein: steekt het terrein door het pad?
+        var gr = typeof(PlanetCity).GetField("groundRoot", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)?.GetValue(null) as Transform;
+        var info = new System.Text.StringBuilder();
+        for (int k = 0; k < junctions.Count; k++)
+        {
+            int i = junctions[k]; info.Append("s").Append(k + 1).Append(" vak ").Append(i).Append(" G=").Append(PlanetCity.G(i).ToString("0.00")).Append(" bike=").Append(PlanetCity.IsBike(i)).Append(" [").Append(string.Join(",", PlanetCity.Cells[i])).Append("] buren:");
+            foreach (int j in PlanetCity.Partners(i)) info.Append(' ').Append(j).Append(PlanetCity.IsBike(j) ? "F" : "P").Append(System.Array.IndexOf(Planet.Cells[i].nb, j) >= 0 ? "" : "(schuin)").Append(" G=").Append(PlanetCity.G(j).ToString("0.00"));
+            info.AppendLine();
+            yield return Shot("t" + (k + 1) + "_boven", i, Dir2(i, 0f), 30f, 89f);
+            if (gr != null) { gr.gameObject.SetActive(false); yield return Shot("t" + (k + 1) + "_zonder_terrein", i, Dir2(i, 0f), 30f, 89f); gr.gameObject.SetActive(true); }
+        }
+        File.WriteAllText(Path.Combine(Dir, "kruisingen.txt"), info.ToString());
+        // paden onder een weg door: bruggen over een pad en schuine kruisingen
+        int nu = 0;
+        foreach (var kv in PlanetCity.Under)
+        {
+            if (kv.Value != "pad" || (Planet.Cells[kv.Key].dir - Planet.Cells[st].dir).magnitude * Planet.R > 200f) continue;
+            yield return Shot("u" + (++nu) + "_brug_boven", kv.Key, Dir2(kv.Key, 0f), 32f, 89f); yield return Shot("u" + nu + "_brug_schuin", kv.Key, Dir2(kv.Key, 0.5f), 26f, 30f);
+            if (nu >= 3) break;
+        }
+        var xs = PlanetCity.EdgeCrossings();
+        for (int k = 0; k < Mathf.Min(3, xs.Count); k++) { int c0 = xs[k].u; yield return Shot("x" + (k + 1) + "_schuin_boven", c0, Dir2(c0, 0f), 34f, 89f); yield return Shot("x" + (k + 1) + "_schuin", c0, Dir2(c0, 0.5f), 28f, 30f); }
+        // padvakken zonder fietsdeel die aan een fietspad vastzitten
+        var sb = new System.Text.StringBuilder();
+        foreach (var kv in PlanetCity.Cells)
+        {
+            int i = kv.Key; if (!PlanetCity.IsWalk(i) || PlanetCity.IsRoad(i) || PlanetCity.IsBike(i)) continue;
+            bool touch = false; foreach (int j in PlanetCity.Partners(i)) if (PlanetCity.IsBike(j)) touch = true; if (!touch) continue;
+            sb.Append(i).Append(" [").Append(string.Join(",", kv.Value)).Append("] partners:");
+            foreach (int j in PlanetCity.Partners(i)) sb.Append(' ').Append(j).Append(PlanetCity.IsBike(j) ? "F" : PlanetCity.IsRoad(j) ? "W" : PlanetCity.IsWalk(j) ? "P" : "?").Append(System.Array.IndexOf(Planet.Cells[i].nb, j) >= 0 ? "" : "(schuin)");
+            sb.Append(" under=").Append(PlanetCity.Under.ContainsKey(i) ? PlanetCity.Under[i] : "-").AppendLine();
+        }
+        File.WriteAllText(Path.Combine(Dir, "fietsgaten.txt"), sb.ToString());
+        File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar");
+        if (pb != null) pb.enabled = true;
+    }
+    static void RoadLine(int a, int b) { var l = PlanetCity.LinePlan(a, b); if (l == null || l.Count < 2) return; PlanetCity.DragStyle = 0; PlanetCity.PlaceLine(l, "weg"); PlanetCity.SetLevel(l, 0, "weg"); }
+    static void Pad(int c, float ang, float len = 60f)
+    {
+        var l = PlanetCity.LinePlan(c, At(c, ang, len)); if (l == null || l.Count < 2) return;
+        PlanetCity.PlaceLine(l, "pad"); PlanetCity.SetLevel(l, 0, "pad");
     }
 
     // een weg van len meter vanaf vak c in richting ang (0 = naar de eerste buur), in stijl st (0 weg, 1 brede weg, 2 laan)

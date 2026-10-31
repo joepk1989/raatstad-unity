@@ -116,6 +116,7 @@ public static partial class PlanetCity
             foreach (int j in Partners(n)) { sig = Mix(sig, j); sig = Mix(sig, Cm(G(j))); sig = Mix(sig, IsRoad(j) ? 1 : IsPath(j) ? 2 : 0); sig = Mix(sig, Flow(n, j)); sig = Mix(sig, IsRoad(j) ? ArmStyle(n, j) : 0); }
             Piece(key, sig, mb => NodeMesh(mb, n, nbs[n]));
         }
+        RebuildPaths(want);   // paden en fietspaden (PlanetPaths.cs)
         var gone = new List<string>(); foreach (var kv in roadPieces) if (!want.Contains(kv.Key)) gone.Add(kv.Key);
         foreach (var k in gone) { if (roadPieces[k].go != null) Object.Destroy(roadPieces[k].go); roadPieces.Remove(k); }
     }
@@ -152,9 +153,9 @@ public static partial class PlanetCity
     struct RP { public Vector3 p; public float h; public int cell; }
     static RP LerpRP(RP a, RP b, float f) => new RP { p = Vector3.Lerp(a.p, b.p, f), h = Mathf.Lerp(a.h, b.h, f), cell = f < 0.5f ? a.cell : b.cell };
     // de lijn door de vakmiddens met ronde hoeken (smoothPts), ongeveer elke 1,5 m een punt, op de bol
-    static List<RP> SmoothLine(List<int> ch, bool closed)
+    static List<RP> SmoothLine(List<int> ch, bool closed, float[] hs = null)   // hs: de hoogte per vak (anders G)
     {
-        var v = new List<RP>(); foreach (int i in ch) v.Add(new RP { p = Planet.Cells[i].dir * Planet.R, h = G(i), cell = i });
+        var v = new List<RP>(); for (int k = 0; k < ch.Count; k++) { int i = ch[k]; v.Add(new RP { p = Planet.Cells[i].dir * Planet.R, h = hs != null ? hs[k] : G(i), cell = i }); }
         if (closed) { var m = LerpRP(v[0], v[1], 0.5f); m.cell = ch[0]; var w = new List<RP> { m }; for (int k = 1; k < v.Count; k++) w.Add(v[k]); w.Add(v[0]); w.Add(m); v = w; }
         var o = new List<RP> { v[0] }; RP cur = v[0];
         System.Action<RP, RP> lineTo = (a, b) => { int n = Mathf.Max(1, Mathf.CeilToInt(Vector3.Distance(a.p, b.p) / 1.5f)); for (int k = 1; k <= n; k++) o.Add(LerpRP(a, b, k / (float)n)); };

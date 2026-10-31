@@ -435,7 +435,7 @@ public static partial class PlanetCity
                 // elk stuk loopt van hart tot hart: op een recht stuk sluit het precies aan op het volgende (een stuk dat doorliep gaf
                 // trapjes waar de helling verandert); een doodlopend eind, bocht of splitsing krijgt een zeshoekige kop (AddCap)
                 bool capA = Capped(a), capB = levelled.Contains(b) && Capped(b);
-                segs.Add(new Seg { a = pa, b = pb, ha = G(a), hb = LevelFor(b, a), hw = hw, capA = capA, capB = capB, ia = a, ib = b });
+                AddWalkSeg(segs, new Seg { a = pa, b = pb, ha = G(a), hb = LevelFor(b, a), hw = hw, capA = capA, capB = capB, ia = a, ib = b });   // met een vlak stuk op een padknoop
             }
             if (Capped(a)) AddCap(a, G(a), na <= 1 && IsRoad(a) ? hw + HeadExtra(a) : hw);   // doodlopend, bocht, splitsing of los vak; doodlopend: ruim genoeg voor het keerrondje
         }
@@ -447,7 +447,7 @@ public static partial class PlanetCity
             foreach (int b in Partners(a))
             {
                 if (!IsWalk(b) || Underpass(b) || levelled.Contains(b) || (preCarve.ContainsKey(b) && b < a)) continue;
-                segs.Add(new Seg { a = ad * Planet.R, b = Planet.Cells[b].dir * Planet.R, ha = G(a), hb = LevelFor(b, a), hw = hw, ia = a, ib = b });
+                AddWalkSeg(segs, new Seg { a = ad * Planet.R, b = Planet.Cells[b].dir * Planet.R, ha = G(a), hb = LevelFor(b, a), hw = hw, ia = a, ib = b });
             }
         }
         // gewone wegen en paden (niet op een niveau) in de buurt: onder zo'n weg ligt de grond op de hoogte van die weg, wat het talud
@@ -464,7 +464,7 @@ public static partial class PlanetCity
                 {
                     if (!IsWalk(b) || levelled.Contains(b) || !seen.Add(Key(a, b))) continue;
                     float fw = IsRoad(a) ? FlatHW(a) : Bike.Contains(a) ? 3.4f : 1.6f;   // een fiets- en voetpad is breder
-                    flats.Add(new Seg { a = Planet.Cells[a].dir * Planet.R, b = Planet.Cells[b].dir * Planet.R, ha = G(a), hb = LevelFor(b, a), hw = fw });
+                    AddWalkSeg(flats, new Seg { a = Planet.Cells[a].dir * Planet.R, b = Planet.Cells[b].dir * Planet.R, ha = G(a), hb = LevelFor(b, a), hw = fw, ia = a, ib = b });
                 }
             }
         }
@@ -798,7 +798,7 @@ public static partial class PlanetCity
     public static float FloorH(int i) { float m = Mathf.Min(G(i), MinCorner(i)); return Low.TryGetValue(i, out var lo) ? Mathf.Min(m, lo) : m; }   // het laagste punt in vak i
     public static float MinCorner(int i) { float m = G(i); for (int k = 0; k < Planet.Cells[i].corners.Length; k++) m = Mathf.Min(m, CornerH(i, k)); return m; }
     // hoogte van het oppervlak van vak i (maaiveld, of de weg die er helt) onder een wereldpunt
-    public static float SurfaceH(int i, Vector3 world) { var fr = new Frame(i); Vector3 d = world - fr.o; return G(i) + fr.H(Vector3.Dot(d, fr.e), Vector3.Dot(d, fr.n)); }
+    public static float SurfaceH(int i, Vector3 world) { if (IsPath(i)) return PathSurfaceH(i, world); var fr = new Frame(i); Vector3 d = world - fr.o; return G(i) + fr.H(Vector3.Dot(d, fr.e), Vector3.Dot(d, fr.n)); }
     // idem voor iemand die van vak 'from' komt of erheen gaat: op het pad onder een brug is dat de hoogte van het pad
     public static float SurfaceH(int i, int from, Vector3 world)
     {
@@ -1065,7 +1065,8 @@ public static partial class PlanetCity
         {
             if (l.Count == 1 && l[0] == "wegdeel") l.Clear();
             if (l.Count == 1 && (l[0] == "meer" || l[0] == "water" || l[0] == "kuil")) { Under[i] = l[0]; l[0] = "weg"; }   // een brug over water of een uitgraving
-            if (l.Count == 1 && l[0] == "pad") MakeUnderpass(i, l);   // een weg over een pad: onderdoorgang
+            if (l.Count == 1 && l[0] == "pad")   // een weg over een pad: gelijkvloers een oversteek (het pad sluit aan op de stoep); onderdoor met ongelijkvloers, of als de weg op een ander niveau ligt dan het pad
+            { if (DragUnder || DragLevel != WalkLevel(i)) MakeUnderpass(i, l); else { l[0] = "weg"; Bike.Remove(i); } }
             if (l.Count > 0 && !(l.Count == 1 && l[0] == "weg")) return "Eerst het vak leegmaken (rechtermuisknop) voor een weg";
             if (l.Count == 0) l.Add("weg");
             SetStyle(i); if (autoLink) { foreach (int j in ClickLinks(i)) Link(i, j); CarvePaths(); }
@@ -1127,16 +1128,15 @@ public static partial class PlanetCity
                     }
                 }
             }
-            // een schuine lijn springt over de rand tussen twee vakken; ligt daar een pad (bij een weg) of een weg (bij een pad),
-            // dan gaat de lijn door dat vak: daar wordt het een onderdoorgang
-            if (!IsNeighbour(a, b))
+            // een schuine weg springt over de rand tussen twee verbonden padvakken: gelijkvloers blijft de weg recht en sluit het pad aan
+            // beide kanten aan op wegvak a (een oversteek). Met ongelijkvloers, of op een ander niveau, gaat het pad eronderdoor (EdgeCrossings).
+            if (type == "weg" && !DragUnder && !IsNeighbour(a, b))
             {
-                int via = -1;
-                if (via >= 0 && Place(via, type, false) == null)
+                var bp = Between(a, b);
+                if (bp.Count == 2 && IsPath(bp[0]) && IsPath(bp[1]) && Linked(bp[0], bp[1]) && WalkLevel(bp[0]) == DragLevel)
                 {
-                    Link(a, via); Link(via, b); cross.Add(via);
-                    if (type == "weg" && DragOneWay) { OneWay.Add(DKey(a, via)); OneWay.Add(DKey(via, b)); }
-                    continue;
+                    int p0 = bp[0], p1 = bp[1]; Links.Remove(Key(p0, p1)); partners[p0].Remove(p1); partners[p1].Remove(p0);
+                    Link(p0, a); Link(p1, a); cross.Add(p0); cross.Add(p1);
                 }
             }
             Link(a, b);
@@ -1789,6 +1789,8 @@ public static partial class PlanetCity
         }
         // Hoogte boven het hart van het vak op (x, z): langs elke arm lineair van het hart naar de rand, waar de weg op de
         // gemiddelde hoogte van de twee vakken ligt. Tussen armen in mengt het naar de arm waar het punt het meest in ligt.
+        public Frame Flat() { sq = null; sd = null; return this; }   // zonder de helling naar de buren (die rekent de padknoop zelf)
+        public bool Sloped => sq != null;   // helt mee met een buur: vlakken in kleine stukjes, zodat ze de gebogen hoogte volgen
         public float H(float x, float z)
         {
             if (sq == null) return 0f; Vector2 p = new Vector2(x, z); float pl = p.magnitude; if (pl < 1e-3f) return 0f;
@@ -1845,7 +1847,13 @@ public static partial class PlanetCity
     }
     static void Disc(MeshBuilder m, Frame f, float r, float y)
     {
-        for (int i = 0; i < 12; i++) { float a0 = i * Mathf.PI / 6f, a1 = (i + 1) * Mathf.PI / 6f; m.Tri(f.P(0, y, 0), f.P(Mathf.Cos(a0) * r, y, Mathf.Sin(a0) * r), f.P(Mathf.Cos(a1) * r, y, Mathf.Sin(a1) * r), f.u); }
+        int nr = f.Sloped ? Mathf.Max(1, Mathf.CeilToInt(r / 0.8f)) : 1, ns = f.Sloped ? 24 : 12;
+        System.Func<int, int, Vector3> Pt = (k, i) => { float rr = r * k / nr, a = i * Mathf.PI * 2f / ns; return f.P(Mathf.Cos(a) * rr, y, Mathf.Sin(a) * rr); };
+        for (int i = 0; i < ns; i++)
+        {
+            m.Tri(f.P(0, y, 0), Pt(1, i), Pt(1, i + 1), f.u);
+            for (int k = 1; k < nr; k++) m.Quad(Pt(k, i), Pt(k + 1, i), Pt(k + 1, i + 1), Pt(k, i + 1), f.u);
+        }
     }
     static void Skirt(MeshBuilder m, Frame f, float r, float y0, float y1)
     {
@@ -1914,16 +1922,24 @@ public static partial class PlanetCity
         }
     }
 
+    // Op een hellend vak is de hoogte tussen de armen gebogen (Frame.H): dan wordt een vlak een raster van stukjes van ~0,8 m,
+    // anders steekt een groot vlak (het zand van een fietspad) door een smaller vlak dat er 1 cm boven hoort (het rode fietsdeel)
     static void Strip(MeshBuilder m, Frame f, Vector2 d, Vector2 r, float s0, float s1, float hw, float y)
     {
-        Vector2 a = d * s0 - r * hw, b = d * s0 + r * hw, c = d * s1 + r * hw, e = d * s1 - r * hw;
-        m.Quad(f.P(a.x, y, a.y), f.P(b.x, y, b.y), f.P(c.x, y, c.y), f.P(e.x, y, e.y), f.u);
+        int nu = f.Sloped ? Mathf.Max(1, Mathf.CeilToInt((s1 - s0) / 0.8f)) : 1, nv = f.Sloped ? Mathf.Max(1, Mathf.CeilToInt(2f * hw / 0.8f)) : 1;
+        for (int u = 0; u < nu; u++) for (int v = 0; v < nv; v++)
+        {
+            float sa = Mathf.Lerp(s0, s1, u / (float)nu), sb = Mathf.Lerp(s0, s1, (u + 1) / (float)nu), la = Mathf.Lerp(-hw, hw, v / (float)nv), lb = Mathf.Lerp(-hw, hw, (v + 1) / (float)nv);
+            Vector2 a = d * sa + r * la, b = d * sa + r * lb, c = d * sb + r * lb, e = d * sb + r * la;
+            m.Quad(f.P(a.x, y, a.y), f.P(b.x, y, b.y), f.P(c.x, y, c.y), f.P(e.x, y, e.y), f.u);
+        }
     }
     static void StripSides(MeshBuilder m, Frame f, Vector2 d, Vector2 r, float s0, float s1, float hw, float y0, float y1)
     {
-        for (int sg = -1; sg <= 1; sg += 2)
+        int nu = f.Sloped ? Mathf.Max(1, Mathf.CeilToInt((s1 - s0) / 0.8f)) : 1;
+        for (int sg = -1; sg <= 1; sg += 2) for (int u = 0; u < nu; u++)
         {
-            Vector2 a = d * s0 + r * (hw * sg), b = d * s1 + r * (hw * sg);
+            Vector2 a = d * Mathf.Lerp(s0, s1, u / (float)nu) + r * (hw * sg), b = d * Mathf.Lerp(s0, s1, (u + 1) / (float)nu) + r * (hw * sg);
             m.Quad(f.P(a.x, y0, a.y), f.P(b.x, y0, b.y), f.P(b.x, y1, b.y), f.P(a.x, y1, a.y), f.D(r.x * sg, 0, r.y * sg));
         }
     }
@@ -2480,26 +2496,6 @@ public static partial class PlanetCity
         }
     }
 
-    // Een pad: smal, zandkleurig, sluit aan op buurpaden en wegen. Een fiets- en voetpad is breder: in het midden een rood fietsdeel
-    // van 3,2 m, aan weerszijden een strook van 1,6 m voor voetgangers.
-    static void Footpath(Dictionary<string, MeshBuilder> mb, Frame fr, int i)
-    {
-        System.Func<string, MeshBuilder> M = k => { if (!mb.TryGetValue(k, out var x)) { x = new MeshBuilder(); mb[k] = x; } return x; };
-        bool bike = Bike.Contains(i); float hw = bike ? 3.2f : 1.1f;   // fiets- en voetpad: 6,4 m breed, waarvan 3,2 m fietsdeel
-        float dr = bike ? hw : hw + 0.2f;   // het rondje in het midden: bij een fietspad niet breder dan de stroken (anders een knikje)
-        skb = SkirtDepth(i); Disc(M("pad"), fr, dr, 0.1f); Skirt(M("pad"), fr, dr, skb, 0.1f);
-        if (bike) Disc(M("fietspad"), fr, 1.6f, 0.115f);
-        foreach (int j in Partners(i))
-        {
-            if (!IsWalk(j)) continue;
-            Vector3 d3 = Planet.Cells[j].dir * Planet.R - fr.o;
-            Vector2 q = new Vector2(Vector3.Dot(d3, fr.e), Vector3.Dot(d3, fr.n)) * 0.5f; float L = q.magnitude; Vector2 d = q / L, r = new Vector2(d.y, -d.x);
-            float L2 = IsRoad(j) && !UnderLink(j, i) ? L - 4.4f : bike && Bike.Contains(j) ? L + 0.6f : L;   // tot aan de stoep van een weg; twee fietspaden overlappen een stukje (geen knikje op de rand)
-            Strip(M("pad"), fr, d, r, 0f, L2, hw, 0.105f); StripSides(M("pad"), fr, d, r, 0f, L2, hw, skb, 0.105f);
-            if (bike && Bike.Contains(j)) Strip(M("fietspad"), fr, d, r, 0f, L2, 1.6f, 0.115f);   // het fietsdeel loopt door naar een buur die ook een fietspad is
-        }
-    }
-
     static Color ColorOf(string k)
     {
         switch (k)
@@ -2624,7 +2620,7 @@ public static partial class PlanetCity
                 list = rest; from = Mathf.Max(0, from - 1);
             }
             if (list.Count == 1 && list[0] == "meer") { Lake(mb, fr, i, 0f, i * 73856093); return; }
-            if (list.Count == 1 && list[0] == "pad") { Footpath(mb, fr, i); return; }
+            if (list.Count == 1 && list[0] == "pad") return;   // paden tekent het wegennet (PlanetPaths.cs)
             float h = 0f; int hash = i * 73856093;
             for (int k = 0; k < list.Count; k++)
             {
