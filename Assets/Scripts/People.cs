@@ -59,6 +59,8 @@ public static class Nav
 public class Person
 {
     public Transform root, legL, legR, armL, armR;
+    public RbPerson rb; public bool sit;
+    public Vector3 at, vel; public bool hasAt; public float lag;   // op de planeet: waar hij echt loopt en hoe snel (hij stuurt naar zijn route), en hoe ver hij erachter zit   // rb: een realistisch figuur (Rocketbox) met animaties; sit: zittend (op de fiets)
     public RoadPath path; public float s; public int dir = 1; public float speed, phase, scale = 1f;
     public bool lomp, friendly, kid, female; public float voice = 1f;
     public bool paused; public float pauseT, chatT, talkT, greetCool, socT, waveT, yaw;
@@ -134,6 +136,15 @@ public class People : MonoBehaviour
         var root = new GameObject("Mens").transform; root.SetParent(parent, false); a.root = root; root.localScale = Vector3.one * a.scale; root.gameObject.layer = Layers.Mens;
         int sk = Random.Range(0, Skin.Length), sh = Random.Range(0, Shirt.Length), pa = Random.Range(0, Pants.Length);
         Material mSkin = Mats.Get("skin" + sk, Skin[sk]), mShirt = Mats.Get("shirt" + sh, Shirt[sh]), mPants = Mats.Get("pants" + pa, Pants[pa]);
+        a.rb = Rocketbox.Spawn(root, a.female, a.kid);
+        if (a.rb != null)   // een realistisch figuur: op ware grootte; lege houvasten voor de code die armen en benen nog zelf draait
+        {
+            root.localScale = Vector3.one; a.scale = a.kid ? 0.75f : 1f;
+            Transform E(string n) { var t = new GameObject(n).transform; t.SetParent(root, false); return t; }
+            a.legL = E("beenL"); a.legR = E("beenR"); a.armL = E("armL"); a.armR = E("armR");
+            a.audio = root.gameObject.AddComponent<AudioSource>(); a.audio.spatialBlend = 1f; a.audio.rolloffMode = AudioRolloffMode.Linear; a.audio.minDistance = 2f; a.audio.maxDistance = 30f; a.audio.volume = 0.6f; a.audio.playOnAwake = false;
+            return a;
+        }
         Part(root, "romp", mTorso, mShirt, new Vector3(0, 0.88f, 0));
         Part(root, "hoofd", mHead, mSkin, new Vector3(0, 1.62f, 0));
         a.legL = Part(root, "beenL", mLeg, mPants, new Vector3(-0.09f, 0.9f, 0)); a.legR = Part(root, "beenR", mLeg, mPants, new Vector3(0.09f, 0.9f, 0));
@@ -162,6 +173,7 @@ public class People : MonoBehaviour
 
     public static void Animate(Person a, float dt, bool moving)
     {
+        if (a.rb != null) { a.rb.Set(a.hasAt ? a.vel.magnitude : moving ? a.speed : 0f, a.waveT > 0f, a.sit, dt); return; }   // het looptempo volgt de echte snelheid
         float sw = moving ? Mathf.Sin(a.phase) * 38f : 0f;
         a.legL.localRotation = Quaternion.Euler(sw, 0, 0); a.legR.localRotation = Quaternion.Euler(-sw, 0, 0);
         float armA = a.waveT > 0 ? 150f + Mathf.Sin(Time.time * 14f) * 20f : -sw * 0.8f;

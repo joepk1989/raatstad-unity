@@ -68,13 +68,29 @@ public partial class PlanetLife : MonoBehaviour
     void PlacePerson(Person a, float dt)
     {
         bool ra = PlanetCity.IsRoad(a.cellA) && !PlanetCity.UnderLink(a.cellA, a.cellB), rb = PlanetCity.IsRoad(a.cellB) && !PlanetCity.UnderLink(a.cellB, a.cellA);   // onder een brug: op het pad
-        float side = ra && rb ? (PlanetCity.WalkOffset(a.cellA) + PlanetCity.WalkOffset(a.cellB)) * 0.5f : ra ? PlanetCity.WalkOffset(a.cellA) * 0.5f : rb ? PlanetCity.WalkOffset(a.cellB) * 0.5f : PlanetCity.IsBike(a.cellA) && PlanetCity.IsBike(a.cellB) ? 1.75f : 0.35f;   // op een fietspad: rechts op de strook voor voetgangers
+        float side = ra && rb ? (PlanetCity.WalkOffset(a.cellA) + PlanetCity.WalkOffset(a.cellB)) * 0.5f : ra ? PlanetCity.WalkOffset(a.cellA) * 0.5f : rb ? PlanetCity.WalkOffset(a.cellB) * 0.5f : PlanetCity.IsBike(a.cellA) && PlanetCity.IsBike(a.cellB) ? 2.4f : 0.35f;   // op een fietspad: rechts op de strook voor voetgangers
         float hgt = Mathf.Lerp(ra ? 0.25f : 0.11f, rb ? 0.25f : 0.11f, a.ct);   // op de stoep (25 cm) of op een pad
         Where(a.cellA, a.cellB, a.ct, side, hgt, out Vector3 pos, out Vector3 fwd, out Vector3 up);
         pos += up * (a.ct < 0.5f ? PlanetCity.SurfaceH(a.cellA, a.cellB, pos) : PlanetCity.SurfaceH(a.cellB, a.cellA, pos));   // terreinhoogte en de helling van de weg
-        a.root.position = pos;
-        if (a.paused && a.partner != null) { Vector3 to = a.partner.root.position - pos; to -= up * Vector3.Dot(to, up); if (to.sqrMagnitude > 1e-6f) fwd = to.normalized; }
-        Quaternion target = Geo.Look(fwd, up);
+        // De route (van vak naar vak, met de sprongetjes van bochten en randen) is alleen het doel: de voetganger stuurt ernaartoe,
+        // met een grens aan versnellen, en wijkt uit voor wie te dichtbij komt. Zo loopt hij vloeiend, ook om een bocht en bij keren.
+        if (dt <= 0f || !a.hasAt) { a.at = pos; a.vel = Vector3.zero; a.hasAt = true; a.lag = 0f; }
+        else
+        {
+            Vector3 to = pos - a.at; to -= up * Vector3.Dot(to, up); float dist = to.magnitude; a.lag = dist;
+            Vector3 want = a.paused || dist < 0.02f ? Vector3.zero : to / dist * Mathf.Min(a.speed * 1.25f, dist * 3f);
+            foreach (var o in People)   // uitwijken: wegduwen van wie binnen 0,9 m loopt
+            {
+                if (o == a || !o.hasAt) continue; Vector3 d = a.at - o.at; d -= up * Vector3.Dot(d, up); float m = d.magnitude;
+                if (m < 0.9f && m > 1e-3f) want += d / m * (0.9f - m) * 2.5f;
+            }
+            a.vel -= up * Vector3.Dot(a.vel, up); a.vel = Vector3.MoveTowards(a.vel, want, 4f * dt);
+            a.at = (a.at + a.vel * dt).normalized * pos.magnitude;   // op de hoogte van de route (de stoep of het pad)
+        }
+        a.root.position = a.at;
+        Vector3 face = a.vel.sqrMagnitude > 0.04f ? a.vel - up * Vector3.Dot(a.vel, up) : fwd;
+        if (a.paused && a.partner != null) { Vector3 tp = a.partner.root.position - a.at; tp -= up * Vector3.Dot(tp, up); if (tp.sqrMagnitude > 1e-6f) face = tp; }
+        Quaternion target = Geo.Look(face.sqrMagnitude > 1e-8f ? face.normalized : fwd, up);
         a.root.rotation = dt <= 0f ? target : Quaternion.Slerp(a.root.rotation, target, Mathf.Min(1f, dt * 6f));
     }
 
@@ -193,7 +209,7 @@ public partial class PlanetLife : MonoBehaviour
                 }
                 global::People.Animate(a, dt, false); PlacePerson(a, dt); continue;
             }
-            Advance(ref a.cellA, ref a.cellB, ref a.prevCell, ref a.ct, a.speed, dt, true); a.phase += a.speed * dt * 5.2f;
+            Advance(ref a.cellA, ref a.cellB, ref a.prevCell, ref a.ct, a.speed * Mathf.Clamp(1.5f - a.lag / 1.5f, 0.15f, 1f), dt, true);   // loopt hij achter op zijn route (uitwijken), dan wacht de route a.phase += a.speed * dt * 5.2f;
             global::People.Animate(a, dt, a.cellA != a.cellB); PlacePerson(a, dt);
             a.socT -= dt; if (a.socT <= 0f) { a.socT = 0.4f; Social(a); }
         }

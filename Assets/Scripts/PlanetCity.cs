@@ -463,7 +463,7 @@ public static partial class PlanetCity
                 foreach (int b in Partners(a))
                 {
                     if (!IsWalk(b) || levelled.Contains(b) || !seen.Add(Key(a, b))) continue;
-                    float fw = IsRoad(a) ? FlatHW(a) : 1.6f;
+                    float fw = IsRoad(a) ? FlatHW(a) : Bike.Contains(a) ? 3.4f : 1.6f;   // een fiets- en voetpad is breder
                     flats.Add(new Seg { a = Planet.Cells[a].dir * Planet.R, b = Planet.Cells[b].dir * Planet.R, ha = G(a), hb = LevelFor(b, a), hw = fw });
                 }
             }
@@ -2442,14 +2442,14 @@ public static partial class PlanetCity
     }
 
     // Een pad: smal, zandkleurig, sluit aan op buurpaden en wegen. Een fiets- en voetpad is breder: in het midden een rood fietsdeel
-    // van 2,4 m, aan weerszijden een strook voor voetgangers.
+    // van 3,2 m, aan weerszijden een strook van 1,6 m voor voetgangers.
     static void Footpath(Dictionary<string, MeshBuilder> mb, Frame fr, int i)
     {
         System.Func<string, MeshBuilder> M = k => { if (!mb.TryGetValue(k, out var x)) { x = new MeshBuilder(); mb[k] = x; } return x; };
-        bool bike = Bike.Contains(i); float hw = bike ? 2.3f : 1.1f;
+        bool bike = Bike.Contains(i); float hw = bike ? 3.2f : 1.1f;   // fiets- en voetpad: 6,4 m breed, waarvan 3,2 m fietsdeel
         float dr = bike ? hw : hw + 0.2f;   // het rondje in het midden: bij een fietspad niet breder dan de stroken (anders een knikje)
         skb = SkirtDepth(i); Disc(M("pad"), fr, dr, 0.1f); Skirt(M("pad"), fr, dr, skb, 0.1f);
-        if (bike) Disc(M("fietspad"), fr, 1.2f, 0.115f);
+        if (bike) Disc(M("fietspad"), fr, 1.6f, 0.115f);
         foreach (int j in Partners(i))
         {
             if (!IsWalk(j)) continue;
@@ -2457,7 +2457,7 @@ public static partial class PlanetCity
             Vector2 q = new Vector2(Vector3.Dot(d3, fr.e), Vector3.Dot(d3, fr.n)) * 0.5f; float L = q.magnitude; Vector2 d = q / L, r = new Vector2(d.y, -d.x);
             float L2 = IsRoad(j) && !UnderLink(j, i) ? L - 4.4f : bike && Bike.Contains(j) ? L + 0.6f : L;   // tot aan de stoep van een weg; twee fietspaden overlappen een stukje (geen knikje op de rand)
             Strip(M("pad"), fr, d, r, 0f, L2, hw, 0.105f); StripSides(M("pad"), fr, d, r, 0f, L2, hw, skb, 0.105f);
-            if (bike && Bike.Contains(j)) Strip(M("fietspad"), fr, d, r, 0f, L2, 1.2f, 0.115f);   // het fietsdeel loopt door naar een buur die ook een fietspad is
+            if (bike && Bike.Contains(j)) Strip(M("fietspad"), fr, d, r, 0f, L2, 1.6f, 0.115f);   // het fietsdeel loopt door naar een buur die ook een fietspad is
         }
     }
 

@@ -54,6 +54,8 @@ Erbij gekomen op 31 oktober 2026:
 
 - Fiets- en voetpaden (`PlanetCity.Bike`, padgereedschap B): breder pad met een rood fietsdeel; voetgangers lopen rechts op de zandstrook. Fietsers (`PlanetLife.Bikes.cs`) rijden alleen over fietspaden; de startstad heeft fietspaden in de ring en de zes paden.
 
+- Mensen: realistische figuren uit Microsoft Rocketbox (MIT, `Assets/Resources/Mensen`, licentie erbij) met Rocketbox-animaties (lopen, stilstaan, zwaaien, zitten), als Humanoid geïmporteerd (`Assets/Editor/MensenImport.cs`), afgespeeld in `Rocketbox.cs`. Voetgangers sturen vloeiend naar hun route en wijken voor elkaar uit (`PlacePerson`). Fiets- en voetpad 6,4 m breed (3,2 m fietsdeel).
+
 Nog te doen:
 1. Modules als JSON met edge-codes (nu nog in code)
 2. Onderdelen uit `docs/overdracht-webversie.md` bouwen: stadsgenerator, wenteltrap, low-poly voertuigen, roekeloos rijgedrag, geluiden
