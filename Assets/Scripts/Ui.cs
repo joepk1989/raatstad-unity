@@ -12,6 +12,9 @@ public static class Ui
         Line = C(238, 241, 236, 0.14f), Signal = C(242, 178, 51), SignalInk = C(29, 23, 8), SlotFill = C(27, 35, 43), SlotHover = C(38, 48, 58), SlotOn = C(59, 48, 20);
     public static readonly Color Amber = Signal;
     public static float S = 1f, W = 1280f, H = 720f;
+    // interfacegrootte uit Instellingen (90–130 %), bewaard tussen sessies
+    static float size = -1f;
+    public static float Size { get { if (size < 0f) size = PlayerPrefs.GetFloat("raatstad-ui-grootte", 1f); return size; } set { size = value; PlayerPrefs.SetFloat("raatstad-ui-grootte", value); } }
     public static Vector2 Mouse => new Vector2(Inp.Pos.x / S, (Screen.height - Inp.Pos.y) / S);
 
     // ---------- klikvlakken ----------
@@ -20,15 +23,39 @@ public static class Ui
     public static void Hit(Rect r) { if (Event.current != null && Event.current.type == EventType.Repaint) hitsNow.Add(r); }
     public static void Begin()
     {
-        Init(); S = Mathf.Clamp(Screen.height / 900f, 0.85f, 1.7f); W = Screen.width / S; H = Screen.height / S;
+        Init(); S = Mathf.Min(Mathf.Clamp(Screen.height / 900f, 0.85f, 1.7f) * Size, Screen.height / 790f); W = Screen.width / S; H = Screen.height / S;   // hooguit zo groot dat het menu nog past
         GUI.matrix = Matrix4x4.Scale(new Vector3(S, S, 1f));
         if (Event.current.type == EventType.Repaint) hitsNow.Clear();
         if (Event.current.type == EventType.MouseDown) pressed = false;   // een nieuwe klik: alleen de knop die hem nu krijgt, telt
     }
     public static void End()
     {
-        if (Event.current.type == EventType.Repaint) { hitsLast.Clear(); hitsLast.AddRange(hitsNow); }
+        if (Event.current.type == EventType.Repaint)
+        {
+            if (tipSet && Time.unscaledTime - tipT > 0.35f) DrawTip();   // als laatste: boven alles
+            if (!tipSet) tipId = null; tipSet = false;
+            hitsLast.Clear(); hitsLast.AddRange(hitsNow);
+        }
         GUI.matrix = Matrix4x4.identity;
+    }
+
+    // ---------- uitleg bij aanwijzen: naam, wat het doet en de toets, na een korte pauze boven het element ----------
+    static string tipId, tipTitle, tipSub, tipKey; static float tipT; static Rect tipR; static bool tipSet;
+    public static void Tip(Rect over, string title, string sub = null, string key = null)
+    {
+        if (!over.Contains(Mouse)) return;
+        string id = title + over.x + "," + over.y; if (id != tipId) { tipId = id; tipT = Time.unscaledTime; }
+        tipSet = true; tipR = over; tipTitle = title; tipSub = sub; tipKey = key;
+    }
+    static void DrawTip()
+    {
+        float kw = tipKey != null ? Mathf.Max(20f, Width(tipKey, T.Kbd) + 12f) : 0f;
+        float w = Mathf.Max(Width(tipTitle, T.Bold) + (kw > 0f ? kw + 10f : 0f), tipSub != null ? Width(tipSub, T.Dim) : 0f) + 24f, h = tipSub != null ? 48f : 30f;
+        float x = Mathf.Clamp(tipR.center.x - w * 0.5f, 8f, W - w - 8f), y = tipR.y - 8f - h; if (y < 8f) y = tipR.yMax + 8f;
+        var r = new Rect(x, y, w, h); Box(r, PanelSolid, Line, 10f);
+        Label(new Rect(r.x + 12f, r.y + 6f, w - 24f, 18f), tipTitle, T.Bold);
+        if (kw > 0f) Kbd(new Rect(r.xMax - 12f - kw, r.y + 7f, kw, 17f), tipKey);
+        if (tipSub != null) Label(new Rect(r.x + 12f, r.y + 25f, w - 24f, 16f), tipSub, T.Dim);
     }
 
     // ---------- stijlen en texturen ----------
@@ -100,6 +127,56 @@ public static class Ui
             Color c = Color.Lerp(border, fill, inner); c.a = Mathf.Lerp(border.a, fill.a, inner) * al; px[(h - 1 - y) * w + x] = c;
         }
         t.SetPixels(px); t.Apply(); texCache[key] = t; return t;
+    }
+    // het blokje in de snelbalk en de catalogus: een zeshoek met het patroon van het blok (zoals .sw-… in style.css van de webversie)
+    public static Texture2D Swatch(string id, Color col)
+    {
+        string key = "s:" + id; if (texCache.TryGetValue(key, out var t) && t != null) return t;
+        const int w = 64, h = 58; t = new Texture2D(w, h, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+        Vector2[] p = { new Vector2(0.25f * w, 0.02f * h), new Vector2(0.75f * w, 0.02f * h), new Vector2(w, 0.5f * h), new Vector2(0.75f * w, 0.98f * h), new Vector2(0.25f * w, 0.98f * h), new Vector2(0f, 0.5f * h) };
+        var px = new Color[w * h];
+        for (int y = 0; y < h; y++) for (int x = 0; x < w; x++)
+        {
+            Vector2 q = new Vector2(x + 0.5f, y + 0.5f); float d = 1e9f;
+            for (int k = 0; k < 6; k++) { Vector2 a = p[k], b = p[(k + 1) % 6], n = new Vector2(b.y - a.y, a.x - b.x).normalized; d = Mathf.Min(d, -Vector2.Dot(q - a, n)); }
+            Color c = SwatchPx(id, q.x / w, q.y / h, col); c.a *= Mathf.Clamp01(d + 0.5f); px[(h - 1 - y) * w + x] = c;   // y = 0 is boven
+        }
+        t.SetPixels(px); t.Apply(); texCache[key] = t; return t;
+    }
+    static Color X(string s) { ColorUtility.TryParseHtmlString(s, out var c); return c; }
+    static bool Band(float u, float a, float b) => u >= a && u < b;
+    // de kleur van het patroon op (u, v), beide 0..1, v van boven naar onder
+    static Color SwatchPx(string id, float u, float v, Color col)
+    {
+        float ex = Mathf.Abs(u - 0.5f) * 2f, ey = Mathf.Abs(v - 0.55f) * 2f;
+        switch (id)
+        {
+            case "weg": return Band(u, 0.48f, 0.52f) && Mathf.Repeat(v * 5f, 1f) < 0.5f ? X("#f1efe6") : Band(u, 0.22f, 0.78f) ? X("#3c4045") : X("#cbc8bd");
+            case "weg:breed": return (Band(u, 0.44f, 0.47f) || Band(u, 0.53f, 0.56f)) ? X("#f1efe6") : Band(u, 0.14f, 0.86f) ? X("#3c4045") : X("#cbc8bd");
+            case "weg:laan":
+                return u < 0.1f || u >= 0.9f ? X("#cbc8bd") : u < 0.18f || u >= 0.82f ? X("#9b5a45") : Band(u, 0.42f, 0.58f) ? X("#6aa84a") : X("#3c4045");
+            case "pad": return Band(u, 0.25f, 0.75f) ? (Mathf.Repeat(v * 9f, 1f) < 0.85f ? X("#d4c8b0") : X("#b3a68c")) : X("#6fa356");
+            case "woning": return Mathf.Repeat(v * 7f, 1f) < 0.8f ? X("#9c4a33") : X("#c9b9a6");
+            case "kantoor": return Mathf.Repeat(u * 5f, 1f) < 0.22f ? X("#2e3b45") : Color.Lerp(X("#9fc0d6"), X("#4f7088"), v);
+            case "winkel": return v < 0.42f ? (Mathf.Repeat(u * 5f, 1f) < 0.5f ? X("#d9493f") : X("#f3efe6")) : v < 0.48f ? X("#3a2a22") : Color.Lerp(X("#b8d6e6"), X("#6f97ad"), (v - 0.48f) * 2f);
+            case "dak": return Color.Lerp(X("#a5503b"), X("#6e2e21"), (u * 0.35f + v) / 1.35f);
+            case "blok": return Color.Lerp(X("#e2d9c8"), X("#c2b69f"), v);
+            case "toren": return Band(u, 0.3f, 0.7f) ? (Mathf.Repeat(v * 8f, 1f) < 0.35f && Mathf.Repeat(u * 10f, 1f) < 0.5f ? X("#cfe0ea") : X("#5b6370")) : X("#8eab69");
+            case "molen":
+            {
+                float a = Mathf.Abs(u - 0.5f - (v - 0.5f)), b = Mathf.Abs(u - 0.5f + (v - 0.5f));
+                return a < 0.07f || b < 0.07f ? X("#f6f3ea") : Vector2.Distance(new Vector2(u, v), new Vector2(0.5f, 0.5f)) < 0.09f ? X("#6b3a2d") : X("#8fbfe0");
+            }
+            case "park":
+                return Vector2.Distance(new Vector2(u, v), new Vector2(0.36f, 0.4f)) < 0.17f ? X("#2f6b3f") : Vector2.Distance(new Vector2(u, v), new Vector2(0.66f, 0.62f)) < 0.14f ? X("#3f7d3a") : X("#6fa356");
+            case "plein": return Mathf.Repeat(u * 6f, 1f) < 0.08f || Mathf.Repeat(v * 6f, 1f) < 0.08f ? X("#a48f7a") : X("#cdb9a2");
+            case "water": return Mathf.Abs(Mathf.Repeat(v * 4f + Mathf.Sin(u * 12f) * 0.12f, 1f) - 0.5f) < 0.05f ? X("#9ccbe6") : Color.Lerp(X("#5fa3cf"), X("#2f6f9c"), v);
+            case "meer": { float r = Mathf.Sqrt(ex * ex + ey * ey * 1.6f); return r < 0.62f ? X("#3f86b3") : r < 0.76f ? X("#d8c48f") : X("#6fa356"); }
+            case "kuil": return u < 0.18f || u >= 0.82f ? X("#6fa356") : Color.Lerp(X("#7c8a91"), X("#5a666c"), v);
+            default:
+                if (id.StartsWith("t:")) return Color.Lerp(X("#6fa356"), X("#4f8a3c"), v);   // terrein: groen, met het pictogram erop
+                return col;
+        }
     }
     public static void Tex(Rect r, Texture2D t, Color? tint = null)
     {
@@ -175,12 +252,13 @@ public static class Ui
         }
         return hit;
     }
-    // snelbalkvak: zeshoek met een gekleurd blokje en het cijfer eronder (.hslot)
-    public static bool HexSlot(Rect r, Color swatch, string num, bool on)
+    // snelbalkvak: zeshoek met het blokje (patroon, eventueel een pictogram erop) en het cijfer eronder (.hslot)
+    public static bool HexSlot(Rect r, Texture2D swatch, string icon, string num, bool on)
     {
         bool hv = Hover(r);
         Tex(r, Hex(on ? SlotOn : hv ? SlotHover : SlotFill, on ? Signal : new Color(Ink.r, Ink.g, Ink.b, 0.24f), 2f));
-        Tex(new Rect(r.center.x - 13f, r.y + r.height * 0.5f - 18f, 26f, 23f), Hex(Color.white, Color.white, 0f), swatch);
+        var sr = new Rect(r.center.x - 16f, r.y + r.height * 0.5f - 20f, 32f, 29f); Tex(sr, swatch);
+        if (icon != null) Tex(new Rect(sr.center.x - 9f, sr.center.y - 9f, 18f, 18f), Icon(icon), Color.white);
         var oc = sNum.normal.textColor; sNum.normal.textColor = on ? Signal : InkDim; GUI.Label(new Rect(r.x, r.yMax - 14f, r.width, 12f), num, sNum); sNum.normal.textColor = oc;
         return Clicked(r);
     }

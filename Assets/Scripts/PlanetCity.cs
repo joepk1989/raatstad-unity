@@ -991,7 +991,27 @@ public static partial class PlanetCity
     public static bool IsHalf(int i) => Cells.TryGetValue(i, out var l) && l.Count >= 1 && l[0] == "wegdeel";
     static void ClearHalves(int i, int j)
     {
-        foreach (int h in Between(i, j)) if (IsHalf(h)) { var l = Cells[h]; if (l.Count > 1) l.RemoveAt(0); else Cells.Remove(h); Touch(h); }   // met bebouwing erop: wordt een gewoon vak
+        foreach (int h in Between(i, j)) if (IsHalf(h) && !HalfUsed(h)) { var l = Cells[h]; if (l.Count > 1) l.RemoveAt(0); else Cells.Remove(h); Touch(h); }   // met bebouwing erop: wordt een gewoon vak; loopt er nog een andere schuine weg over, dan blijft het half
+    }
+    // loopt er nog een schuine verbinding over dit halve vak? (anders is het "wegdeel" een overblijfsel)
+    static bool HalfUsed(int h)
+    {
+        foreach (int a in Planet.Cells[h].nb) foreach (int b in Partners(a)) if (b != a && Linked(a, b) && !IsNeighbour(a, b) && Between(a, b).Contains(h)) return true;
+        return false;
+    }
+    // de gum of rechts klikken op een leeg half vak: de schuine weg (of het pad) die eroverheen loopt gaat weg, de vakken ernaast blijven
+    static bool ClearOver(int h)
+    {
+        var over = new List<long>();
+        foreach (int a in Planet.Cells[h].nb) foreach (int b in Partners(a)) if (a < b && Linked(a, b) && !IsNeighbour(a, b) && Between(a, b).Contains(h)) over.Add(Key(a, b));
+        foreach (long k in over)
+        {
+            int a = (int)(k >> 20), b = (int)(k & 0xFFFFF);
+            Links.Remove(k); TunnelLinks.Remove(k); LowerLinks.Remove(k); OneWay.Remove(DKey(a, b)); OneWay.Remove(DKey(b, a));
+            partners[a].Remove(b); partners[b].Remove(a); ClearHalves(a, b); Touch(a); Touch(b);
+        }
+        if (IsHalf(h) && Cells[h].Count <= 1) Cells.Remove(h);   // nog een overblijfsel: ook weg
+        Touch(h); return true;
     }
     static void MarkHalf(int h)
     {
@@ -1025,7 +1045,7 @@ public static partial class PlanetCity
     public static bool Clear(int i)
     {
         if (!Cells.TryGetValue(i, out var l)) return false;
-        if (IsHalf(i)) { if (l.Count <= 1) return false; l.RemoveRange(1, l.Count - 1); Touch(i); return true; }   // alleen wat op de vrije helft staat
+        if (IsHalf(i)) { if (l.Count <= 1) return ClearOver(i); l.RemoveRange(1, l.Count - 1); Touch(i); return true; }   // eerst wat op de vrije helft staat, daarna de schuine weg erover
         if (Under.TryGetValue(i, out var under)) { RestoreUnder(i, under); return true; }   // een brug: het water of de kuil komt terug
         bool walk = IsWalk(i); Cells.Remove(i); Style.Remove(i); Bike.Remove(i); Unlink(i); if (walk) RestoreLevel(i); Touch(i); return true;
     }
@@ -1155,7 +1175,7 @@ public static partial class PlanetCity
     public static bool RemoveTop(int i)
     {
         if (!Cells.TryGetValue(i, out var l) || l.Count == 0) return false;
-        if (IsHalf(i) && l.Count <= 1) return false;
+        if (IsHalf(i) && l.Count <= 1) return ClearOver(i);
         if (Under.TryGetValue(i, out var under)) { RestoreUnder(i, under); return true; }
         bool walk = IsWalk(i); l.RemoveAt(l.Count - 1); if (l.Count == 0) { Cells.Remove(i); Style.Remove(i); Bike.Remove(i); Unlink(i); if (walk) RestoreLevel(i); } Touch(i); return true;
     }
@@ -2707,8 +2727,9 @@ public static partial class PlanetCity
             if (kv.Value.v.Count == 0) continue;
             var child = new GameObject(kv.Key); child.transform.SetParent(go.transform, false);
             child.layer = (kv.Key == "asfalt" || kv.Key == "stoep" || kv.Key == "rand" || kv.Key == "lijn" || kv.Key == "paal" || kv.Key == "lamp" || kv.Key == "pad") ? Layers.Weg : Layers.Gebouw;
+            bool wet = kv.Key == "water" || kv.Key == "zand"; if (wet) child.layer = Layers.Water;   // een meer heeft geen bodem: het water en de oever zijn om aan te wijzen (weghalen), niet om op te lopen
             var mesh = kv.Value.Build(); child.AddComponent<MeshFilter>().sharedMesh = mesh; child.AddComponent<MeshRenderer>().sharedMaterial = kv.Key == "lamp" || kv.Key == "etalage" ? Mats.GetUnlit("p_" + kv.Key, ColorOf(kv.Key)) : Mats.Get("p_" + kv.Key, ColorOf(kv.Key));
-            if (kv.Key != "water" && kv.Key != "zand" && kv.Key != "lijn" && kv.Key != "lamp" && kv.Key != "riet" && kv.Key != "doek" && !kv.Key.StartsWith("luifel")) child.AddComponent<MeshCollider>().sharedMesh = mesh;
+            if (wet || kv.Key != "lijn" && kv.Key != "lamp" && kv.Key != "riet" && kv.Key != "doek" && !kv.Key.StartsWith("luifel")) child.AddComponent<MeshCollider>().sharedMesh = mesh;
         }
         foreach (var ml in mills) MakeWieken(go.transform, ml.pos, ml.rot, ml.hash);
     }

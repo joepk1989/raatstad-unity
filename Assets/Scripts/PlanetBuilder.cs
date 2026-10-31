@@ -34,6 +34,37 @@ public class PlanetBuilder : MonoBehaviour
         It("t:0", "Ophogen", "Terrein", "terrein", new Color(0.95f, 0.70f, 0.20f)), It("t:1", "Afgraven", "Terrein", "terrein", new Color(0.35f, 0.66f, 0.90f)), It("t:2", "Egaliseren", "Terrein", "terrein", new Color(0.92f, 0.93f, 0.92f)),
         It("t:3", "Gladstrijken", "Terrein", "terrein", new Color(0.56f, 0.82f, 0.42f)), It("t:4", "Helling", "Terrein", "terrein", new Color(0.94f, 0.54f, 0.36f)), It("t:5", "Rand", "Terrein", "terrein", new Color(0.80f, 0.62f, 0.95f)), It("kuil", "Uitgraving", "Terrein"),
     };
+    static string IconOf(Item it) => it.id.StartsWith("t:") ? TerrIcons[it.id[2] - '0'] : null;   // terrein: het pictogram op het blokje
+    // wat het blok doet, voor de uitleg bij aanwijzen (snelbalk en catalogus)
+    static string Desc(string id)
+    {
+        switch (id)
+        {
+            case "weg": return "Slepen voor een rechte weg met stoepen";
+            case "weg:breed": return "Bredere weg voor drukke routes";
+            case "weg:laan": return "Weg met bomen langs de kant";
+            case "pad": return "Voetpad, of met B een fiets- en voetpad";
+            case "woning": return "Om in te wonen, stapelbaar";
+            case "kantoor": return "Werkplekken, stapelbaar";
+            case "winkel": return "Winkel met luifel en etalage";
+            case "dak": return "Een dak bovenop je stapel";
+            case "blok": return "Bouwblok, stapelbaar";
+            case "toren": return "Hoog; daarop kan niets meer";
+            case "molen": return "Molen met draaiende wieken";
+            case "park": return "Gras en bomen";
+            case "plein": return "Bestraat plein";
+            case "water": return "Gracht; een weg erover wordt een brug";
+            case "meer": return "Meertje met oever en riet";
+            case "kuil": return "Uitgraving; een weg erover wordt een brug";
+            case "t:0": return "Grond omhoog (Shift: omlaag)";
+            case "t:1": return "Grond omlaag (Shift: omhoog)";
+            case "t:2": return "Op de hoogte van het eerste vak";
+            case "t:3": return "Hobbels glad strijken";
+            case "t:4": return "Sleep van hier naar het andere eind";
+            case "t:5": return "Een rand omhoog of omlaag";
+        }
+        return null;
+    }
     static Item Find(string id) { foreach (var it in Catalog) if (it.id == id) return it; return Catalog[0]; }
     static readonly string[] DefaultBar = { "weg", "pad", "woning", "kantoor", "dak", "park", "water", "t:0", "winkel" };
     readonly string[] bar = (string[])DefaultBar.Clone();
@@ -209,13 +240,13 @@ public class PlanetBuilder : MonoBehaviour
 
         // aanwijzen: het vak onder de muis
         hasHover = false;
-        if (!OverBar && Physics.Raycast(Cam.ScreenPointToRay(Inp.Pos), out RaycastHit hit, 5000f, Layers.Grond, QueryTriggerInteraction.Ignore))
+        if (!OverBar && Physics.Raycast(Cam.ScreenPointToRay(Inp.Pos), out RaycastHit hit, 5000f, Layers.Wijzen, QueryTriggerInteraction.Ignore))
         {
             hover = Planet.Nearest(hit.point - hit.normal * 0.3f); hasHover = true; hoverPoint = hit.point;   // net in het vlak dat je raakt: de zijkant van een gebouw hoort bij dat gebouw, niet bij de buur
             ShowOutline(hover);
             if (Inp.Down(K.X)) { Push(); if (PlanetCity.RemoveTop(hover)) Changed(); }
             if (Inp.RightDown) { rightAt = Inp.Pos; rightCell = hover; }
-            if (Inp.RightUp && rightCell >= 0 && Vector2.Distance(Inp.Pos, rightAt) < 6f) { Push(); if (PlanetCity.Clear(hover)) { Changed(); Say("Vak leeggemaakt"); } else if (PlanetCity.IsHalf(hover)) Say("Hier loopt een weg overheen: klik met rechts op een wegvak van die weg"); rightCell = -1; }
+            if (Inp.RightUp && rightCell >= 0 && Vector2.Distance(Inp.Pos, rightAt) < 6f) { Push(); bool half = PlanetCity.IsHalf(hover); if (PlanetCity.Clear(hover)) { Changed(); Say(half && !PlanetCity.IsHalf(hover) ? "Schuine weg weggehaald" : "Vak leeggemaakt"); } rightCell = -1; }
             bool roadTool = !eraser && (CurBlock == "weg" || CurBlock == "pad");   // met de gum wis je altijd, wat er ook gekozen is
             if (TerrTool && !eraser && terrMode == 5) { ShowBrush(-1); EdgeTool(); }   // een rand omhoog of omlaag
             else if (TerrTool && !eraser) { ShowBrush(hover); if (leftDown) { Push(); SculptStart(hover); } }
@@ -643,7 +674,7 @@ public class PlanetBuilder : MonoBehaviour
         walking = !walking; PlanetCity.ShowGrid(PlanetCity.GridOn && !walking); catOpen = todOpen = menuOpen = scoreOpen = helpOpen = welcome = false;
         if (walking)
         {
-            outline.enabled = false; ShowBrush(-1); ShowPlan(null); ShowGhost(-1);
+            walkT = Time.time; outline.enabled = false; ShowBrush(-1); ShowPlan(null); ShowGhost(-1);
             int i = Planet.Nearest(focus); float h = PlanetCity.G(i) + PlanetCity.StackHeight(i);
             if (PlanetCity.IsWalk(i)) h = PlanetCity.SurfaceH(i, focus * Planet.R) + 0.26f;
             walker.Enter(focus * (Planet.R + h + 0.3f), fwd);
@@ -744,21 +775,29 @@ public class PlanetBuilder : MonoBehaviour
         if (flying) { if (!photoFrame) FlyGui(W, H); Ui.End(); return; }   // cameramodus: geen interface
 
         CentreArrow(W, H);
-        TopLeft(); TopRight(W);
+        if (!walking) { TopLeft(); Incidents(); } TopRight(W);   // lopen: zo min mogelijk in beeld, de stad zelf is het beeld
         if (!walking) { Hotbar(W, H); Tools(H); if (!catOpen) Options(W, H); }
-        else { string wt = "WASD lopen · muis kijken · Shift rennen · Spatie springen · Esc muis los · L terug naar bouwen · ? toetsen"; float ww = Ui.Width(wt, Ui.T.Dim) + 40f; var wr = new Rect((W - ww) * 0.5f, H - G - 40, ww, 40); Ui.Panel(wr, false, 20f); Ui.Label(wr, wt, Ui.T.Dim, null, TextAnchor.MiddleCenter); }
+        else WalkHint(W, H);
         ModeSwitch(W, H);
         if (todOpen) TodPanel(W);
         if (catOpen && !walking) Catalogue(W, H);
         if (TerrTool && hasHover && !walking && !Modal) TerrLabel();
-        if (LevelTool && PlanetCity.DragLevel != 0 && !walking && !catOpen) LevelBadge(W, H);
-        if (LevelTool && !walking && !catOpen) SlopeSlider(W, H);
-        if (Time.time < msgT) Ui.Toast(msg, Mathf.Clamp01((msgT - Time.time) / 0.5f), catOpen ? CatBottom + CatHeight(W) + 12f : walking ? G + 52f : 150f);
+        if (LevelTool && !walking) LayerPick(W, H);
+        if (Time.time < msgT) Ui.Toast(msg, Mathf.Clamp01((msgT - Time.time) / 0.5f), catOpen ? CatBottom + CatHeight(W) + 12f : walking ? G + 52f : DockTop);
         if (scoreOpen) ScorePanel(W, H);
         if (menuOpen) Menu(W, H);
         if (helpOpen) Help(W, H);
         if (welcome) Welcome(W, H);
         Ui.End();
+    }
+
+    // ---- lopen: de toetsen onderaan, na een paar seconden weg
+    float walkT;
+    void WalkHint(float W, float H)
+    {
+        float a = Mathf.Clamp01(1f - (Time.time - walkT - 6f)); if (a <= 0f) return;
+        string wt = "WASD lopen · muis kijken · Shift rennen · Spatie springen · Esc muis los · L terug naar bouwen · ? toetsen"; float ww = Ui.Width(wt, Ui.T.Dim) + 40f; var wr = new Rect((W - ww) * 0.5f, H - G - 40, ww, 40);
+        var old = GUI.color; GUI.color = new Color(1f, 1f, 1f, a); Ui.Panel(wr, false, 20f); Ui.Label(wr, wt, Ui.T.Dim, null, TextAnchor.MiddleCenter); GUI.color = old;
     }
 
     // ---- linksboven: logo, naam, stad en de schoonheid (klikbaar)
@@ -778,14 +817,27 @@ public class PlanetBuilder : MonoBehaviour
         Ui.Hit(sr); if (GUI.Button(sr, GUIContent.none, GUIStyle.none)) { scoreOpen = !scoreOpen; beautyT = -99f; }
     }
 
+    // ---- onder de stadsnaam: de ongelukjes (zoals de webversie); kleurt even rood bij een nieuw ongeluk, een klik gaat erheen
+    void Incidents()
+    {
+        var L = PlanetLife.I; if (L == null || (!PlanetLife.Chaos && L.Crashes + L.Knocked == 0)) return;
+        string t = "Botsingen <color=#F2B233>" + L.Crashes + "</color>  ·  Aangereden <color=#F2B233>" + L.Knocked + "</color>";
+        var r = new Rect(G, 12f + 48f + 6f, Ui.Width(t, Ui.T.Bold, 11) + 22f, 24f); bool fresh = Time.time - L.LastIncidentT < 1.5f;
+        if (Ui.Button(r, null, false, null, false, 12f) && L.LastIncidentT > 0f) { focus = L.LastIncident.normalized; Say("Naar het laatste ongelukje"); }
+        Ui.Label(r, t, Ui.T.Bold, fresh ? new Color(1f, 0.55f, 0.5f) : Ui.Ink, TextAnchor.MiddleCenter, 11);
+    }
+
     // ---- rechtsboven: tijd en weer (paneel), geluid, menu
     void TopRight(float W)
     {
         float x = W - G, y = 12f, h = 36f;
-        float mw = Ui.Width("Menu", Ui.T.Bold) + 28f; if (Ui.Button(new Rect(x - mw, y, mw, h), "Menu", menuOpen)) { menuOpen = !menuOpen; todOpen = false; } x -= mw + 8f;
-        if (Ui.Button(new Rect(x - h, y, h, h), null, false, Babble.Muted ? "stil" : "geluid")) ToggleSound(); x -= h + 8f;
+        float mw = Ui.Width("Menu", Ui.T.Bold) + 28f; if (Ui.Button(new Rect(x - mw, y, mw, h), "Menu", menuOpen)) { menuOpen = !menuOpen; todOpen = false; }
+        Ui.Tip(new Rect(x - mw, y, mw, h), "Menu", "Steden, gereedschap en instellingen", "M"); x -= mw + 8f;
+        if (Ui.Button(new Rect(x - h, y, h, h), null, false, Babble.Muted ? "stil" : "geluid")) ToggleSound();
+        Ui.Tip(new Rect(x - h, y, h, h), Babble.Muted ? "Geluid aan" : "Geluid uit"); x -= h + 8f;
         string clock = DayNight.Clock; float cw = Ui.Width(clock, Ui.T.Bold) + 18f + 7f + 26f;
         if (Ui.Button(new Rect(x - cw, y, cw, h), clock, todOpen, WeatherIcon(true))) { todOpen = !todOpen; menuOpen = false; }
+        if (!todOpen) Ui.Tip(new Rect(x - cw, y, cw, h), "Tijd en weer", "P stilzetten · O ander weer");
     }
     string WeatherIcon(bool withNight)
     {
@@ -823,15 +875,16 @@ public class PlanetBuilder : MonoBehaviour
         float bw = 9 * SlotW + 8 * 3f + 12f, bh = SlotH + 10f; var r = new Rect((W - bw) * 0.5f, H - 12f - bh, bw, bh); Ui.Panel(r, false, 14f);
         for (int k = 0; k < 9; k++)
         {
-            var it = Find(bar[k]);
-            if (Ui.HexSlot(new Rect(r.x + 6f + k * (SlotW + 3f), r.y + 5f, SlotW, SlotH), it.col, (k + 1).ToString(), k == slot && !eraser)) SelectSlot(k);
+            var it = Find(bar[k]); var sr = new Rect(r.x + 6f + k * (SlotW + 3f), r.y + 5f, SlotW, SlotH);
+            if (Ui.HexSlot(sr, Ui.Swatch(it.id, it.col), IconOf(it), (k + 1).ToString(), k == slot && !eraser)) SelectSlot(k);
+            Ui.Tip(sr, it.name, Desc(it.id), (k + 1).ToString());
         }
         // Alle blokken
         string lab = "Alle blokken"; float lw = Ui.Width(lab, Ui.T.Bold), aw = 12f + 15f + 7f + lw + 8f + 26f + 12f; var ar = new Rect((W - aw) * 0.5f, r.y - 6f - 32f, aw, 32f);
         if (Ui.Button(ar, null, catOpen)) catOpen = !catOpen; Color ink = catOpen ? Ui.SignalInk : Ui.Ink;
         Ui.Tex(new Rect(ar.x + 12f, ar.y + 8.5f, 15f, 15f), Ui.Icon("zoek"), ink); Ui.Label(new Rect(ar.x + 34f, ar.y, lw + 2f, 32f), lab, Ui.T.Bold, ink);
         Ui.Kbd(new Rect(ar.xMax - 38f, ar.y + 8f, 26f, 16f), "Tab");
-        if (Time.time < nameT && !catOpen)
+        if (Time.time < nameT && !catOpen && !HasOptions)   // met keuzes staat de naam vooraan in die balk
         {
             string nm = eraser ? "Gum" : Cur.name; float nw = Ui.Width(nm, Ui.T.Bold) + 24f; var nr = new Rect((W - nw) * 0.5f, ar.y - 6f - 26f, nw, 26f);
             float a = Mathf.Clamp01((nameT - Time.time) / 0.3f); var old = GUI.color; GUI.color = new Color(1f, 1f, 1f, a); Ui.Panel(nr, true, 13f); Ui.Label(nr, nm, Ui.T.Bold, null, TextAnchor.MiddleCenter); GUI.color = old;
@@ -852,57 +905,90 @@ public class PlanetBuilder : MonoBehaviour
             var c = new Rect(r.x + 10f + (k % per) * (cardW + 8f), r.y + 56f + (k / per) * 88f, cardW, 80f); k++;
             bool on = it.id == bar[slot] && !eraser, hv = c.Contains(Ui.Mouse); int inBar = System.Array.IndexOf(bar, it.id);
             bool click = Ui.Button(c, null, false, null, false, 10f, true);
-            Ui.Tex(new Rect(c.center.x - 19f, c.y + 10f, 38f, 34f), Ui.Hex(it.col, on ? Ui.Signal : new Color(1f, 1f, 1f, hv ? 0.5f : 0.25f), on ? 2.5f : 1.5f));
+            var sr = new Rect(c.center.x - 21f, c.y + 8f, 42f, 38f); Ui.Tex(sr, Ui.Swatch(it.id, it.col));
+            Ui.Tex(sr, Ui.Hex(Color.clear, on ? Ui.Signal : new Color(1f, 1f, 1f, hv ? 0.5f : 0.25f), on ? 2.5f : 1.5f));
+            string ic = IconOf(it); if (ic != null) Ui.Tex(new Rect(sr.center.x - 11f, sr.center.y - 11f, 22f, 22f), Ui.Icon(ic), Color.white);
             Ui.Label(new Rect(c.x, c.y + 50f, c.width, 22f), it.name, Ui.T.Bold, on ? Ui.Signal : Ui.Ink, TextAnchor.MiddleCenter);
             if (inBar >= 0) Ui.Label(new Rect(c.xMax - 22f, c.y + 6f, 16f, 14f), (inBar + 1).ToString(), Ui.T.Kbd, Ui.Signal, TextAnchor.MiddleCenter);
+            Ui.Tip(c, it.name, Desc(it.id), inBar >= 0 ? (inBar + 1).ToString() : null);
             if (click) Pick(it.id);
         }
     }
 
     // ---- boven de snelbalk: de keuzes van het gekozen gereedschap (wegtype, eenrichting, lichten; terreinstand en penseel)
+    // Eén balk: vooraan de naam van het gekozen blok (amber), dan de keuzes; meldingen komen er net boven (DockTop).
+    bool HasOptions => !catOpen && (eraser || TerrTool || CurBlock == "weg" || CurBlock == "pad");
+    float DockTop => 12f + (SlotH + 10f) + 6f + 32f + 8f + (HasOptions ? 42f + 8f : 0f);
+    static float BtnW(string t, bool icon = false) => Ui.Width(t, Ui.T.Bold) + 26f + (icon ? 25f : 0f);
+    const float TaludW = 196f;
     void Options(float W, float H)
     {
         float y = H - 12f - (SlotH + 10f) - 6f - 32f - 8f - 42f;
-        if (CurBlock == "weg" && !eraser)
+        if (eraser)
         {
-            float w = 336f + 8f + 150f + 8f + 150f + 8f + 120f + 20f; var r = new Rect((W - w) * 0.5f, y, w, 42f); Ui.Panel(r, false, 12f); float x = r.x + 10f;
-            int s = Ui.Seg(new Rect(x, r.y + 5f, 336f, 32f), StyleNames, PlanetCity.DragStyle); if (s >= 0 && s != PlanetCity.DragStyle) { PlanetCity.DragStyle = (byte)s; SetVariant(StyleIds[s]); } x += 344f;
-            if (Ui.Button(new Rect(x, r.y + 5f, 150f, 32f), PlanetCity.DragOneWay ? "Eenrichting" : "Twee richtingen", PlanetCity.DragOneWay)) ToggleOneWay(); x += 158f;
-            if (Ui.Button(new Rect(x, r.y + 5f, 150f, 32f), "Ongelijkvloers", PlanetCity.DragUnder)) ToggleUnder(); x += 158f;
-            if (Ui.Button(new Rect(x, r.y + 5f, 120f, 32f), "Lichten", PlanetCity.Lights, "licht")) ToggleLights();
+            string gt = "Gum: klik of sleep over vakken om ze leeg te maken"; float gw = Ui.Width(gt, Ui.T.Text) + 32f; var gr = new Rect((W - gw) * 0.5f, y + 4f, gw, 34f); Ui.Panel(gr, false, 17f); Ui.Label(gr, gt, Ui.T.Text, null, TextAnchor.MiddleCenter);
+            return;
         }
-        else if (CurBlock == "pad" && !eraser)
+        if (!HasOptions) return;
+        string nm = CurBlock == "weg" ? "Weg" : CurBlock == "pad" ? "Pad" : "Terrein"; float nw = Ui.Width(nm, Ui.T.Bold) + 14f, cw;
+        string ow = PlanetCity.DragOneWay ? "Eenrichting" : "Twee richtingen";
+        string[] padNames = { "Voetpad", "Fiets- en voetpad" };
+        bool useBrush = terrMode <= 3;   // het penseel doet alleen iets bij ophogen, afgraven, egaliseren en gladstrijken
+        float segW = 0f;
+        if (CurBlock == "weg") { segW = 300f; cw = segW + 6f + BtnW(ow) + 6f + BtnW("Ongelijkvloers") + 6f + BtnW("Lichten", true) + 10f + TaludW; }
+        else if (CurBlock == "pad") { segW = 260f; cw = segW + 10f + TaludW; }
+        else { foreach (var t in TerrModes) segW += Ui.Width(t, Ui.T.Bold) + 44f; cw = segW + (useBrush ? 6f + BtnW("Penseel 37") : 0f); }
+        float w = 12f + nw + cw + 6f; var r = new Rect((W - w) * 0.5f, y, w, 42f); Ui.Panel(r, false, 12f);
+        Ui.Label(new Rect(r.x + 14f, r.y, nw, r.height), nm, Ui.T.Bold, Ui.Signal); float x = r.x + 12f + nw, by = r.y + 5f;
+        if (CurBlock == "weg")
         {
-            float w = 340f; var r = new Rect((W - w) * 0.5f, y, w, 42f); Ui.Panel(r, false, 12f);
-            int s = Ui.Seg(new Rect(r.x + 10f, r.y + 5f, w - 20f, 32f), new[] { "Voetpad", "Fiets- en voetpad" }, PlanetCity.DragBike ? 1 : 0); if (s >= 0 && (s == 1) != PlanetCity.DragBike) ToggleBike();
+            int s = Ui.Seg(new Rect(x, by, segW, 32f), StyleNames, PlanetCity.DragStyle); if (s >= 0 && s != PlanetCity.DragStyle) { PlanetCity.DragStyle = (byte)s; SetVariant(StyleIds[s]); }
+            Ui.Tip(new Rect(x, by, segW, 32f), "Wegtype", "Voor de weg die je nu sleept", "B"); x += segW + 6f;
+            if (Ui.Button(new Rect(x, by, BtnW(ow), 32f), ow, PlanetCity.DragOneWay)) ToggleOneWay();
+            Ui.Tip(new Rect(x, by, BtnW(ow), 32f), "Eenrichting", "Rijrichting is de sleeprichting", "I"); x += BtnW(ow) + 6f;
+            if (Ui.Button(new Rect(x, by, BtnW("Ongelijkvloers"), 32f), "Ongelijkvloers", PlanetCity.DragUnder)) ToggleUnder();
+            Ui.Tip(new Rect(x, by, BtnW("Ongelijkvloers"), 32f), "Ongelijkvloers", "Onder kruisende wegen door", "U"); x += BtnW("Ongelijkvloers") + 6f;
+            if (Ui.Button(new Rect(x, by, BtnW("Lichten", true), 32f), "Lichten", PlanetCity.Lights, "licht")) ToggleLights();
+            Ui.Tip(new Rect(x, by, BtnW("Lichten", true), 32f), "Verkeerslichten", "Op alle kruispunten aan of uit"); x += BtnW("Lichten", true) + 10f;
+            Talud(new Rect(x, by, TaludW, 32f));
         }
-        else if (TerrTool)
+        else if (CurBlock == "pad")
         {
-            bool useBrush = terrMode <= 3;   // het penseel doet alleen iets bij ophogen, afgraven, egaliseren en gladstrijken
-            float segW = 0f; foreach (var t in TerrModes) segW += Ui.Width(t, Ui.T.Bold) + 44f;
-            float w = segW + 20f + (useBrush ? 138f : 0f); var r = new Rect((W - w) * 0.5f, y, w, 42f); Ui.Panel(r, false, 12f); float x = r.x + 10f;
-            int s = Ui.SegIcon(new Rect(x, r.y + 5f, segW, 32f), TerrModes, TerrIcons, terrMode); if (s >= 0 && s != terrMode) { terrMode = s; SetVariant("t:" + s); Say("Terrein: " + TerrModes[s] + " · " + TerrHints[s]); } x += segW + 8f;
-            if (useBrush && Ui.Button(new Rect(x, r.y + 5f, 130f, 32f), "Penseel " + BrushSize(brush))) brush = (brush + 1) % 4;
+            int s = Ui.Seg(new Rect(x, by, segW, 32f), padNames, PlanetCity.DragBike ? 1 : 0); if (s >= 0 && (s == 1) != PlanetCity.DragBike) ToggleBike(); x += segW + 10f;
+            Talud(new Rect(x, by, TaludW, 32f));
         }
-        else if (eraser)
+        else
         {
-            string t = "Gum: klik of sleep over vakken om ze leeg te maken"; float w = Ui.Width(t, Ui.T.Text) + 32f; var r = new Rect((W - w) * 0.5f, y + 4f, w, 34f); Ui.Panel(r, false, 17f); Ui.Label(r, t, Ui.T.Text, null, TextAnchor.MiddleCenter);
+            int s = Ui.SegIcon(new Rect(x, by, segW, 32f), TerrModes, TerrIcons, terrMode); if (s >= 0 && s != terrMode) { terrMode = s; SetVariant("t:" + s); Say("Terrein: " + TerrModes[s] + " · " + TerrHints[s]); } x += segW + 6f;
+            if (useBrush && Ui.Button(new Rect(x, by, BtnW("Penseel 37"), 32f), "Penseel " + BrushSize(brush))) brush = (brush + 1) % 4;
+            if (useBrush) Ui.Tip(new Rect(x, by, BtnW("Penseel 37"), 32f), "Penseel", "1, 7, 19 of 37 vakken tegelijk", "[ ]");
         }
     }
-    // boven de snelbalk links: op welk niveau de weg of het pad komt
-    void LevelBadge(float W, float H)
+    // rechts: de laagkiezer (zoals de webversie): op welk niveau de weg of het pad komt, van +2 bovenaan tot −2 onderaan
+    void LayerPick(float W, float H)
     {
-        int lv = PlanetCity.DragLevel; string t = "Niveau " + LevelName(lv) + " · " + Meters(lv) + " " + (lv > 0 ? "hoger" : "lager") + " · PgUp/PgDn";
-        float w = Ui.Width(t, Ui.T.Bold) + 28f; var r = new Rect((W - w) * 0.5f, H - 12f - (SlotH + 10f) - 6f - 32f - 8f - 42f - 8f - 30f, w, 30f);
-        Ui.Panel(r, true, 15f); Ui.Label(r, t, Ui.T.Bold, Ui.Signal, TextAnchor.MiddleCenter);
+        const float bw = 50f, bh = 26f; float h = 24f + 9f * (bh + 2f) + 22f;
+        var r = new Rect(W - G - bw - 8f, Mathf.Max(70f, (H - h) * 0.5f - 20f), bw + 8f, h); Ui.Panel(r, false, 12f);
+        Ui.Label(new Rect(r.x, r.y + 4f, r.width, 18f), "NIVEAU", Ui.T.Tiny, null, TextAnchor.MiddleCenter, 9);
+        float y = r.y + 24f; int cur = PlanetCity.DragLevel;
+        for (int lv = 4; lv >= -4; lv--)
+        {
+            var b = new Rect(r.x + 4f, y, bw, bh); y += bh + 2f;
+            if (Ui.Button(b, lv == 0 ? "0" : LevelName(lv), lv == cur, null, false, 8f) && lv != cur) StepLevel(lv - cur);
+            if (b.Contains(Ui.Mouse))   // uitleg links ernaast
+            {
+                string t = lv == 0 ? "Op het maaiveld" : Meters(lv) + (lv > 0 ? " hoger, op een dijk" : " lager, in een geul");
+                float tw = Ui.Width(t, Ui.T.Bold) + 24f; var tr = new Rect(r.x - 8f - tw, b.center.y - 14f, tw, 28f); Ui.Panel(tr, true, 14f); Ui.Label(tr, t, Ui.T.Bold, null, TextAnchor.MiddleCenter);
+            }
+        }
+        Ui.Label(new Rect(r.x, y, r.width, 18f), "PgUp/Dn", Ui.T.Tiny, null, TextAnchor.MiddleCenter, 9);
     }
-    // naast het niveau: de hoek van de kant langs een weg of pad op een niveau (20°–70°), om te kijken hoe het terrein afloopt
-    void SlopeSlider(float W, float H)
+    // in de keuzebalk: de hoek van de kant langs een weg of pad op een niveau (20°–70°), om te kijken hoe het terrein afloopt
+    void Talud(Rect r)
     {
         if (slopeDeg < 0f) slopeDeg = Mathf.Round(Mathf.Atan(PlanetCity.FieldK) * Mathf.Rad2Deg); string t = "Talud " + Mathf.RoundToInt(slopeDeg) + "°";
-        var r = new Rect(W * 0.5f + 170f, H - 12f - (SlotH + 10f) - 6f - 32f - 8f - 42f - 8f - 30f, 250f, 30f);
-        Ui.Panel(r, true, 15f); Ui.Label(new Rect(r.x + 14f, r.y, 80f, r.height), t, Ui.T.Bold, Ui.Signal, TextAnchor.MiddleLeft);
-        slopeDeg = 20f + Mathf.Round(Ui.Slider(new Rect(r.x + 96f, r.y + 6f, r.width - 112f, r.height - 12f), (slopeDeg - 20f) / 50f) * 50f);
+        Ui.Label(new Rect(r.x, r.y, 76f, r.height), t, Ui.T.Bold, Ui.InkDim, TextAnchor.MiddleLeft);
+        slopeDeg = 20f + Mathf.Round(Ui.Slider(new Rect(r.x + 78f, r.y + 8f, r.width - 86f, r.height - 16f), (slopeDeg - 20f) / 50f) * 50f);
         float k = Mathf.Tan(slopeDeg * Mathf.Deg2Rad);   // het terrein volgt hooguit 8 keer per seconde, het schuifje meteen
         if (Mathf.Abs(k - PlanetCity.FieldK) > 1e-4f && Time.unscaledTime > slopeT) { slopeT = Time.unscaledTime + 0.12f; PlanetCity.SetFieldK(k); }
     }
@@ -918,10 +1004,12 @@ public class PlanetBuilder : MonoBehaviour
     void Tools(float H)
     {
         float y = H - 12f - 44f, x = G;
-        if (Ui.RoundButton(new Rect(x, y, 44f, 44f), "gum", eraser)) { eraser = !eraser; nameT = Time.time + 1.6f; } x += 50f;
+        if (Ui.RoundButton(new Rect(x, y, 44f, 44f), "gum", eraser)) { eraser = !eraser; nameT = Time.time + 1.6f; }
+        Ui.Tip(new Rect(x, y, 44f, 44f), "Gum", "Klik of sleep om vakken leeg te maken", "Delete"); x += 50f;
         if (Ui.RoundButton(new Rect(x, y, 44f, 44f), "ongedaan", false, undo.Count == 0)) Undo();
-        string f = Mathf.RoundToInt(fps) + " fps" + (PlanetLife.I != null ? " · " + PlanetLife.I.People.Count + " mensen · " + PlanetLife.I.CarCount + " auto's" : "");
-        var fr = new Rect(G, y - 8f - 24f, Ui.Width(f, Ui.T.Bold, 11) + 20f, 24f); Ui.Panel(fr, false, 12f); Ui.Label(fr, f, Ui.T.Bold, null, TextAnchor.MiddleCenter, 11);
+        Ui.Tip(new Rect(x, y, 44f, 44f), "Ongedaan maken", undo.Count == 0 ? "Nog niets om terug te draaien" : null, "Ctrl+Z");
+        string f = Mathf.RoundToInt(fps) + " fps";   // mensen en auto's staan in het schoonheidspaneel
+        var fr = new Rect(G, y - 8f - 20f, Ui.Width(f, Ui.T.Bold, 10) + 16f, 20f); Ui.Panel(fr, false, 10f); Ui.Label(fr, f, Ui.T.Bold, Ui.InkDim, TextAnchor.MiddleCenter, 10);
     }
 
     // ---- rechtsonder: bouwen of lopen (L), daarboven ? voor alle toetsen
@@ -932,7 +1020,10 @@ public class PlanetBuilder : MonoBehaviour
         var r1 = new Rect(r.x + 4f, r.y + 4f, b1, 36f); var r2 = new Rect(r1.xMax + 2f, r.y + 4f, b2, 36f);
         if (Ui.Button(r1, "Bouwen", !walking, "huis", false, 18f) && walking) ToggleWalk();
         if (Ui.Button(r2, "Lopen", walking, "lopen", false, 18f) && !walking) ToggleWalk();
-        if (Ui.Button(new Rect(W - G - 38f, r.y - 12f - 38f, 38f, 38f), "?", helpOpen)) ToggleHelp();   // alle toetsen
+        Ui.Tip(walking ? r1 : r2, walking ? "Terug naar bouwen" : "Lopen", walking ? null : "Loop door je eigen straten", "L");
+        var hr = new Rect(W - G - 38f, r.y - 12f - 38f, 38f, 38f);
+        if (Ui.Button(hr, "?", helpOpen)) ToggleHelp();   // alle toetsen
+        Ui.Tip(hr, "Bediening", "Alle toetsen op een rij", "?");
     }
 
     // ---- schoonheid: in het midden, met een zeshoekige score, een balk per onderdeel en een tip (zoals de webversie)
@@ -970,7 +1061,7 @@ public class PlanetBuilder : MonoBehaviour
     void Menu(float W, float H)
     {
         Ui.DimBack(0.25f);
-        float w = 440f, h = 696f; var r = new Rect((W - w) * 0.5f, Mathf.Max(16f, (H - h) * 0.5f), w, h); Ui.Panel(r, true, 16f);
+        float w = 440f, h = 756f; var r = new Rect((W - w) * 0.5f, Mathf.Max(16f, (H - h) * 0.5f), w, h); Ui.Panel(r, true, 16f);
         float x = r.x + 18f, iw = w - 36f, y = r.y + 14f, half = (iw - 8f) * 0.5f;
         Ui.Tex(new Rect(x, y + 3f, 20f, 23f), Ui.Hex(Ui.Signal, Ui.Signal, 0f, true)); Ui.Label(new Rect(x + 30f, y, 200f, 28f), "MENU", Ui.T.Title);
         if (Ui.RoundButton(new Rect(r.xMax - 18f - 30f, y - 1f, 30f, 30f), "sluit")) menuOpen = false; y += 40f;
@@ -1001,8 +1092,11 @@ public class PlanetBuilder : MonoBehaviour
         if (Ui.CardButton(new Rect(x, y + 112f, half, 48f), "Bediening", "Alle toetsen op een rij (?)", false, "boek")) { helpOpen = true; menuOpen = false; }
         if (Ui.CardButton(new Rect(x + half + 8f, y + 112f, half, 48f), "Welkom", "Het beginscherm", false, "zon")) { welcome = true; menuOpen = false; }
         if (Ui.CardButton(new Rect(x, y + 168f, half, 48f), "Totale chaos", PlanetLife.Chaos ? "racers, ontwijkers en jagers" : "uit: netjes verkeer", PlanetLife.Chaos, "auto")) { PlanetLife.Chaos = !PlanetLife.Chaos; Say(PlanetLife.Chaos ? "Totale chaos: racers, ontwijkers en jagers op de weg" : "Netjes verkeer"); }
+        var sz = new Rect(x + half + 8f, y + 168f, half, 48f); Ui.Label(new Rect(sz.x + 2f, sz.y, sz.width, 16f), "INTERFACEGROOTTE", Ui.T.Tiny);
+        float[] sizes = { 0.9f, 1f, 1.15f, 1.3f }; int si = 0; for (int k = 1; k < 4; k++) if (Mathf.Abs(sizes[k] - Ui.Size) < Mathf.Abs(sizes[si] - Ui.Size)) si = k;
+        int hs = Ui.Seg(new Rect(sz.x, sz.y + 18f, sz.width, 30f), new[] { "90%", "100%", "115%", "130%" }, si); if (hs >= 0 && hs != si) Ui.Size = sizes[hs];
         y += 4 * 56f + 4f;
-        Ui.Label(new Rect(x, y, iw, 16f), "Alles is op ware grootte: een vak is 15,6 m breed, een verdieping 3 m, de planeet 3,8 km rond.", Ui.T.Dim, null, null, 11);
+        Ui.Label(new Rect(x, y, iw, 16f), "Ware grootte: een vak is 15,6 m breed, een verdieping 3 m, de planeet 3,8 km rond.", Ui.T.Dim, null, null, 11);
         if (Ui.DimClick()) menuOpen = false;
     }
 

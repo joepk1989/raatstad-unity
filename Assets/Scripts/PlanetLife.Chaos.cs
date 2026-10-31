@@ -9,6 +9,8 @@ using UnityEngine;
 public partial class PlanetLife
 {
     public static bool Chaos;
+    // ongelukjes voor de teller linksboven: botsingen tussen auto's en mensen die omver gereden worden, en waar het laatste gebeurde
+    public int Crashes, Knocked; public Vector3 LastIncident; public float LastIncidentT = -99f;
     bool chaosWas;
     static AudioClip boomClip, hornClip, beepClip;
     static Mesh ico;
@@ -281,7 +283,7 @@ public partial class PlanetLife
                     float J = 1.25f * impact / 2f; A.vel -= n * J; B.vel += n * J;
                     Vector3 cp = (pa + pb) * 0.5f;
                     A.w += Vector3.Dot(Vector3.Cross(cp - pa, -n * J), up) / INERT; B.w += Vector3.Dot(Vector3.Cross(cp - pb, n * J), up) / INERT;
-                    Damage(A, impact * 1.9f); Damage(B, impact * 1.9f); A.stillT = B.stillT = 0f;
+                    Damage(A, impact * 1.9f); Damage(B, impact * 1.9f); A.stillT = B.stillT = 0f; Crashes++; LastIncident = cp; LastIncidentT = Time.time;
                 }
                 if (A.free) A.root.position -= n * best * (B.free ? 0.5f : 1f);
                 if (B.free) B.root.position += n * best * (A.free ? 0.5f : 1f);
@@ -297,7 +299,7 @@ public partial class PlanetLife
         foreach (var a in People)
         {
             if (a.downT > 0f) continue; Vector3 d = a.root.position - p; if (Mathf.Abs(Vector3.Dot(d, up)) > 1.2f) continue;
-            if (Mathf.Abs(Vector3.Dot(d, f)) < 2.6f && Mathf.Abs(Vector3.Dot(d, r)) < 1.3f) { a.downT = 5f; a.paused = false; a.partner = null; if (c.prey == a.root) c.huntT = 0.01f; }
+            if (Mathf.Abs(Vector3.Dot(d, f)) < 2.6f && Mathf.Abs(Vector3.Dot(d, r)) < 1.3f) { a.downT = 5f; a.paused = false; a.partner = null; Knocked++; LastIncident = a.root.position; LastIncidentT = Time.time; if (c.prey == a.root) c.huntT = 0.01f; }
         }
     }
 

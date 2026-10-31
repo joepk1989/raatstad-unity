@@ -4,8 +4,9 @@ using UnityEngine;
 // Lagen (ProjectSettings/TagManager): bodem, gebouwen, wegen en mensen apart, zodat klikken en lopen alleen raken wat moet
 public static class Layers
 {
-    public const int Bodem = 8, Gebouw = 9, Weg = 10, Mens = 11;
+    public const int Bodem = 8, Gebouw = 9, Weg = 10, Mens = 11, Water = 4;   // 4: Unity's eigen laag Water
     public const int Grond = (1 << Bodem) | (1 << Gebouw) | (1 << Weg);   // waar je op kunt staan en klikken
+    public const int Wijzen = Grond | (1 << Water);   // klikken: ook op het water en de oever van een meer (daar loop je niet op)
     public const int Muren = (1 << Gebouw) | (1 << Weg) | (1 << Bodem);
 }
 
