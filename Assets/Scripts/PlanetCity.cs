@@ -438,6 +438,17 @@ public static partial class PlanetCity
             }
             if (Capped(a)) AddCap(a, G(a), na <= 1 && IsRoad(a) ? hw + HeadExtra(a) : hw);   // doodlopend, bocht, splitsing of los vak; doodlopend: ruim genoeg voor het keerrondje
         }
+        // een weg of pad dat de geul van een brug uitgroef (preCarve) en helt naar een buur op het maaiveld: ook dat stuk krijgt de
+        // bak met talud (de geul zelf loopt korter op dan de weg, en dan lag de grond op de helling boven de weg)
+        foreach (var kv in preCarve)
+        {
+            int a = kv.Key; if (!IsWalk(a) || Underpass(a) || levelled.Contains(a)) continue; Vector3 ad = Planet.Cells[a].dir; float hw = WalkHW(a);
+            foreach (int b in Partners(a))
+            {
+                if (!IsWalk(b) || Underpass(b) || levelled.Contains(b) || (preCarve.ContainsKey(b) && b < a)) continue;
+                segs.Add(new Seg { a = ad * Planet.R, b = Planet.Cells[b].dir * Planet.R, ha = G(a), hb = LevelFor(b, a), hw = hw, ia = a, ib = b });
+            }
+        }
         // gewone wegen en paden (niet op een niveau) in de buurt: onder zo'n weg ligt de grond op de hoogte van die weg, wat het talud
         // ernaast ook doet (zoals Cities: Skylines 2), anders loopt een talud bij een kruispunt over de weg heen
         FillFieldCells();
