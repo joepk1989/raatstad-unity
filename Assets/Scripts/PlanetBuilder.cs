@@ -90,7 +90,10 @@ public class PlanetBuilder : MonoBehaviour
         var u = undo[undo.Count - 1]; undo.RemoveAt(undo.Count - 1);
         PlanetCity.Restore(u); PlanetCity.TouchAll(); Changed(); Say("Ongedaan gemaakt");
     }
-    void Changed() { PlanetCity.Rebuild(); PlanetCity.RebuildGrid(); PlanetCity.Save(); beautyT = -99f; }
+    // na een wijziging: het deel onder de muis meteen opnieuw tekenen, de rest (buurdelen, raster, opslaan) in de volgende beelden
+    bool rebuilding;
+    void Changed() { PlanetCity.Save(); PlanetCity.RebuildSoon(hasHover ? hover : -1); rebuilding = true; RebuildTick(0f); beautyT = -99f; }   // 0: in dit beeld alleen het deel van de klik
+    void RebuildTick(float budget) { if (PlanetCity.RebuildSome(budget)) { PlanetCity.RebuildGrid(); rebuilding = false; } }
     void ToggleSound() { Babble.Muted = !Babble.Muted; Ambience.Muted = Babble.Muted; Say(Babble.Muted ? "Geluid uit" : "Geluid aan"); }
     void ToggleHelp()
     {
@@ -137,11 +140,11 @@ public class PlanetBuilder : MonoBehaviour
         Ui.Label(new Rect(r.x + 18f, r.y + 10f, r.width - 36f, 26f), Mathf.RoundToInt(loadFrac * 100f) + "%", Ui.T.Dim, null, TextAnchor.MiddleRight);
         var bar = new Rect(r.x + 18f, r.y + 46f, r.width - 36f, 10f); Ui.Tex(bar, Texture2D.grayTexture); Ui.Tex(new Rect(bar.x, bar.y, bar.width * loadFrac, bar.height), Texture2D.whiteTexture);
     }
-    // de startstad op de dichtstbijzijnde vrije startplek (vlag), en de camera erheen
+    // opnieuw beginnen: de planeet leeg en de startstad op de dichtstbijzijnde startplek (vlag), en de camera erheen
     void StartTown()
     {
-        Push(); int st = PlanetCity.FreeStart(focus); PlanetCity.StartTown(st); Changed();
-        focus = Planet.Cells[st].dir; fwd = Planet.Cells[st].north; dist = 230f; pitch = 48f; Say("Startstad gebouwd rond de vlag (Ctrl+Z haalt hem weg)");
+        Push(); PlanetCity.ClearAll(); int st = PlanetCity.FreeStart(focus); PlanetCity.StartTown(st); Changed();   // opnieuw beginnen: alleen de startstad op de planeet
+        focus = Planet.Cells[st].dir; fwd = Planet.Cells[st].north; dist = 230f; pitch = 48f; Say("Opnieuw begonnen met de startstad rond de vlag (Ctrl+Z zet de vorige planeet terug)");
     }
     void Empty()
     {
@@ -161,6 +164,7 @@ public class PlanetBuilder : MonoBehaviour
     void Update()
     {
         if (loading != null) return;   // de planeet wordt gevuld: geen bediening
+        if (rebuilding) RebuildTick(25f);
         // overal, ook tijdens het lopen en in de cameramodus: P zet de tijd stil, O ander weer (Shift+O het vorige)
         if (Inp.Down(K.P)) { DayNight.ToggleFreeze(); Say(DayNight.Speed > 0f ? "De tijd loopt weer (P)" : "Pauze: de tijd staat stil (P)"); }
         if (Inp.Down(K.O) && Weather.I != null) Say("Weer: " + Weather.I.Cycle(Inp.Held(K.Shift) ? -1 : 1) + " (O, Shift+O terug)");
@@ -979,7 +983,7 @@ public class PlanetBuilder : MonoBehaviour
         if (Ui.CardButton(new Rect(x, y, half, 48f), "Voorbeeldstad hier", "Ringweg, huizen en een meer", false, "huis")) { Sample(); menuOpen = false; }
         if (Ui.CardButton(new Rect(x + half + 8f, y, half, 48f), "Naar het midden", "Camera terug naar je stad (H)", false, "kompas")) { GoCentre(); menuOpen = false; }
         if (Ui.CardButton(new Rect(x, y + 56f, half, 48f), "Naar de polen", "Noord- en zuidpool (N)", false, "kompas")) { GoPole(); menuOpen = false; }
-        if (Ui.CardButton(new Rect(x + half + 8f, y + 56f, half, 48f), "Startstad", "Een stadje rond een vlag", false, "stad")) { StartTown(); menuOpen = false; }
+        if (Ui.CardButton(new Rect(x + half + 8f, y + 56f, half, 48f), "Startstad", "Opnieuw beginnen rond een vlag", false, "stad")) { StartTown(); menuOpen = false; }
         if (Ui.CardButton(new Rect(x, y + 112f, iw, 48f), "Hele planeet vol", "Stadjes overal, platteland ertussen (Ctrl+Z terug)", false, "stad")) { FillPlanet(); menuOpen = false; }
         y += 3 * 56f + 8f;
         section("LEVEN EN INSTELLINGEN");

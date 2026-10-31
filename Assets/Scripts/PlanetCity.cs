@@ -157,7 +157,8 @@ public static partial class PlanetCity
         }
     }                  // de padvakken in een geul (hun hoogte komt uit de geul)
     static readonly Dictionary<int, Cut> deckSide = new Dictionary<int, Cut>(); // padvakken onder het dek van een schuine brug: de helft naar de weg is dek
-    const float RampL = 31.2f, SideK = 1f, FlatL = 7.8f, PathHW = 4.5f, RoadHW = 6f, CutHW = 9f;   // halve breedte van de koker (pad, weg) en van de geulbodem (een vak)
+    static float SideK => FieldK;   // de zijkant van een geul: even steil als het talud langs een weg op een niveau (1 op 1,5; was 45°, dat gaf een strook kale aarde bij het portaal)
+    const float RampL = 31.2f, FlatL = 7.8f, PathHW = 4.5f, RoadHW = 6f, CutHW = 9f;   // halve breedte van de koker (pad, weg) en van de geulbodem (een vak)
     static float Carve(Vector3 dir) => Carve(dir, out _);
     static float Carve(Vector3 dir, out float sdMin)
     {
@@ -2482,8 +2483,23 @@ public static partial class PlanetCity
         foreach (int ch in new List<int>(dirty)) BuildChunk(ch); dirty.Clear();   // wat er intussen nog bij kwam
         RebuildRoads();
     }
+    // Rebuild in stukjes voor een klik: eerst het deel waar het gebeurde (Focus) en de wegen, de rest met een tijdbudget per beeld;
+    // zo staat wat je bouwt meteen in beeld. true als alles bij is. Bij een nieuwe wijziging opnieuw beginnen (RebuildSoon).
+    public static int Focus = -1; static bool midRebuild;
+    public static void RebuildSoon(int focus) { Focus = focus; midRebuild = false; }
+    public static bool RebuildSome(float budgetMs)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew(); bool first = !midRebuild;
+        if (first) { UpdateCuts(); if (dirty.Count == 0) return true; midRebuild = true; }
+        var order = new List<int>(dirty); int fc = Focus >= 0 ? Focus / ChunkN : 0; order.Sort((a, b) => Mathf.Abs(a - fc).CompareTo(Mathf.Abs(b - fc)));   // het deel van de klik eerst
+        foreach (int ch in order) { BuildChunk(ch); lastBuilt.Add(ch); dirty.Remove(ch); if (sw.ElapsedMilliseconds >= budgetMs) break; }
+        if (first) RebuildRoads();
+        if (dirty.Count > 0) return false;
+        midRebuild = false; return true;
+    }
     public static void Rebuild()
     {
+        midRebuild = false;
         UpdateCuts();
         if (dirty.Count == 0) return;
         foreach (int ch in dirty) { BuildChunk(ch); lastBuilt.Add(ch); }

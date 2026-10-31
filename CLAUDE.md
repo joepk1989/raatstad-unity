@@ -50,6 +50,8 @@ Erbij gekomen op 31 oktober 2026:
 - Een weg onder een brug ligt altijd op volle diepte (vaste brugmaat); de helling van een verdiepte weg begint pas na de brug.
 - Snelheid: delen van 128 vakken (`ChunkN`), het raster wordt per vak bijgewerkt, tekenen kijkt alleen naar wegstukken in de buurt (`UseNear`, onthouden per `fieldVer`), de grond langs een weg op een niveau wordt onthouden (`groundCache`, sleutel `FieldKey`). Een klik op een volle planeet kost zo'n 0,15–0,25 s.
 
+- Startstad (`PlanetStartTown.cs`, menu: opnieuw beginnen, de planeet eerst leeg): plein met winkels, op 4 vakken een verlaagde zeshoekige ring voor voetgangers en fietsers (4,5 m diep), zes paden haaks naar buiten die schuin over het raster onder de ringweg (7 vakken) door gaan, met zes bruggen. Een klik tekent eerst het deel onder de muis, de rest volgt in de volgende beelden (`RebuildSome`). De zijkanten van een geul zijn even steil als het talud (`SideK` = `FieldK`).
+
 Nog te doen:
 1. Modules als JSON met edge-codes (nu nog in code)
 2. Onderdelen uit `docs/overdracht-webversie.md` bouwen: stadsgenerator, wenteltrap, low-poly voertuigen, roekeloos rijgedrag, geluiden
