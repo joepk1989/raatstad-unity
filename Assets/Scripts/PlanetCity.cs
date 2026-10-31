@@ -1073,8 +1073,10 @@ public static partial class PlanetCity
             Touch(i); return null;
         }
         if (type == "pad" && l.Count == 1 && l[0] == "wegdeel") l.Clear();   // een pad over een schuine weg: het halve wegvak wordt een padvak (de brug komt op de rand)
-        if (type == "pad" && l.Count == 1 && l[0] == "weg" && (Underpass(i) || (WalkLevel(i) >= 0 && DigUnder(i))))   // een pad onder een weg door (niet onder een verdiepte weg: daar kruist het pad op de hoogte van de weg)
+        if (type == "pad" && l.Count == 1 && l[0] == "weg" && (Underpass(i) || ((DragUnder || DragLevel < 0) && WalkLevel(i) >= 0 && DigUnder(i))))   // een pad onder een weg door: met ongelijkvloers of een lager niveau (niet onder een verdiepte weg: daar kruist het pad op de hoogte van de weg)
         { if (autoLink) { foreach (int j in Planet.Cells[i].nb) if (IsPath(j)) Link(i, j); DigTrench(i); } Touch(i); return null; }
+        if (type == "pad" && l.Count == 1 && l[0] == "weg")   // gelijkvloers: het pad sluit aan op de weg (een oversteek)
+        { if (autoLink) foreach (int j in ClickLinks(i)) if (IsPath(j)) Link(i, j); Touch(i); return null; }
         if (type == "pad" && l.Count == 0) { l.Add("pad"); if (DragBike) Bike.Add(i); if (autoLink) { foreach (int j in ClickLinks(i)) Link(i, j); DigCrossings(); } Touch(i); return null; }
         if (type == "pad" && l.Count == 1 && l[0] == "pad") { if (DragBike && Bike.Add(i)) Touch(i); if (autoLink) foreach (int j in ClickLinks(i)) Link(i, j); Touch(i); return null; }
         if (l.Count > 0 && l[0] == "weg") return "Op een weg kun je niet bouwen; haal de weg eerst weg (rechtermuisknop)";
@@ -1127,6 +1129,13 @@ public static partial class PlanetCity
                         continue;
                     }
                 }
+            }
+            // een schuin pad springt over de rand tussen twee verbonden wegvakken: gelijkvloers sluit het pad aan beide kanten aan op
+            // het eerste wegvak (een oversteek); met ongelijkvloers of een lager niveau gaat het eronderdoor (EdgeCrossings)
+            if (type == "pad" && !DragUnder && DragLevel >= 0 && !IsNeighbour(a, b))
+            {
+                var br = Between(a, b);
+                if (br.Count == 2 && IsRoad(br[0]) && IsRoad(br[1]) && Linked(br[0], br[1])) { Link(a, br[0]); Link(b, br[0]); continue; }
             }
             // een schuine weg springt over de rand tussen twee verbonden padvakken: gelijkvloers blijft de weg recht en sluit het pad aan
             // beide kanten aan op wegvak a (een oversteek). Met ongelijkvloers, of op een ander niveau, gaat het pad eronderdoor (EdgeCrossings).

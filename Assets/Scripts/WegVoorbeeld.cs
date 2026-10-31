@@ -85,7 +85,14 @@ public class WegVoorbeeld : MonoBehaviour
         int c5 = At(home, 1f * D60, 150f), c6 = At(home, 5f * D60, 150f);
         PlanetCity.DragBike = true; Pad(c5, 0f); Pad(c5, Mathf.PI); Pad(c6, 0f); Pad(c6, Mathf.PI); PlanetCity.DragBike = false;
         RoadLine(At(c5, D60, 45f), At(c5, D60 + Mathf.PI, 45f)); RoadLine(At(c6, Mathf.PI / 2f, 45f), At(c6, -Mathf.PI / 2f, 45f));
-        var extra = new List<(string, int)> { ("f5_weg_over_fietspad", c5), ("f6_schuine_weg_over_fietspad", c6) };
+        // een fietspad over een bestaande weg: recht en schuin; gelijkvloers een oversteek
+        int c7 = At(home, 0.5f * D60, 300f), c8 = At(home, 2.5f * D60, 300f);
+        RoadLine(At(c7, 0f, 45f), At(c7, Mathf.PI, 45f)); RoadLine(At(c8, 0f, 45f), At(c8, Mathf.PI, 45f));
+        PlanetCity.DragBike = true;
+        { var l = PlanetCity.LinePlan(At(c7, D60, 45f), At(c7, D60 + Mathf.PI, 45f)); PlanetCity.PlaceLine(l, "pad"); PlanetCity.SetLevel(l, 0, "pad"); }
+        { var l = PlanetCity.LinePlan(At(c8, Mathf.PI / 2f, 45f), At(c8, -Mathf.PI / 2f, 45f)); PlanetCity.PlaceLine(l, "pad"); PlanetCity.SetLevel(l, 0, "pad"); }
+        PlanetCity.DragBike = false;
+        var extra = new List<(string, int)> { ("f5_weg_over_fietspad", c5), ("f6_schuine_weg_over_fietspad", c6), ("f7_fietspad_over_weg", c7), ("f8_schuin_fietspad_over_weg", c8) };
         PlanetCity.DragBike = false;
         int st = Planet.Starts[3]; PlanetCity.StartTown(st);
         PlanetCity.Rebuild(); PlanetCity.Rebuild(); yield return null; yield return null;
