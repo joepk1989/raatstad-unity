@@ -189,6 +189,7 @@ public class PlanetBuilder : MonoBehaviour
             if (PathDrag) { dl += (Inp.Down(K.Plus) ? 1 : 0) - (Inp.Down(K.Minus) ? 1 : 0); wheelAcc += Inp.Scroll; if (Mathf.Abs(wheelAcc) >= 0.9f) { dl += wheelAcc > 0f ? 1 : -1; wheelAcc = 0f; } }
             if (dl != 0) StepLevel(dl);
         }
+        if (CurBlock == "pad" && Inp.Down(K.B)) ToggleBike();
         if (CurBlock == "weg") { if (Inp.Down(K.B)) CycleStyle(); if (Inp.Down(K.I)) ToggleOneWay(); if (Inp.Down(K.U)) ToggleUnder(); }
         if (Inp.Down(K.H)) GoCentre();
         if (Inp.Down(K.N)) GoPole();
@@ -376,6 +377,7 @@ public class PlanetBuilder : MonoBehaviour
 
     static readonly string[] StyleNames = { "Gewone weg", "Brede weg", "Laan" };
     static readonly string[] StyleIds = { "weg", "weg:breed", "weg:laan" };
+    void ToggleBike() { PlanetCity.DragBike = !PlanetCity.DragBike; Say(PlanetCity.DragBike ? "Fiets- en voetpad (B): breder, met een rood fietsdeel; fietsers rijden erover" : "Voetpad (B)"); }
     void CycleStyle() { PlanetCity.DragStyle = (byte)((PlanetCity.DragStyle + 1) % 3); SetVariant(StyleIds[PlanetCity.DragStyle]); Say("Wegtype: " + StyleNames[PlanetCity.DragStyle] + " (B) · sleep of klik om aan te leggen; een weg over water of een uitgraving wordt een brug"); }
     void ToggleUnder() { PlanetCity.DragUnder = !PlanetCity.DragUnder; Say(PlanetCity.DragUnder ? "Ongelijkvloers (U): de weg die je sleept gaat onder kruisende wegen door" : "Gelijkvloers (U): kruisende wegen worden een kruispunt"); }
     void ToggleOneWay() { PlanetCity.DragOneWay = !PlanetCity.DragOneWay; Say(PlanetCity.DragOneWay ? "Eenrichtingsverkeer (I): de weg die je sleept is eenrichting, in de sleeprichting" : "Weer in twee richtingen (I)"); }
@@ -869,6 +871,11 @@ public class PlanetBuilder : MonoBehaviour
             if (Ui.Button(new Rect(x, r.y + 5f, 150f, 32f), "Ongelijkvloers", PlanetCity.DragUnder)) ToggleUnder(); x += 158f;
             if (Ui.Button(new Rect(x, r.y + 5f, 120f, 32f), "Lichten", PlanetCity.Lights, "licht")) ToggleLights();
         }
+        else if (CurBlock == "pad" && !eraser)
+        {
+            float w = 340f; var r = new Rect((W - w) * 0.5f, y, w, 42f); Ui.Panel(r, false, 12f);
+            int s = Ui.Seg(new Rect(r.x + 10f, r.y + 5f, w - 20f, 32f), new[] { "Voetpad", "Fiets- en voetpad" }, PlanetCity.DragBike ? 1 : 0); if (s >= 0 && (s == 1) != PlanetCity.DragBike) ToggleBike();
+        }
         else if (TerrTool)
         {
             bool useBrush = terrMode <= 3;   // het penseel doet alleen iets bij ophogen, afgraven, egaliseren en gladstrijken
@@ -1022,7 +1029,7 @@ public class PlanetBuilder : MonoBehaviour
         "Ctrl+Z|ongedaan maken",
         "#Wegen en paden",
         "slepen|een rechte lijn in 12 richtingen",
-        "B|gewone weg, brede weg, laan",
+        "B|weg: gewone weg, brede weg, laan; pad: voetpad of fiets- en voetpad",
         "I|eenrichting",
         "U|ongelijkvloers: onder kruisende wegen door",
         "PgUp PgDn|niveau: stappen van 2,25 m (ook + - wiel bij slepen)",

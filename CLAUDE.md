@@ -52,6 +52,8 @@ Erbij gekomen op 31 oktober 2026:
 
 - Startstad (`PlanetStartTown.cs`, menu: opnieuw beginnen, de planeet eerst leeg): plein met winkels, op 4 vakken een verlaagde zeshoekige ring voor voetgangers en fietsers (4,5 m diep), zes paden haaks naar buiten die schuin over het raster onder de ringweg (7 vakken) door gaan, met zes bruggen. Een klik tekent eerst het deel onder de muis, de rest volgt in de volgende beelden (`RebuildSome`). De zijkanten van een geul zijn even steil als het talud (`SideK` = `FieldK`).
 
+- Fiets- en voetpaden (`PlanetCity.Bike`, padgereedschap B): breder pad met een rood fietsdeel; voetgangers lopen rechts op de zandstrook. Fietsers (`PlanetLife.Bikes.cs`) rijden alleen over fietspaden; de startstad heeft fietspaden in de ring en de zes paden.
+
 Nog te doen:
 1. Modules als JSON met edge-codes (nu nog in code)
 2. Onderdelen uit `docs/overdracht-webversie.md` bouwen: stadsgenerator, wenteltrap, low-poly voertuigen, roekeloos rijgedrag, geluiden

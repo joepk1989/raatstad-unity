@@ -38,6 +38,7 @@ public static partial class PlanetCity
         // 2. de verlaagde ring voor voetgangers en fietsers op 4 vakken: gesloten lus, een heel niveau omlaag (zoals slepen met
         //    Page Down); een pad van de ring omhoog naar het plein
         var r4 = ring(4); var loop4 = new List<int>(r4); loop4.Add(r4[0]);
+        bool keepBike = DragBike; DragBike = true;   // de ring en de paden ervandaan: fiets- en voetpaden
         int keepLevel = DragLevel; DragLevel = -2; PlaceLine(loop4, "pad"); SetLevel(loop4, -2, "pad"); DragLevel = keepLevel;
         if (spoke.Count >= 4) { PlaceLine(spoke, "pad"); SetLevel(new List<int> { spoke[1] }, -1, "pad"); }   // halverwege een half niveau
 
@@ -71,6 +72,8 @@ public static partial class PlanetCity
             for (int m = 1; m < l.Count; m++) foreach (int b in Between(l[m - 1], l[m])) keep.Add(b);
             DragLevel = -2; PlaceLine(l, "pad"); SetLevel(new List<int> { l[1], l[2] }, -2, "pad"); SetLevel(new List<int> { l[3] }, -1, "pad"); DragLevel = keepLevel;
         }
+
+        DragBike = keepBike;
 
         // 6. tussen de plein-winkels en de ringweg: een kerktoren en een stadhuis, verder parkjes en huizen
         bool kerk = false, stadhuis = false;

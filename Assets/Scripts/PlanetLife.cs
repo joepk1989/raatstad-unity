@@ -68,7 +68,7 @@ public partial class PlanetLife : MonoBehaviour
     void PlacePerson(Person a, float dt)
     {
         bool ra = PlanetCity.IsRoad(a.cellA) && !PlanetCity.UnderLink(a.cellA, a.cellB), rb = PlanetCity.IsRoad(a.cellB) && !PlanetCity.UnderLink(a.cellB, a.cellA);   // onder een brug: op het pad
-        float side = ra && rb ? (PlanetCity.WalkOffset(a.cellA) + PlanetCity.WalkOffset(a.cellB)) * 0.5f : ra ? PlanetCity.WalkOffset(a.cellA) * 0.5f : rb ? PlanetCity.WalkOffset(a.cellB) * 0.5f : 0.35f;
+        float side = ra && rb ? (PlanetCity.WalkOffset(a.cellA) + PlanetCity.WalkOffset(a.cellB)) * 0.5f : ra ? PlanetCity.WalkOffset(a.cellA) * 0.5f : rb ? PlanetCity.WalkOffset(a.cellB) * 0.5f : PlanetCity.IsBike(a.cellA) && PlanetCity.IsBike(a.cellB) ? 1.75f : 0.35f;   // op een fietspad: rechts op de strook voor voetgangers
         float hgt = Mathf.Lerp(ra ? 0.25f : 0.11f, rb ? 0.25f : 0.11f, a.ct);   // op de stoep (25 cm) of op een pad
         Where(a.cellA, a.cellB, a.ct, side, hgt, out Vector3 pos, out Vector3 fwd, out Vector3 up);
         pos += up * (a.ct < 0.5f ? PlanetCity.SurfaceH(a.cellA, a.cellB, pos) : PlanetCity.SurfaceH(a.cellB, a.cellA, pos));   // terreinhoogte en de helling van de weg
@@ -166,7 +166,7 @@ public partial class PlanetLife : MonoBehaviour
     {
         float dt = Mathf.Min(Time.deltaTime, 0.05f);
         if (walker == null) walker = FindAnyObjectByType<PlanetWalker>(FindObjectsInactive.Include);
-        roadsT -= dt; if (roadsT <= 0f) { roadsT = 2f; RefreshRoads(); }
+        roadsT -= dt; if (roadsT <= 0f) { roadsT = 2f; RefreshRoads(); RefreshBikes(); }
         int targetP = PeopleOn ? Mathf.Clamp(walks.Count / 2, 0, 40) : 0, targetC = CarsOn ? Mathf.Clamp(roads.Count / 6, 0, 16) : 0;
         spawnT -= dt;
         if (spawnT <= 0f)
@@ -214,6 +214,8 @@ public partial class PlanetLife : MonoBehaviour
             if (c.audio != null) c.audio.volume = Ambience.Muted ? 0f : 0.35f;
         }
         if (Chaos) Collide();
+
+        UpdateBikes(dt);
 
         // af en toe een opmerking van iemand dichtbij de camera
         idleT -= dt;
