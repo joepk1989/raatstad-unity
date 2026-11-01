@@ -65,6 +65,7 @@ public partial class PlanetLife
         float e = Vector3.Dot(Flat(p - lq, up), Vector3.Cross(up, Flat(lf, up).normalized));   // rechts van de lijn > 0
         float kappa = vf < 0f ? 0f : Mathf.Clamp(2f * Mathf.Sin(alpha) / L - 0.6f * e / (2f + Mathf.Abs(vf)), -KappaMax, KappaMax);
         c.w = Mathf.MoveTowards(c.w, vf * kappa, YawAcc * dt);   // de neus draait mee met de wielen, met wat traagheid
+        if (vf >= 0f) c.steerDeg = Mathf.Clamp(Mathf.Atan(2.9f * kappa) * Mathf.Rad2Deg, -38f, 38f);   // stuurhoek van de voorwielen (wielbasis 2,9 m)
         Vector3 v3 = f * vf + r * vl;
         f = (Quaternion.AngleAxis(c.w * Mathf.Rad2Deg * dt, up) * f).normalized; r = Vector3.Cross(up, f);
         vf = Vector3.Dot(v3, f); vl = Vector3.Dot(v3, r);
@@ -80,6 +81,7 @@ public partial class PlanetLife
         p = up * (Planet.R + h);
         c.root.position = p; c.fwd = f; c.vel = Flat(vel, up); c.v = Vector3.Dot(c.vel, f);
         c.root.rotation = Geo.Look((f + up * ((ha - h) / 1.5f)).normalized, up);
+        if (c.wheels != null) c.wheels.Drive(c.v * dt, c.steerDeg, dt);
     }
 
     // de auto precies op zijn rijlijn zetten (bij het verschijnen)

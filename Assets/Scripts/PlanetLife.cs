@@ -15,6 +15,7 @@ public partial class PlanetLife : MonoBehaviour
         public float ovT, dodgeT, huntT, huntRest, waitT, backT, aroundT, aroundAll, oppWait, ghostT, stillT, freeT, blendT, dmgCool, burnT = -1f, beepT, fxAcc, hp = 100f, late = 1f;
         public bool free, air, blocked, atLight, dead; public Vector3 vel, tumbleAxis, fromPos; public float vy, w, fric, tumbleW; public Quaternion tumble = Quaternion.identity, fromRot;
         public Car ovOther, stuckCar; public Transform prey;
+        public CarWheels wheels; public float steerDeg;   // de wielen (draaien en meesturen)
         public int lane = 1; public float waitPri, idleT; public string why = ""; public Car leadCar; public bool retreat;   // retreat: achteruit om een tegenligger ruimte te geven, daarna terug naar de eigen strook   // idleT: hoe lang hij al stilstaat   // rijstrook op een brede weg (0 links, 1 rechts); hoe lang hij al voorrang geeft
     }
     readonly List<Car> cars = new List<Car>();
@@ -114,6 +115,7 @@ public partial class PlanetLife : MonoBehaviour
         c.a = PrevRoad(c.b); c.c = NextRoad(c.b, c.a); c.n = NextRoad(c.c, c.b); c.v = c.speed;
         var root = new GameObject("Auto").transform; root.SetParent(transform, false); c.root = root; root.gameObject.layer = Layers.Mens;
         c.type = LowPolyCar.Build(root);   // een van de zeven low-poly modellen van de webversie
+        c.wheels = root.GetComponent<CarWheels>();
         GivePersona(c);
         if (hum == null) hum = MakeHum();
         c.audio = root.gameObject.AddComponent<AudioSource>(); c.audio.clip = hum; c.audio.loop = true; c.audio.spatialBlend = 1f; c.audio.rolloffMode = AudioRolloffMode.Linear; c.audio.minDistance = 4f; c.audio.maxDistance = 70f; c.audio.volume = 0.35f; c.audio.pitch = 0.9f + c.speed / 25f; c.audio.Play();

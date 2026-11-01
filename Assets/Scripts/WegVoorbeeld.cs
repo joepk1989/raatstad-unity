@@ -30,6 +30,7 @@ public class WegVoorbeeld : MonoBehaviour
         yield return null; yield return null;
         cam = Camera.main; if (pb != null) pb.enabled = false;
         if (mode == "meten") { yield return MeetHier(); yield break; }
+        if (mode == "autos") { yield return Autos(); yield break; }
         if (mode == "kijk")   // wat er standaard geladen wordt: slot, startstad, en het beeld van de camera bij het begin
         {
             var info = new System.Text.StringBuilder(); info.Append("slot ").Append(PlanetCity.Slot).Append(" vakken ").Append(PlanetCity.Cells.Count).Append(" startVer ").Append(PlanetCity.StartVer).Append(" startCell ").Append(PlanetCity.StartCell).Append(" noordpool ").Append(Planet.North).Append(" zuidpool ").Append(Planet.South).AppendLine();
@@ -357,6 +358,35 @@ public class WegVoorbeeld : MonoBehaviour
         }
         File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); DayNight.Speed = 1f; if (pb != null) pb.enabled = true;
     }
+    // de zeven auto's naast elkaar op een leeg stuk bij de zuidpool: schuin van voren, schuin van achteren, dichtbij een wiel, en een auto
+    // die stuurt (de voorwielen schuin, de spaken gedraaid)
+    IEnumerator Autos()
+    {
+        PlanetCity.Slot = 9; PlanetCity.ClearAll(); PlanetCity.Rebuild(); DayNight.Hour = 11f; DayNight.Speed = 0f; PlanetLife.CarsOn = false; PlanetLife.PeopleOn = false;
+        int H = At(Planet.South, 1.0f, 160f); Hc = H; Vector3 up = Planet.Cells[H].dir, fw = Dh(H, 0f), rt = Vector3.Cross(up, fw);
+        var root = new GameObject("Autostudio").transform; var paints = new[] { "#3d5a80", "#d9534f", "#4a90a4", "#d3d8dc", "#7bb356", "#f2f3f5", "#f2c230" };
+        CarWheels turner = null;
+        for (int k = 0; k < LowPolyCar.Types.Length; k++)
+        {
+            var t = new GameObject(LowPolyCar.Types[k]).transform; t.SetParent(root, false);
+            Vector3 p = (up * Planet.R + rt * ((k - 3) * 3.4f)).normalized * Planet.R; t.position = p; t.rotation = Geo.Look(fw, p.normalized);
+            LowPolyCar.Build(t, LowPolyCar.Types[k], LowPolyCar.Hex(paints[k])); if (k == 0) turner = t.GetComponent<CarWheels>();
+        }
+        yield return null;
+        yield return ShotAt("autos_voor", up * Planet.R, fw * 14f + up * 5f - rt * 4f);
+        yield return ShotAt("autos_achter", up * Planet.R, -fw * 14f + up * 5f + rt * 4f);
+        Vector3 c0 = (up * Planet.R + rt * (-3 * 3.4f)).normalized * Planet.R;
+        yield return ShotAt("auto_sedan_voor", c0, fw * 6f + up * 2f + rt * 3.5f);
+        yield return ShotAt("auto_sedan_zij", c0, rt * 6f + up * 1.2f);
+        for (int k = 1; k < LowPolyCar.Types.Length; k++) { Vector3 ck = (up * Planet.R + rt * ((k - 3) * 3.4f)).normalized * Planet.R; yield return ShotAt("auto_" + LowPolyCar.Types[k], ck, fw * 5.5f + up * 2.2f - rt * 4f); }
+        if (turner != null) { turner.Drive(0.45f, 30f, 0f); yield return null; yield return ShotAt("auto_sedan_stuurt", c0, fw * 3.5f + up * 1.6f - rt * 4.2f); yield return ShotAt("auto_sedan_stuurt_boven", c0, up * 6f + fw * 0.5f); }
+        File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); PlanetLife.CarsOn = true; PlanetLife.PeopleOn = true; if (pb != null) pb.enabled = true;
+    }
+    IEnumerator ShotAt(string name, Vector3 target, Vector3 offset)
+    {
+        cam.transform.position = target + offset; cam.transform.rotation = Quaternion.LookRotation(target + target.normalized * 0.7f - cam.transform.position, target.normalized); cam.fieldOfView = 40f;
+        yield return null; yield return null; ScreenCapture.CaptureScreenshot(Path.Combine(Dir, name + ".png")); yield return null; yield return null;
+    }
     static IEnumerable<int> Nearby(int c, float r)
     {
         var seen = new HashSet<int> { c }; var q = new Queue<int>(); q.Enqueue(c);
@@ -419,4 +449,3 @@ public class WegVoorbeeld : MonoBehaviour
         yield return null; yield return null;
     }
 }
-

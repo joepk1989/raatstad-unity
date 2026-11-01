@@ -15,5 +15,6 @@ static class WegVoorbeeldMenu
     [MenuItem("Raatstad/Teststad/Bouwen en verkeer meten")] static void TownMeasure() => Ask("stadmeten");
     [MenuItem("Raatstad/Teststad/Verkeer meten op de geladen stad")] static void MeasureHere() => Ask("meten");
     [MenuItem("Raatstad/Teststad/Startstad bouwen")] static void Start() => Ask("start");
+    [MenuItem("Raatstad/Teststad/Auto's bekijken")] static void Cars() => Ask("autos");
     [MenuItem("Raatstad/Teststad/Startstad bouwen en verkeer meten")] static void StartMeasure() => Ask("startmeten");
 }

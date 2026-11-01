@@ -4,6 +4,7 @@ using UnityEngine;
 // Low-poly voertuigen, naar de webversie (11-0-lowpoly-voertuigen.js, overdracht § 3). Kantige auto's in dezelfde stijl als de
 // gebouwen: elke carrosserie is een romp van doorsneden langs de lengte, en elke doorsnede is een zeshoek (onderkant, gordellijn,
 // dak), dus overal schuine vlakken. Ruiten liggen als dunne platen op de romp, wielkasten als donkere halve zeshoeken over de flank.
+// Daarbij bumpers, kentekenplaten, spiegels, deurnaden en lampen om de hoeken; de wielen zijn losse delen die draaien en meesturen (CarWheels).
 // Alle typen delen de maten van het rijmodel: 4,7 m lang, wielen op ±1,45 m langs en ±0,83 m dwars, wielstraal 0,36 m.
 // Doorsnede: [x, yOnder, yGordel, yDak, bOnder, bGordel, bDak] (b = halve breedte). x is de lengte (voor = +x), z de breedte; in
 // Unity wordt dat z (vooruit) en x (opzij). Eigen ontwerpen, geen merken.
@@ -14,7 +15,8 @@ public static class LowPolyCar
     static readonly string[] PaintHex = { "#e8c547", "#d9534f", "#4a90a4", "#f2f3f5", "#3d5a80", "#7bb356", "#e07a3f", "#2b2f36", "#b8a9c9", "#c9ced4", "#5a1f2a", "#b5a36a", "#1c1f24" };
     static readonly Color White = Hex("#fff7d6"), Red = Hex("#ff3b30");
 
-    class Parts { public Mesh body, glass, trim, glow, wheel, rim; public List<(Mesh m, Color c)> lamps = new List<(Mesh, Color)>(); public bool metal; }
+    class Parts { public Mesh body, glass, trim, glow, plate; public List<(Mesh m, Color c)> lamps = new List<(Mesh, Color)>(); public bool metal; }
+    static Mesh tyreMesh, rimMesh, hubMesh;   // één wiel (rechts, as langs x, hart in de oorsprong), gedeeld door alle auto's
     static readonly Dictionary<string, Parts> cache = new Dictionary<string, Parts>();
 
     public static Color Hex(string h) { ColorUtility.TryParseHtmlString(h, out var c); return c; }
@@ -35,8 +37,18 @@ public static class LowPolyCar
         Put(parent, P.trim, Mats.Get("lp_donker", Hex("#25282c")));
         if (P.glow != null) Put(parent, P.glow, Mats.GetUnlit("lp_gloed", Hex("#ff2a3a")));
         foreach (var (m, c) in P.lamps) Put(parent, m, Mats.GetUnlit("lp_lamp" + ColorUtility.ToHtmlStringRGB(c), c));
-        Put(parent, P.wheel, Mats.Get("lp_band", Hex("#1b1d20")));
-        Put(parent, P.rim, Mats.Get("lp_velg", Hex("#9aa0a6")));
+        if (P.plate != null) Put(parent, P.plate, Mats.Get("lp_plaat", Hex("#e9e6d8")));
+        // de wielen: per wiel een stuuras (draait om de hoogte-as) met daarin het wiel (draait om zijn as); links gespiegeld
+        if (tyreMesh == null) MakeWheel();
+        var cw = parent.gameObject.GetComponent<CarWheels>(); if (cw == null) cw = parent.gameObject.AddComponent<CarWheels>(); int n = 0;
+        foreach (var (wx, wz) in new[] { (1.45f, 0.83f), (1.45f, -0.83f), (-1.45f, 0.83f), (-1.45f, -0.83f) })
+        {
+            var axle = new GameObject("as").transform; axle.SetParent(parent, false); axle.localPosition = U(wx, WR, wz); axle.gameObject.layer = parent.gameObject.layer;
+            var wheel = new GameObject("wiel").transform; wheel.SetParent(axle, false); wheel.gameObject.layer = parent.gameObject.layer;
+            Put(wheel, tyreMesh, Mats.Get("lp_band", Hex("#1b1d20"))); Put(wheel, rimMesh, Mats.Get("lp_velg", Hex("#a9afb5"))); Put(wheel, hubMesh, Mats.Get("lp_donker", Hex("#25282c")));
+            cw.Set(n++, axle, wheel, wz < 0f, wx > 0f);
+        }
+        cw.Drive(0f, 0f, 0f);
     }
     static void Put(Transform parent, Mesh m, Material mat)
     {
@@ -115,34 +127,71 @@ public static class LowPolyCar
         mb.Quad(P(1, -1, -1), P(1, -1, 1), P(1, 1, 1), P(1, 1, -1), Vector3.right); mb.Quad(P(-1, -1, -1), P(-1, -1, 1), P(-1, 1, 1), P(-1, 1, -1), Vector3.left);
         mb.Quad(P(-1, 1, -1), P(1, 1, -1), P(1, 1, 1), P(-1, 1, 1), Vector3.up); mb.Quad(P(-1, -1, -1), P(1, -1, -1), P(1, -1, 1), P(-1, -1, 1), Vector3.down);
     }
-    // wiel: band als tienhoekige schijf, velg als achthoek op de buitenkant
-    static void Wheel(MeshBuilder tyre, MeshBuilder rim, float wx, float wz)
+    // Het wiel (rechts, buitenkant = +x, hart in de oorsprong): een band van twaalf vlakken met afgeschuinde schouders, een velg als
+    // zeshoekige ring met zes spaken naar een zeshoekige naaf (zo zie je hem draaien), en daarachter de donkere binnenkant.
+    const float WR = 0.36f, WW = 0.24f;
+    static void MakeWheel()
     {
-        const float R = 0.36f, Wd = 0.24f; float s = Mathf.Sign(wz); Vector3 c = U(wx, R, wz);
-        Vector3 Pt(int n, int i, float r, float side) { float a = i * Mathf.PI * 2f / n; return c + new Vector3(side, Mathf.Sin(a) * r, Mathf.Cos(a) * r); }
-        for (int i = 0; i < 10; i++)
+        MeshBuilder tyre = new MeshBuilder(), rim = new MeshBuilder(), hub = new MeshBuilder(); const int N = 12;
+        Vector3 Pt(int n, float i, float r, float x) { float a = i * Mathf.PI * 2f / n; return new Vector3(x, Mathf.Sin(a) * r, Mathf.Cos(a) * r); }
+        float h = WW / 2f, sh = 0.035f, rs = WR * 0.86f;   // schouder: de band loopt aan de zijkant schuin in naar rs
+        for (int i = 0; i < N; i++)
         {
-            Vector3 a0 = Pt(10, i, R, -Wd / 2), a1 = Pt(10, i + 1, R, -Wd / 2), b0 = Pt(10, i, R, Wd / 2), b1 = Pt(10, i + 1, R, Wd / 2);
-            tyre.Quad(a0, a1, b1, b0, (a0 + a1) * 0.5f - c - new Vector3(-Wd / 2, 0, 0));
-            tyre.Tri(c + new Vector3(-Wd / 2, 0, 0), a0, a1, Vector3.left); tyre.Tri(c + new Vector3(Wd / 2, 0, 0), b0, b1, Vector3.right);
+            Vector3 o0 = Pt(N, i, rs, -h), o1 = Pt(N, i + 1, rs, -h), a0 = Pt(N, i, WR, -h + sh), a1 = Pt(N, i + 1, WR, -h + sh), b0 = Pt(N, i, WR, h - sh), b1 = Pt(N, i + 1, WR, h - sh), p0 = Pt(N, i, rs, h), p1 = Pt(N, i + 1, rs, h);
+            Vector3 m = Pt(N, i + 0.5f, 1f, 0f);
+            tyre.Quad(a0, a1, b1, b0, m); tyre.Quad(o0, o1, a1, a0, m - Vector3.right); tyre.Quad(b0, b1, p1, p0, m + Vector3.right);
+            tyre.Tri(new Vector3(-h, 0, 0), o0, o1, Vector3.left); tyre.Tri(new Vector3(h - 0.03f, 0, 0), p0, p1, Vector3.right);   // binnenkant en het donkere vlak achter de velg
         }
-        Vector3 rc = c + new Vector3(s * (Wd / 2 + 0.01f), 0, 0), dir = new Vector3(s, 0, 0);
-        for (int i = 0; i < 8; i++) rim.Tri(rc, Pt(8, i, R * 0.62f, s * (Wd / 2 + 0.01f)), Pt(8, i + 1, R * 0.62f, s * (Wd / 2 + 0.01f)), dir);
+        float x = h + 0.006f, rO = WR * 0.72f, rI = WR * 0.6f, rH = WR * 0.2f;
+        for (int i = 0; i < 6; i++)
+        {
+            Vector3 o0 = Pt(6, i, rO, x - 0.02f), o1 = Pt(6, i + 1, rO, x - 0.02f), i0 = Pt(6, i, rI, x), i1 = Pt(6, i + 1, rI, x);
+            rim.Quad(o0, o1, i1, i0, Vector3.right);   // de ring, iets schuin naar buiten
+            float a = i + 0.5f; Vector3 d = Pt(6, a, 1f, 0f), t = Vector3.Cross(Vector3.right, d).normalized * 0.035f;
+            Vector3 s0 = Pt(6, a, rH, x + 0.01f), s1 = Pt(6, a, rI + 0.01f, x);
+            rim.Quad(s0 - t, s1 - t, s1 + t, s0 + t, Vector3.right);   // spaak
+            hub.Tri(new Vector3(x + 0.03f, 0, 0), Pt(6, i, rH, x + 0.015f), Pt(6, i + 1, rH, x + 0.015f), Vector3.right);   // naaf
+        }
+        tyreMesh = tyre.Build(); rimMesh = rim.Build(); hubMesh = hub.Build();
     }
 
     static List<float[]> L(params float[][] a) => new List<float[]>(a);
     static Parts Make(string type)
     {
-        MeshBuilder body = new MeshBuilder(), glass = new MeshBuilder(), trim = new MeshBuilder(), glow = new MeshBuilder(), tyre = new MeshBuilder(), rim = new MeshBuilder();
+        MeshBuilder body = new MeshBuilder(), glass = new MeshBuilder(), trim = new MeshBuilder(), glow = new MeshBuilder(), plate = new MeshBuilder();
+        Color Amber = Hex("#ffb020");
         var lamps = new Dictionary<Color, MeshBuilder>();
         void Lamp(Color c, float sx, float sy, float sz, float x, float y, float z) { if (!lamps.TryGetValue(c, out var mb)) { mb = new MeshBuilder(); lamps[c] = mb; } Box(mb, sx, sy, sz, x, y, z); }
+        // buitenspiegel: een blokje in de lak met een donkere achterkant, op de flank van de cabine net achter de voorruit
+        void Mirror(List<float[]> C, float x)
+        {
+            var sc = At(C, x); foreach (int sg in new[] { -1, 1 }) { float z = sg * (sc[5] + 0.11f); Box(body, 0.12f, 0.1f, 0.16f, x, sc[2] + 0.1f, z); Box(trim, 0.02f, 0.08f, 0.13f, x - 0.065f, sc[2] + 0.1f, z); Box(trim, 0.06f, 0.03f, 0.08f, x, sc[2] + 0.06f, sg * (sc[5] + 0.03f)); }
+        }
+        // bumpers (donker, steken iets uit), kentekenplaten, knipperlichten op de voorhoeken en achterlichten die om de hoek lopen
+        void Dress(List<float[]> B, float yF, float yR, float bumper = 0.42f)
+        {
+            float xf = B[B.Count - 1][0], xr = B[0][0], wf = At(B, xf - 0.05f)[4], wr = At(B, xr + 0.05f)[4];
+            Box(trim, 0.16f, 0.17f, 2f * wf + 0.06f, xf + 0.02f, bumper, 0f); Box(trim, 0.16f, 0.17f, 2f * wr + 0.06f, xr - 0.02f, bumper, 0f);
+            Box(plate, 0.02f, 0.11f, 0.4f, xf + 0.105f, bumper, 0f); Box(plate, 0.02f, 0.11f, 0.4f, xr - 0.105f, bumper, 0f);
+            foreach (int sg in new[] { -1, 1 })
+            {
+                var sf = At(B, xf - 0.16f); float yf = Mathf.Clamp(yF, sf[1] + 0.03f, sf[3] - 0.03f); Lamp(Amber, 0.14f, 0.05f, 0.02f, xf - 0.16f, yf, sg * (WAt(sf, yf) + 0.012f));
+                var sr = At(B, xr + 0.16f); float yr = Mathf.Clamp(yR, sr[1] + 0.03f, sr[3] - 0.03f); Lamp(Red, 0.2f, 0.07f, 0.02f, xr + 0.12f, yr, sg * (WAt(sr, yr) + 0.012f));
+            }
+        }
         // auto met een losse cabine: romp en cabine in lak, ruiten op de cabine, wielkasten op de romp
         void Car(List<float[]> B, List<float[]> C, float[] front, float[] rear, float[] side, float arch = 0.8f)
         {
             Hull(body, B); Hull(body, C);
             if (front != null) WinTop(glass, C, front[0], front[1], 0.07f);
             if (rear != null) WinTop(glass, C, rear[0], rear[1], 0.07f);
-            if (side != null) WinSide(glass, C, side[0], side[1], 0.1f, 0.86f);
+            if (side != null)   // twee zijruiten met een B-stijl ertussen
+            {
+                float mid = (side[0] + side[1]) * 0.5f; WinSide(glass, C, side[0], mid - 0.05f, 0.1f, 0.86f); WinSide(glass, C, mid + 0.05f, side[1], 0.1f, 0.86f);
+                Band(trim, B, mid - 0.012f, mid + 0.012f, 0.4f, At(B, mid)[2] - 0.03f, 0.016f);   // deurnaad onder de B-stijl
+                Band(trim, B, side[1] + 0.12f, side[1] + 0.144f, 0.4f, At(B, side[1] + 0.12f)[2] - 0.03f, 0.016f);   // voorkant van de voordeur
+                Mirror(C, side[1]);
+            }
             foreach (float wx in new[] { -1.45f, 1.45f }) Arch(trim, B, wx, arch);
         }
         bool metal = false;
@@ -151,10 +200,11 @@ public static class LowPolyCar
             var B = L(new[] { -2.36f, 0.44f, 0.64f, 0.84f, 0.66f, 0.84f, 0.72f }, new[] { -2.15f, 0.3f, 0.64f, 0.95f, 0.76f, 0.92f, 0.8f }, new[] { 0.6f, 0.3f, 0.64f, 0.93f, 0.78f, 0.93f, 0.8f }, new[] { 2.2f, 0.32f, 0.6f, 0.76f, 0.74f, 0.9f, 0.72f }, new[] { 2.37f, 0.42f, 0.56f, 0.66f, 0.6f, 0.78f, 0.58f });
             var C = L(new[] { -1.62f, 0.92f, 0.92f, 0.95f, 0.79f, 0.79f, 0.77f }, new[] { -1.08f, 0.93f, 0.93f, 1.42f, 0.79f, 0.79f, 0.6f }, new[] { -0.05f, 0.93f, 0.93f, 1.42f, 0.79f, 0.79f, 0.6f }, new[] { 0.64f, 0.92f, 0.92f, 0.94f, 0.79f, 0.79f, 0.77f });
             Car(B, C, new[] { 0.6f, -0.02f }, new[] { -1.58f, -1.1f }, new[] { -1.45f, 0.45f });
-            foreach (int sg in new[] { -1, 1 }) Box(glow, 3.95f, 0.03f, 0.02f, -0.05f, 0.64f, sg * 0.935f);
+            foreach (int sg in new[] { -1, 1 }) foreach (var (x0, x1) in new[] { (-2.2f, -2.25f + 0.0f), (-0.66f, 0.66f), (2.24f, 2.2f) }) if (x1 - x0 > 0.1f) Box(glow, x1 - x0, 0.03f, 0.02f, (x0 + x1) * 0.5f, 0.64f, sg * 0.935f);   // lichtlijn op de gordellijn, tussen de wielkasten
             Band(trim, B, -2.2f, 2.25f, 0.3f, 0.42f);
             foreach (int sg in new[] { -1, 1 }) Lamp(White, 0.06f, 0.07f, 0.44f, 2.31f, 0.64f, sg * 0.5f);
             Lamp(Red, 0.05f, 0.06f, 1.4f, -2.35f, 0.74f, 0f);
+            Dress(B, 0.6f, 0.74f);
         }
         else if (type == "coupe")   // lage wig: platte neus, steile achterkant, donkere streep over de flanken
         {
@@ -164,6 +214,7 @@ public static class LowPolyCar
             Band(trim, B, -2.0f, 1.7f, 0.44f, 0.52f); Band(trim, B, -2.3f, 2.3f, 0.3f, 0.36f);
             foreach (int sg in new[] { -1, 1 }) foreach (float z in new[] { 0.6f, 0.38f }) Lamp(White, 0.05f, 0.08f, 0.17f, 2.33f, 0.5f, sg * z);
             foreach (int sg in new[] { -1, 1 }) Lamp(Red, 0.05f, 0.07f, 0.5f, -2.36f, 0.7f, sg * 0.5f);
+            Dress(B, 0.5f, 0.7f, 0.4f);
         }
         else if (type == "suv")   // hoge SUV: brede kast, groot glasvlak, donkere onderkant en dakrails
         {
@@ -175,6 +226,7 @@ public static class LowPolyCar
             foreach (int sg in new[] { -1, 1 }) Box(trim, 2.4f, 0.06f, 0.06f, -0.8f, 1.74f, sg * 0.66f);
             Box(trim, 0.05f, 0.2f, 0.9f, 2.36f, 0.78f, 0f);
             foreach (int sg in new[] { -1, 1 }) { Lamp(White, 0.05f, 0.05f, 0.42f, 2.33f, 0.9f, sg * 0.6f); Lamp(Red, 0.05f, 0.07f, 0.36f, -2.34f, 0.95f, sg * 0.62f); }
+            Dress(B, 0.9f, 0.95f, 0.46f);
         }
         else if (type == "wedge")   // stalen wig-pickup: één schuin vlak van neus tot dak, scherpe wielkasten, lichtbalken
         {
@@ -185,6 +237,7 @@ public static class LowPolyCar
             foreach (float wx in new[] { -1.45f, 1.45f }) Arch(trim, B, wx, 0.98f);
             Band(trim, B, -2.3f, 2.32f, 0.32f, 0.5f);
             Lamp(White, 0.04f, 0.045f, 1.66f, 2.395f, 0.8f, 0f); Lamp(Red, 0.04f, 0.05f, 1.62f, -2.385f, 1.22f, 0f);
+            Dress(B, 0.8f, 1.1f, 0.44f); Mirror(B, 1.5f);
         }
         else if (type == "stad" || type == "taxi")   // kleine hatchback (de taxi met een daklicht)
         {
@@ -194,6 +247,7 @@ public static class LowPolyCar
             Band(trim, B, -2.25f, 2.2f, 0.3f, 0.42f);
             if (type == "taxi") Lamp(Hex("#ffe08a"), 0.3f, 0.14f, 0.6f, -0.5f, 1.5f, 0f);
             foreach (int sg in new[] { -1, 1 }) { Lamp(White, 0.06f, 0.1f, 0.3f, 2.31f, 0.64f, sg * 0.55f); Lamp(Red, 0.06f, 0.1f, 0.3f, -2.33f, 0.68f, sg * 0.56f); }
+            Dress(B, 0.62f, 0.68f);
         }
         else   // bestelbus
         {
@@ -203,10 +257,31 @@ public static class LowPolyCar
             foreach (float wx in new[] { -1.45f, 1.45f }) Arch(trim, B, wx, 0.82f);
             Band(trim, B, -2.25f, 2.25f, 0.3f, 0.44f);
             foreach (int sg in new[] { -1, 1 }) { Lamp(White, 0.06f, 0.12f, 0.3f, 2.3f, 0.66f, sg * 0.6f); Lamp(Red, 0.06f, 0.14f, 0.24f, -2.36f, 0.75f, sg * 0.66f); }
+            Dress(B, 0.66f, 0.75f, 0.42f); Mirror(B, 1.42f);
+            Band(trim, B, -2.36f, 1.2f, 0.98f, 1.0f, 0.016f);   // naad van de laadruimte
+            Box(trim, 0.012f, 0.95f, 0.02f, -2.345f, 1.4f, 0f);   // achterdeuren
         }
-        foreach (var (wx, wz) in new[] { (1.45f, 0.83f), (1.45f, -0.83f), (-1.45f, 0.83f), (-1.45f, -0.83f) }) Wheel(tyre, rim, wx, wz);
-        var P = new Parts { body = body.Build(), glass = glass.Build(), trim = trim.Build(), glow = glow.v.Count > 0 ? glow.Build() : null, wheel = tyre.Build(), rim = rim.Build(), metal = metal };
+        var P = new Parts { body = body.Build(), glass = glass.Build(), trim = trim.Build(), glow = glow.v.Count > 0 ? glow.Build() : null, plate = plate.Build(), metal = metal };
         foreach (var kv in lamps) P.lamps.Add((kv.Value.Build(), kv.Key));
         return P;
+    }
+}
+
+// De wielen van een auto: per wiel een stuuras en het wiel zelf. Drive rolt ze over de afgelegde afstand en zet de voorwielen in de
+// stuurhoek (rustig bijdraaiend).
+public class CarWheels : MonoBehaviour
+{
+    readonly Transform[] axle = new Transform[4], wheel = new Transform[4]; readonly bool[] left = new bool[4], front = new bool[4];
+    float roll, steer;
+    public void Set(int k, Transform a, Transform w, bool isLeft, bool isFront) { axle[k] = a; wheel[k] = w; left[k] = isLeft; front[k] = isFront; }
+    public void Drive(float dist, float steerDeg, float dt)
+    {
+        roll = Mathf.Repeat(roll + dist / 0.36f * Mathf.Rad2Deg, 360f); steer = dt <= 0f ? steerDeg : Mathf.MoveTowards(steer, steerDeg, 160f * dt);
+        for (int k = 0; k < 4; k++)
+        {
+            if (axle[k] == null) continue;
+            axle[k].localRotation = Quaternion.Euler(0f, (front[k] ? steer : 0f) + (left[k] ? 180f : 0f), 0f);
+            wheel[k].localRotation = Quaternion.Euler(left[k] ? -roll : roll, 0f, 0f);
+        }
     }
 }

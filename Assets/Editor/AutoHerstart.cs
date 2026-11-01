@@ -9,7 +9,7 @@ using UnityEngine;
 static class AutoHerstart
 {
     const string FlagKey = "raatstad-herstart-play", OnKey = "raatstad-autoherstart";
-    static FileSystemWatcher watcher; static volatile bool changed; static double settleAt;
+    static FileSystemWatcher watcher; static volatile bool changed; static double settleAt, testAt;
 
     static bool On { get => EditorPrefs.GetBool(OnKey, true); set => EditorPrefs.SetBool(OnKey, value); }
 
@@ -30,7 +30,14 @@ static class AutoHerstart
         if (!changed && !EditorApplication.isCompiling && !EditorApplication.isUpdating && (File.Exists(Path.Combine(Application.persistentDataPath, "brugtest.txt")) || File.Exists(Path.Combine(Application.persistentDataPath, "niveautest.txt")) || File.Exists(Path.Combine(Application.persistentDataPath, "wegvoorbeeld.txt"))))
         {
             if (EditorApplication.isPlaying) { EditorApplication.isPlaying = false; return; }
-            if (!EditorApplication.isPlayingOrWillChangePlaymode) { EditorApplication.isPlaying = true; return; }
+            if (!EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                // eerst verversen en even wachten: anders start Play nog met de oude scripts (de hercompilatie na het stoppen begint pas later)
+                double t = EditorApplication.timeSinceStartup;
+                if (testAt == 0) { testAt = t + 1.5; AssetDatabase.Refresh(); return; }
+                if (t < testAt) return;
+                testAt = 0; EditorApplication.isPlaying = true; return;
+            }
         }
         if (!changed || !On) return;
         double now = EditorApplication.timeSinceStartup;

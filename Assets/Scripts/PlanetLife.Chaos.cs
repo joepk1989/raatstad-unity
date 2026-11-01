@@ -296,6 +296,7 @@ public partial class PlanetLife
         if (sp > 0.5f && Wall(p + c.vel / sp * 1.8f, g)) { c.vel *= -0.25f; if (sp >= 3f) Damage(c, sp * 1.2f); c.fric = 6f; }
         Vector3 f = Quaternion.AngleAxis(c.w * Mathf.Rad2Deg * dt, up) * Flat(c.fwd, up); if (f.sqrMagnitude > 1e-6f) c.fwd = f.normalized;
         c.root.position = p; c.root.rotation = Geo.Look(c.fwd, up) * c.tumble;
+        if (c.wheels != null && !c.air) c.wheels.Drive(Vector3.Dot(c.vel, c.fwd) * dt, 0f, dt);   // glijdend: de wielen rollen mee met wat er vooruit gaat
         if (!c.air && sp < 0.3f) c.stillT += dt; else c.stillT = 0f;
         if (c.burnT < 0f && !c.air && (c.stillT > 2.5f || c.freeT > 12f)) Rejoin(c);
         if (c.freeT > 40f) c.dead = true;   // nergens een weg te vinden
