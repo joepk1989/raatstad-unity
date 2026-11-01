@@ -65,9 +65,16 @@ Erbij gekomen op 1 november 2026 (natuur, `PlanetNature.cs`):
 - Zeeniveau (`SeaLevel` = −1 m): waar het maaiveld lager ligt staat water (`SeaChunk`), met zand en riet langs de waterlijn; wegen tellen niet mee. Meer: het vak ligt vanzelf op `LakeBed` (via `G`), een weg erover is een dam (`DamSkip`). Gracht: bodem en bakstenen kademuren (`Canal`, `Quay`), de buren houden hun hoogte.
 - Bergen tot 90 m (`TerrTop`): rots op steile flanken, sneeuw boven 54 m. Hele planeet vol maakt berggebieden zonder stadjes (`MountainMask`). De camera volgt het maaiveld vloeiend (`camH`) en blijft boven een bergflank.
 
+Erbij gekomen op 1 november 2026 (wegen en verkeer):
+- Wegen, paden en fietspaden zijn een graaf; breedtes sluiten aan op de knopen. Kruisingen zijn standaard gelijkvloers; Ongelijkvloers (U) maakt een brug of onderdoorgang, ook schuin. Een schuine weg over een rechte weg krijgt zijn kruispunt op de rand tussen twee vakken (`NodeDir`). Wegen en paden kunnen door een bos; de bomen wijken.
+- Rotonde (blok in Wegen, `PlanetRoundabout.cs`): over een vak en de zes eromheen, maten van de webversie, verkeer tegen de klok in met voorrang. Zebrapaden op kruisingsarmen en oversteken, verkeerslichten op de stoep, lantaarns om en om.
+- Rijden met fysica (`PlanetLife.Physics`): twee rijstroken, voorrang (brede weg, dan rechts), stopstreep of haaientanden, auto's met losse wielen. Een auto per drie wegvakken (hooguit 40). Middenberm van een laan eindigt met een ronde kop bij een kruising.
+- Nieuwe startstad (`StartTownVersion`): een laan als rondweg met keerkoppen binnenin. Menu Raatstad > Teststad (verkeersmeting, auto's bekijken) en Raatstad > Wegvoorbeeld (wegbreedtes, fietspaden, rotondes).
+- De hoogtefunctie langs wegen op een niveau (`GroundField`, `LineGround`) staat als JavaScript in de webversie: `src/js/07a-terreinveld.js` in `joepk1989/raatstad-web` (nog niet aangesloten; uitleg in `docs/terreinveld.md` daar). Daar is het veld doorlopend gemaakt: een weg graaft pas in als zijn wegdek onder het terrein ligt en een kop ligt ook 5 cm onder het wegdek. In Unity zit op die plek nog een sprongetje van 5 cm.
+
 Nog te doen:
 1. Modules als JSON met edge-codes (nu nog in code)
 2. Onderdelen uit `docs/overdracht-webversie.md` bouwen: stadsgenerator, wenteltrap, geluiden
 3. Laadscherm (`Assets/Scripts/UI/HexLoadingScreen.cs`) in de startscène hangen
-4. Terrein: hoogtelijnen tijdens het boetseren; een weg tussen twee vakken met een groot hoogteverschil ligt nog in een kom; bruine driehoek naast de stoep bij een schuine onderdoorgang
+4. Terrein: hoogtelijnen tijdens het boetseren; een weg tussen twee vakken met een groot hoogteverschil ligt nog in een kom; bruine driehoek naast de stoep bij een schuine onderdoorgang; het sprongetje van 5 cm waar een verdiepte weg het terrein raakt (zoals in de webversie oplossen)
 5. Ragdolls voor mensen die bij de chaos worden geraakt
