@@ -36,6 +36,7 @@ public class WegVoorbeeld : MonoBehaviour
         float D60 = Mathf.PI / 3f;
         if (mode == "fiets") { yield return Bikes(home); yield break; }
         if (mode == "rotonde") { yield return Roundabouts(home); yield break; }
+        if (mode == "schuin") { yield return Diagonals(home); yield break; }
         var scenes = new (string name, int c)[] { ("1_rechtdoor_breed_naar_gewoon", home), ("2_T_breed_met_gewone_zijweg", At(home, 0f, 150f)), ("3_laan_naar_gewone_weg", At(home, 2f * D60, 150f)), ("4_knik_breed_naar_gewoon", At(home, 4f * D60, 150f)), ("5_kruispunt_breed_en_gewoon", At(home, 3f * D60, 150f)) };
         int endBroad = Leg(scenes[0].c, 0f, 1), endNormal = Leg(scenes[0].c, Mathf.PI, 0);
         Leg(scenes[1].c, 0f, 1); Leg(scenes[1].c, Mathf.PI, 1); Leg(scenes[1].c, D60, 0);
@@ -189,6 +190,24 @@ public class WegVoorbeeld : MonoBehaviour
         yield return Shot("r2_mensen", r2, Dir2(r2, 0.3f), 30f, 45f);
         var info = new System.Text.StringBuilder(); foreach (int c in new[] { r1, r2 }) { info.Append("rotonde ").Append(c).Append(" armen:"); foreach (int j in PlanetCity.Partners(c)) info.Append(' ').Append(j).Append(PlanetCity.IsRoad(j) ? "W" : "P"); info.AppendLine(); }
         File.WriteAllText(Path.Combine(Dir, "rotondes.txt"), info.ToString());
+        File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar");
+        if (pb != null) pb.enabled = true;
+    }
+    // schuine wegen (30°, over halve vakken): kruisen, over een rechte weg, een T op een rechte weg, een bocht, huizen erlangs, naast elkaar
+    IEnumerator Diagonals(int home)
+    {
+        float D60 = Mathf.PI / 3f, D30 = Mathf.PI / 6f;
+        int s1 = home, s2 = At(home, 0f, 170f), s3 = At(home, 2f * D60, 170f), s4 = At(home, 4f * D60, 170f), s5 = At(home, 3f * D60, 170f), s6 = At(home, 1f * D60, 170f);
+        Leg(s1, D30, 0); Leg(s1, D30 + Mathf.PI, 0); Leg(s1, D30 + 2f * D60, 0); Leg(s1, D30 + 2f * D60 + Mathf.PI, 0);
+        Leg(s2, 0f, 0); Leg(s2, Mathf.PI, 0); RoadLine(At(s2, Mathf.PI / 2f, 60f), At(s2, -Mathf.PI / 2f, 60f));
+        Leg(s3, 0f, 0); Leg(s3, Mathf.PI, 0); RoadLine(At(s3, Mathf.PI / 2f, 60f), s3);
+        Leg(s4, D30, 0); Leg(s4, Mathf.PI, 0);
+        Leg(s5, D30, 0); Leg(s5, D30 + Mathf.PI, 0);
+        foreach (int c in new[] { At(s5, D30 + Mathf.PI / 2f, 12f), At(s5, D30 - Mathf.PI / 2f, 12f), At(At(s5, D30, 27f), D30 + Mathf.PI / 2f, 12f), At(At(s5, D30, 27f), D30 - Mathf.PI / 2f, 12f) }) PlanetCity.Place(c, "woning");
+        Leg(s6, D30, 0); Leg(s6, D30 + Mathf.PI, 0); int s6b = At(s6, D30 + Mathf.PI / 2f, 16f); Leg(s6b, D30, 0); Leg(s6b, D30 + Mathf.PI, 0);
+        PlanetCity.Rebuild(); PlanetCity.Rebuild(); yield return null; yield return null;
+        foreach (var (nm, c) in new[] { ("s1_kruisen", s1), ("s2_over_recht", s2), ("s3_T_op_recht", s3), ("s4_bocht", s4), ("s5_huizen", s5), ("s6_naast_elkaar", s6) })
+        { yield return Shot(nm + "_boven", c, Dir2(c, 0f), 55f, 89f); yield return Shot(nm + "_schuin", c, Dir2(c, 0.4f), 40f, 35f); }
         File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar");
         if (pb != null) pb.enabled = true;
     }

@@ -9,4 +9,5 @@ static class WegVoorbeeldMenu
     [MenuItem("Raatstad/Wegvoorbeeld/Wegbreedtes")] static void Roads() => Ask("");
     [MenuItem("Raatstad/Wegvoorbeeld/Fietspaden en oversteken")] static void Bikes() => Ask("fiets");
     [MenuItem("Raatstad/Wegvoorbeeld/Rotondes")] static void Roundabouts() => Ask("rotonde");
+    [MenuItem("Raatstad/Wegvoorbeeld/Schuine wegen")] static void Diagonals() => Ask("schuin");
 }
