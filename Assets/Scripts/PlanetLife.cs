@@ -15,13 +15,15 @@ public partial class PlanetLife : MonoBehaviour
         public float ovT, dodgeT, huntT, huntRest, waitT, backT, aroundT, aroundAll, oppWait, ghostT, stillT, freeT, blendT, dmgCool, burnT = -1f, beepT, fxAcc, hp = 100f, late = 1f;
         public bool free, air, blocked, atLight, dead; public Vector3 vel, tumbleAxis, fromPos; public float vy, w, fric, tumbleW; public Quaternion tumble = Quaternion.identity, fromRot;
         public Car ovOther, stuckCar; public Transform prey;
+        public int lane = 1; public float waitPri, idleT; public string why = ""; public Car leadCar; public bool retreat;   // retreat: achteruit om een tegenligger ruimte te geven, daarna terug naar de eigen strook   // idleT: hoe lang hij al stilstaat   // rijstrook op een brede weg (0 links, 1 rechts); hoe lang hij al voorrang geeft
     }
     readonly List<Car> cars = new List<Car>();
     public int CarCount => cars.Count;
     readonly List<int> roads = new List<int>(), walks = new List<int>();
     static AudioClip hum;
+    public static int CarBoost;   // extra auto's (voor het wegvoorbeeld)
     public static bool PeopleOn = true, CarsOn = true;   // aan/uit in het tijdpaneel en het menu
-    public static void ResetStatics() { hum = null; PeopleOn = true; CarsOn = true; Chaos = false; boomClip = hornClip = beepClip = null; ico = null; }
+    public static void ResetStatics() { hum = null; PeopleOn = true; CarsOn = true; CarBoost = 0; Chaos = false; boomClip = hornClip = beepClip = null; ico = null; }
     float roadsT, spawnT, idleT = 4f;
     PlanetWalker walker;
 
@@ -36,6 +38,12 @@ public partial class PlanetLife : MonoBehaviour
     static int NextRoad(int a, int prev, bool walk = false)
     {
         var opts = new List<int>(6); foreach (int j in PlanetCity.Partners(a)) if ((walk ? PlanetCity.IsWalk(j) : PlanetCity.IsRoad(j) && PlanetCity.CanDrive(a, j)) && j != prev) opts.Add(j);   // auto's volgen het eenrichtingsverkeer; voetgangers lopen om een rotonde heen (RotWalk)   // auto's volgen het eenrichtingsverkeer
+        if (!walk && prev >= 0 && prev != a && !PlanetCity.IsRot(a) && opts.Count > 1)   // auto's: een scherpe draai (meer dan 100°) op een kruising is niet te rijden; die slaan ze over als er een andere weg is
+        {
+            Vector3 d1 = (D(a) - D(prev)).normalized; var ok = new List<int>(opts.Count);
+            foreach (int j in opts) if (Vector3.Dot(d1, (D(j) - D(a)).normalized) > -0.17f) ok.Add(j);
+            if (ok.Count > 0) opts = ok;
+        }
         if (opts.Count == 0) return prev >= 0 && (walk ? PlanetCity.LinkedWalk(a, prev) : PlanetCity.LinkedRoad(a, prev) && PlanetCity.CanDrive(a, prev)) ? prev : a;
         return opts[Random.Range(0, opts.Count)];
     }
@@ -102,14 +110,14 @@ public partial class PlanetLife : MonoBehaviour
 
     Car SpawnCar()
     {
-        var c = new Car { b = roads[Random.Range(0, roads.Count)], speed = 7f + Random.value * 4f, s = Random.value };
+        var c = new Car { b = roads[Random.Range(0, roads.Count)], speed = 7f + Random.value * 4f, s = Random.value, lane = Random.Range(0, 2) };
         c.a = PrevRoad(c.b); c.c = NextRoad(c.b, c.a); c.n = NextRoad(c.c, c.b); c.v = c.speed;
         var root = new GameObject("Auto").transform; root.SetParent(transform, false); c.root = root; root.gameObject.layer = Layers.Mens;
         c.type = LowPolyCar.Build(root);   // een van de zeven low-poly modellen van de webversie
         GivePersona(c);
         if (hum == null) hum = MakeHum();
         c.audio = root.gameObject.AddComponent<AudioSource>(); c.audio.clip = hum; c.audio.loop = true; c.audio.spatialBlend = 1f; c.audio.rolloffMode = AudioRolloffMode.Linear; c.audio.minDistance = 4f; c.audio.maxDistance = 70f; c.audio.volume = 0.35f; c.audio.pitch = 0.9f + c.speed / 25f; c.audio.Play();
-        PlaceCar(c, 0f); return c;
+        PlaceCar(c); return c;
     }
 
     // Elektrisch gezoem: zaagtand met een kwint erboven, laag gefilterd, plus wat bandengeruis
@@ -142,6 +150,7 @@ public partial class PlanetLife : MonoBehaviour
     static void Arc(int a, int b, int cc, float s, float side, float h, out Vector3 pos, out Vector3 fwd, out Vector3 up)
     {
         if (PlanetCity.IsRot(b) && a != b) { RotArc(a, b, cc, s, h, out pos, out fwd, out up); return; }
+        if (a == cc && a != b) { UTurn(a, b, s, side, h, out pos, out fwd, out up); return; }
         Vector3 P0 = Mid(a, b), P3 = Mid(b, cc);
         Vector3 t0 = EdgeDir(a, b), t3 = EdgeDir(b, cc); float k = Vector3.Distance(P0, P3) * 0.4f;
         Vector3 P1 = P0 + t0 * k, P2 = P3 - t3 * k;
@@ -185,7 +194,25 @@ public partial class PlanetLife : MonoBehaviour
         Vector3 p = C + rad * r; up = p.normalized; pos = up * (Planet.R + h);
         Vector3 t = (-e * Mathf.Sin(f) + n * Mathf.Cos(f)) * Mathf.Sign(span); fwd = (t - up * Vector3.Dot(t, up)).normalized;
     }
-    static float ArcLen(int a, int b, int cc) => PlanetCity.IsRot(b) && a != b ? RotLen(a, b, cc) : (Vector3.Distance(D(a), D(b)) + Vector3.Distance(D(b), D(cc))) * 0.5f * Planet.R;
+    // Keren in de ronde kop van een doodlopende weg (of terug dezelfde arm op): van de eigen strook naar de buitenkant zwenken, een halve
+    // cirkel van UR om het hart van het vak (de kop is 4,6 m; de auto blijft erbinnen) en terug op de strook van de andere richting.
+    const float UR = 3.3f;
+    static void UTurnPts(int a, int b, float side, out Vector3 A0, out Vector3 A1, out Vector3 B0, out Vector3 B1, out Vector3 C, out Vector3 t0, out Vector3 r)
+    {
+        Vector3 ub = D(b); C = ub * Planet.R; t0 = EdgeDir(a, b); t0 = (t0 - ub * Vector3.Dot(t0, ub)).normalized; r = Vector3.Cross(ub, t0);
+        Vector3 P0 = Mid(a, b) * Planet.R; A0 = P0 + r * side; A1 = C + r * UR; B0 = C - r * UR; B1 = P0 - r * side;
+    }
+    static float UTurnLen(int a, int b) { UTurnPts(a, b, Lane(a, b), out var A0, out var A1, out var B0, out var B1, out _, out _, out _); return (A1 - A0).magnitude + Mathf.PI * UR + (B1 - B0).magnitude; }
+    static void UTurn(int a, int b, float s, float side, float h, out Vector3 pos, out Vector3 fwd, out Vector3 up)
+    {
+        UTurnPts(a, b, side, out var A0, out var A1, out var B0, out var B1, out var C, out var t0, out var r);
+        float L1 = (A1 - A0).magnitude, L2 = Mathf.PI * UR, L3 = (B1 - B0).magnitude, d = Mathf.Clamp01(s) * (L1 + L2 + L3); Vector3 p, t;
+        if (d <= L1) { p = Vector3.Lerp(A0, A1, d / Mathf.Max(0.01f, L1)); t = A1 - A0; }
+        else if (d <= L1 + L2) { float f = (d - L1) / L2 * Mathf.PI; p = C + r * (UR * Mathf.Cos(f)) + t0 * (UR * Mathf.Sin(f)); t = t0 * Mathf.Cos(f) - r * Mathf.Sin(f); }
+        else { p = Vector3.Lerp(B0, B1, (d - L1 - L2) / Mathf.Max(0.01f, L3)); t = B1 - B0; }
+        up = p.normalized; fwd = (t - up * Vector3.Dot(t, up)).normalized; pos = up * (Planet.R + h);
+    }
+    static float ArcLen(int a, int b, int cc) => PlanetCity.IsRot(b) && a != b ? RotLen(a, b, cc) : a == cc && a != b ? UTurnLen(a, b) : (Vector3.Distance(D(a), D(b)) + Vector3.Distance(D(b), D(cc))) * 0.5f * Planet.R;
     static float RotLen(int a, int b, int cc) { PlanetCity.RotPath(a, b, cc, Lane(a, b), Lane(b, cc), out _, out _, out _, out _, out float span, out float r0, out float r1); return Mathf.Abs(span) * (r0 + r1) * 0.5f; }
     static float Bend(int a, int b, int cc)   // 0 = rechtdoor, 1 = haakse of scherpere bocht
     {
@@ -194,20 +221,7 @@ public partial class PlanetLife : MonoBehaviour
         return Mathf.Clamp01(Mathf.Acos(Mathf.Clamp(Vector3.Dot(d1, d2), -1f, 1f)) * Mathf.Rad2Deg / 90f);
     }
 
-    static float Lane(int x, int y) => (PlanetCity.LaneOffset(x) + PlanetCity.LaneOffset(y)) * 0.5f;   // rijbaan: breder wegen, verder van het midden
-
-    void PlaceCar(Car c, float dt)
-    {
-        Arc(c.a, c.b, c.c, c.s, Mathf.Lerp(Lane(c.a, c.b), Lane(c.b, c.c), c.s) + c.lat, 0.10f, out Vector3 pos, out Vector3 fwd, out Vector3 up);
-        float hs = PlanetCity.SurfaceH(c.b, pos), ha = PlanetCity.SurfaceH(c.b, pos + fwd * 1.5f);   // op het hellende asfalt, met de neus mee omhoog of omlaag
-        pos += up * hs; fwd = (fwd + up * ((ha - hs) / 1.5f)).normalized;
-        c.root.position = pos; c.fwd = fwd; Quaternion target = Geo.Look(fwd, up);
-        c.root.rotation = dt <= 0f ? target : Quaternion.Slerp(c.root.rotation, target, Mathf.Min(1f, dt * 10f));
-        if (c.blendT > 0f)   // na het terugvinden: van de vrije stand rustig naar de rijlijn
-        {
-            float k = Mathf.SmoothStep(0f, 1f, 1f - c.blendT / 1.2f); c.root.position = Vector3.Lerp(c.fromPos, pos, k); c.root.rotation = Quaternion.Slerp(c.fromRot, target, k); c.blendT -= dt;
-        }
-    }
+    static float Lane(int x, int y, int lane = -1) => (PlanetCity.LaneOffset(x, lane) + PlanetCity.LaneOffset(y, lane)) * 0.5f;   // rijbaan: breder wegen, verder van het midden
 
     // een stap langs de boog van a naar b; aan het eind het volgende vak kiezen
     static bool Advance(ref int a, ref int b, ref int prev, ref float t, float speed, float dt, bool walk = false)
@@ -225,12 +239,12 @@ public partial class PlanetLife : MonoBehaviour
         float dt = Mathf.Min(Time.deltaTime, 0.05f);
         if (walker == null) walker = FindAnyObjectByType<PlanetWalker>(FindObjectsInactive.Include);
         roadsT -= dt; if (roadsT <= 0f) { roadsT = 2f; RefreshRoads(); RefreshBikes(); }
-        int targetP = PeopleOn ? Mathf.Clamp(walks.Count / 2, 0, 40) : 0, targetC = CarsOn ? Mathf.Clamp(roads.Count / 6, 0, 16) : 0;
+        int targetP = PeopleOn ? Mathf.Clamp(walks.Count / 2, 0, 40) : 0, targetC = CarsOn ? Mathf.Clamp(roads.Count / 6 + CarBoost, 0, 16 + CarBoost) : 0;
         spawnT -= dt;
         if (spawnT <= 0f)
         {
             if (walks.Count > 0 && People.Count < targetP) { People.Add(SpawnPerson()); spawnT = 0.4f; }
-            else if (roads.Count > 0 && cars.Count < targetC) { cars.Add(SpawnCar()); spawnT = 0.7f; }
+            else if (roads.Count > 0 && cars.Count < targetC) { var nc = SpawnCar(); if (Crowded(nc)) Destroy(nc.root.gameObject); else cars.Add(nc); spawnT = 0.7f; }   // niet op een andere auto verschijnen
         }
         while (People.Count > targetP) { Destroy(People[People.Count - 1].root.gameObject); People.RemoveAt(People.Count - 1); }
         while (cars.Count > targetC) { Destroy(cars[cars.Count - 1].root.gameObject); cars.RemoveAt(cars.Count - 1); }
@@ -266,12 +280,11 @@ public partial class PlanetLife : MonoBehaviour
             {
                 if (!PlanetCity.IsRoad(c.a)) c.a = c.b; if (!PlanetCity.IsRoad(c.c)) { c.c = NextRoad(c.b, c.a); c.n = NextRoad(c.c, c.b); }
                 DriveCar(c, dt);
-                if (!c.free) PlaceCar(c, dt);
             }
             CarFx(c, dt); HitPeople(c);
             if (c.audio != null) c.audio.volume = Ambience.Muted ? 0f : 0.35f;
         }
-        if (Chaos) Collide();
+        Collide();   // altijd: auto's zijn vaste lichamen, ook netjes verkeer kan elkaar een duw geven
 
         UpdateBikes(dt);
 

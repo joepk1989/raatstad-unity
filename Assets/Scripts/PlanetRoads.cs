@@ -69,6 +69,7 @@ public static partial class PlanetCity
         bool dn = RoadNb(n).Count == 2 && !Rot.Contains(n), dj = RoadNb(j).Count == 2 && !Rot.Contains(j);
         return dn && !dj ? StyleOf(n) : dj && !dn ? StyleOf(j) : (byte)Mathf.Min(StyleOf(n), StyleOf(j));
     }
+    public static int RoadPrio(int j, int arm) => ArmStyle(j, arm) > 0 ? 1 : 0;   // voorrang op kruising j: een brede weg of laan gaat voor
     static byte ChainStyle(List<int> ch, bool closed) => closed || ch.Count > 2 ? StyleOf(ch[closed ? 0 : 1]) : ArmStyle(ch[0], ch[ch.Count - 1]);
 
     // ---------- de graaf ----------
@@ -126,6 +127,7 @@ public static partial class PlanetCity
             foreach (int i in ch) { sig = Mix(sig, i); sig = Mix(sig, Cm(G(i))); sig = Mix(sig, StyleOf(i)); sig = Mix(sig, Cm(MinCorner(i))); sig = Mix(sig, Under.ContainsKey(i) ? 1 : 0); sig = Mix(sig, nbs[i].Count); sig = Mix(sig, crossEnds.Contains(i) ? 1 : 0); }
             for (int k = 0; k + 1 < ch.Count; k++) sig = Mix(sig, Flow(ch[k], ch[k + 1]));
             sig = Mix(sig, edgeMate.TryGetValue(ch[0], out int m0) ? m0 : -1); sig = Mix(sig, edgeMate.TryGetValue(ch[ch.Count - 1], out int m1) ? m1 : -1);
+            sig = Mix(sig, Lights ? 1 : 0); if (ch.Count >= 2) { sig = Mix(sig, RoadPrio(ch[0], ch[1])); sig = Mix(sig, RoadPrio(ch[ch.Count - 1], ch[ch.Count - 2])); foreach (int j in nbs[ch[0]]) sig = Mix(sig, RoadPrio(ch[0], j)); foreach (int j in nbs[ch[ch.Count - 1]]) sig = Mix(sig, RoadPrio(ch[ch.Count - 1], j)); }
             Piece(key, sig, mb => ChainMesh(mb, ch, closed[c], nbs, nodes));
         }
         foreach (int n in nodes)
@@ -257,16 +259,34 @@ public static partial class PlanetCity
         // markering: middenstreepjes (bij een brede weg ook de rijstrookstrepen); niet bij een laan
         System.Func<float, int> seg = s => { int k = 0; while (k < N - 2 && S[k + 1] < s) k++; return k; };
         System.Func<float, float, float, Vector3> At = (s, off, y) => { int k = seg(s); float f = Mathf.Clamp01((s - S[k]) / Mathf.Max(1e-5f, S[k + 1] - S[k])); Vector3 p = Vector3.Lerp(pts[k].p, pts[k + 1].p, f), sd = Vector3.Lerp(side[k], side[k + 1], f).normalized; float h = Mathf.Lerp(pts[k].h, pts[k + 1].h, f); return (p + sd * off).normalized * (Planet.R + h + y); };
+        // bij een kruising (aan het begin of eind van dit stuk): een zebrapad over de arm op 0,5–2,5 m van de knoop, en daarvoor, waar het
+        // binnenkomende verkeer stopt (de rechterhelft), een stopstreep (lichten aan) of haaientanden (lichten uit, op de arm die voorrang
+        // moet geven: een smallere weg). Hier buiten de knoop is de weg altijd recht, ook bij scherpe hoeken; de middenstreepjes beginnen erna.
+        bool jx0 = !closed && nodes.Contains(ch[0]) && nbs[ch[0]].Count >= 3 && !IsRot(ch[0]), jx1 = !closed && nodes.Contains(ch[ch.Count - 1]) && nbs[ch[ch.Count - 1]].Count >= 3 && !IsRot(ch[ch.Count - 1]);
+        System.Action<bool> Mark = atStart =>
+        {
+            int n = atStart ? ch[0] : ch[ch.Count - 1], arm = atStart ? ch[1] : ch[ch.Count - 2]; float dir = atStart ? 1f : -1f, e0 = atStart ? 0f : L;   // s = e0 + dir·afstand tot de knoop
+            System.Func<float, float, float> Sx = (dist, off) => off * (atStart ? -1f : 1f);   // rechts van wie naar de knoop rijdt
+            System.Func<float, float, Vector3> Q = (dist, off) => At(e0 + dir * dist, Sx(dist, off), LY);
+            int zm = Mathf.FloorToInt((hwA - 0.5f) / 0.95f);
+            for (int z = -zm; z <= zm; z++) { float o = z * 0.95f; M("lijn").Quad(Q(0.5f, o - 0.28f), Q(0.5f, o + 0.28f), Q(2.5f, o + 0.28f), Q(2.5f, o - 0.28f), up[seg(e0 + dir * 1.5f)]); }
+            if (!CanDrive(arm, n)) return;
+            int maxPrio = 0; foreach (int j in nbs[n]) maxPrio = Mathf.Max(maxPrio, RoadPrio(n, j));
+            if (Lights) M("lijn").Quad(Q(3.1f, 0.15f), Q(3.1f, hwA - 0.15f), Q(3.6f, hwA - 0.15f), Q(3.6f, 0.15f), up[seg(e0 + dir * 3.3f)]);
+            else if (RoadPrio(n, arm) < maxPrio) for (float t = 0.3f; t + 0.5f < hwA - 0.1f; t += 0.7f) M("lijn").Tri(Q(3.0f, t), Q(3.0f, t + 0.5f), Q(3.7f, t + 0.25f), up[seg(e0 + dir * 3.3f)]);
+        };
+        if (jx0 && L > 4f) Mark(true); if (jx1 && L > 4f) Mark(false);
+        float sBeg = jx0 ? 4.2f : 0.6f, sEnd = jx1 ? L - 4.2f : L - 0.3f;
         if (style != 2)
         {
             var lanes = style == 1 ? new[] { 0f, -hwA * 0.5f, hwA * 0.5f } : new[] { 0f };
             foreach (float lo in lanes)
             {
                 float w = lo == 0f ? 0.07f : 0.05f;
-                for (float s = 0.6f; s + 1.4f < L - 0.3f; s += 2.6f) M("lijn").Quad(At(s, lo - w, LY), At(s, lo + w, LY), At(s + 1.4f, lo + w, LY), At(s + 1.4f, lo - w, LY), up[seg(s)]);
+                for (float s = sBeg; s + 1.4f < sEnd; s += 2.6f) M("lijn").Quad(At(s, lo - w, LY), At(s, lo + w, LY), At(s + 1.4f, lo + w, LY), At(s + 1.4f, lo - w, LY), up[seg(s)]);
             }
         }
-        else for (float s = 3.5f; s < L - 2f; s += 7f) { int k = seg(s); Vector3 b = At(s, 0f, 0.2f); Prism3D(M("stam"), b, up[k], 0.2f, 0.15f, 2.1f); Prism3D(M("blad"), b + up[k] * 1.7f, up[k], 1.5f, 0f, 2.9f); }
+        else for (float s = jx0 ? 6f : 3.5f; s < L - (jx1 ? 6f : 2f); s += 7f) { int k = seg(s); Vector3 b = At(s, 0f, 0.2f); Prism3D(M("stam"), b, up[k], 0.2f, 0.15f, 2.1f); Prism3D(M("blad"), b + up[k] * 1.7f, up[k], 1.5f, 0f, 2.9f); }
         // lantaarns aan beide kanten om de 24 m, om en om (elke 12 m een)
         for (int sg = 1; sg >= -1; sg -= 2)
             for (float s = sg > 0 ? Mathf.Min(6f, L * 0.5f) : 18f; s < L - 2f; s += 24f) { int k = seg(s); Vector3 b = At(s, sg * (hwS - 0.6f), SY); Prism3D(M("paal"), b, up[k], 0.08f, 0.06f, 4.95f); Prism3D(M("lamp"), b + up[k] * 4.65f, up[k], 0.28f, 0.2f, 0.45f); }

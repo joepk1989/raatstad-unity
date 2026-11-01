@@ -7,13 +7,15 @@ using UnityEngine;
 //  - het midden: de vlag als monument op een plein (één fontein), daaromheen winkels met woningen erboven;
 //  - op 4 vakken een verlaagde zeshoekige ring voor voetgangers en fietsers (een heel niveau diep, in een bak met taluds), met
 //    een pad omhoog naar het plein en zes paden haaks naar buiten, die onder de ringweg door gaan (zes bruggen);
-//  - tussen die ring en de ringweg (op 7 vakken) een kerktoren, een stadhuis, parkjes en huizen: binnen de ringweg geen auto's;
-//  - drie hoofdstraten onder 120° vanaf de ringweg naar buiten (doodlopend in een ronde kop);
+//  - tussen die ring en de ringweg (op 7 vakken) een kerktoren, een stadhuis, parkjes en huizen;
+//  - de ringweg is een laan; drie hoofdstraten onder 120° kruisen haar: naar buiten de stad uit (doodlopend in een ronde kop) en
+//    twee vakken naar binnen tot een keerkop, als kleine straatjes binnen de rondweg;
 //  - daarbuiten rijtjes woningen langs de wegen, een kantorenbuurtje, parken, een meertje en een heuvel met een molen.
 public static partial class PlanetCity
 {
     public static void StartTown(int s)
     {
+        StartVer = StartTownVersion; StartCell = s; startFresh = true;   // nog de ongewijzigde startstad: wordt bij een nieuwe versie opnieuw gebouwd
         byte keepStyle = DragStyle; bool keepOne = DragOneWay; DragStyle = 0; DragOneWay = false;
         var S = Planet.Cells[s]; var rnd = new System.Random(s * 7919 + 13);
         // afstanden in vakken vanaf de vlag
@@ -45,9 +47,10 @@ public static partial class PlanetCity
         // 3. ring 2, aan het plein: winkels met woningen erboven
         foreach (int c in ring(2)) { if (!free(c)) continue; put(c, "winkel"); int up = rnd.Next(1, 3); for (int f = 0; f < up; f++) Place(c, "woning"); }
 
-        // 4. ringweg op 7 vakken, als gesloten lus, en drie hoofdstraten vanaf de ringweg naar buiten
-        var r7 = ring(7); var loop = new List<int>(r7); loop.Add(r7[0]); PlaceLine(loop, "weg");
-        foreach (float ang in street) { var l = LinePlan(cellAt(ang, 7f * P), cellAt(ang, 12.6f * P)); if (l != null) PlaceLine(l, "weg"); }
+        // 4. de rondweg op 7 vakken: een laan als gesloten lus; drie hoofdstraten (gewone wegen) die de laan kruisen: naar buiten de stad uit,
+        //    en twee vakken naar binnen tot een keerkop (kleine straatjes binnen de rondweg)
+        var r7 = ring(7); var loop = new List<int>(r7); loop.Add(r7[0]); DragStyle = 2; PlaceLine(loop, "weg"); DragStyle = 0;
+        foreach (float ang in street) { var l = LinePlan(cellAt(ang, 5f * P), cellAt(ang, 12.6f * P)); if (l != null) PlaceLine(l, "weg"); }
 
         // 5. zes paden vanuit het midden van de zijden van de verlaagde ring, haaks naar buiten (schuin over het raster: van vak naar
         //    vak twee stappen verder, over de rand ertussen). Ze blijven een heel niveau diep tot voorbij de ringweg, die er met een brug

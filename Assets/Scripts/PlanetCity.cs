@@ -8,7 +8,7 @@ using UnityEngine;
 // assenstelsel van het vak gebouwd, zodat gebouwen overal recht op de bol staan. De bodem is één mesh per
 // deel (128 vakken); blokken en wegen worden per deel opnieuw gemaakt als er iets verandert.
 [Serializable] public class PCellSave { public int i; public string[] items; }
-[Serializable] public class PSaveData { public int m; public float r; public List<PCellSave> cells = new List<PCellSave>(); public List<int> links = new List<int>(); public List<int> style = new List<int>(), under = new List<int>(), oneway = new List<int>(), terr = new List<int>(), low = new List<int>(), tunnel = new List<int>(), lower = new List<int>(), precarve = new List<int>(), prelevel = new List<int>(), corner = new List<int>(), center = new List<int>(), bike = new List<int>(), rot = new List<int>(); }   // corner: per hoekpunt drie vakken en de verschuiving in cm   // paren: vak/stijl, vak/onder (1 meer, 2 water, 3 kuil, 4 pad, 5 weg), van/naar, vak/terreinhoogte in cm
+[Serializable] public class PSaveData { public int m; public float r; public List<PCellSave> cells = new List<PCellSave>(); public List<int> links = new List<int>(); public List<int> style = new List<int>(), under = new List<int>(), oneway = new List<int>(), terr = new List<int>(), low = new List<int>(), tunnel = new List<int>(), lower = new List<int>(), precarve = new List<int>(), prelevel = new List<int>(), corner = new List<int>(), center = new List<int>(), bike = new List<int>(), rot = new List<int>(); public int startVer, startCell = -1; }   // startVer: de versie van de startstad als de stad nog de ongewijzigde startstad is (anders 0)   // corner: per hoekpunt drie vakken en de verschuiving in cm   // paren: vak/stijl, vak/onder (1 meer, 2 water, 3 kuil, 4 pad, 5 weg), van/naar, vak/terreinhoogte in cm
 
 public static partial class PlanetCity
 {
@@ -18,7 +18,7 @@ public static partial class PlanetCity
     static readonly Dictionary<int, Transform> chunks = new Dictionary<int, Transform>();
     static readonly HashSet<int> dirty = new HashSet<int>();
 
-    public static void ResetAll() { Cells = new Dictionary<int, List<string>>(); Terr.Clear(); CornerOfs.Clear(); CenterOfs.Clear(); cnA = cnB = edN = null; Links.Clear(); partners.Clear(); Style.Clear(); Bike.Clear(); Rot.Clear(); DragBike = false; Under.Clear(); Low.Clear(); OneWay.Clear(); TunnelLinks.Clear(); LowerLinks.Clear(); DragUnder = false; DragLevel = 0; DragStyle = 0; DragOneWay = false; Lights = true; chunks.Clear(); groundChunks.Clear(); dirty.Clear(); root = null; groundRoot = null; grid = null; equator = null; GridOn = true; Slot = 1; roadPieces.Clear(); roadRoot = null; }
+    public static void ResetAll() { Cells = new Dictionary<int, List<string>>(); Terr.Clear(); CornerOfs.Clear(); CenterOfs.Clear(); cnA = cnB = edN = null; Links.Clear(); partners.Clear(); Style.Clear(); Bike.Clear(); Rot.Clear(); DragBike = false; Under.Clear(); Low.Clear(); OneWay.Clear(); TunnelLinks.Clear(); LowerLinks.Clear(); DragUnder = false; DragLevel = 0; DragStyle = 0; DragOneWay = false; Lights = true; StartVer = 0; StartCell = -1; startFresh = false; chunks.Clear(); groundChunks.Clear(); dirty.Clear(); root = null; groundRoot = null; grid = null; equator = null; GridOn = true; Slot = 1; roadPieces.Clear(); roadRoot = null; }
     public static bool IsRoad(int i) => Cells.TryGetValue(i, out var l) && l.Count > 0 && l[0] == "weg";
     public static bool IsPath(int i) => Cells.TryGetValue(i, out var l) && l.Count == 1 && l[0] == "pad";
     public static bool IsWalk(int i) => IsRoad(i) || IsPath(i);
@@ -1207,6 +1207,11 @@ public static partial class PlanetCity
     public static void TouchAll() { for (int c = 0; c * ChunkN < Planet.Cells.Length; c++) dirty.Add(c); }
 
     public static int Slot = 1;   // drie opslagslots: planeet1.json, planeet2.json, planeet3.json
+    // Een stad die nog de ongewijzigde startstad is, wordt bij het laden opnieuw gebouwd als de startstad in de code veranderd is
+    // (StartTownVersion omhoog). Zodra je zelf iets bouwt (UserEdit) blijft je stad zoals hij is.
+    public const int StartTownVersion = 2;
+    public static int StartVer, StartCell = -1; static bool startFresh;
+    public static void UserEdit() { if (startFresh) startFresh = false; else StartVer = 0; }
     static string FilePath => Path.Combine(Application.persistentDataPath, "planeet" + Slot + ".json");
     public static bool SlotExists(int n) => File.Exists(Path.Combine(Application.persistentDataPath, "planeet" + n + ".json"));
 
@@ -1236,6 +1241,7 @@ public static partial class PlanetCity
             foreach (var kv in CenterOfs) { sd.center.Add(kv.Key); sd.center.Add(Mathf.RoundToInt(kv.Value * 100f)); }
             foreach (int b in Bike) if (Cells.ContainsKey(b)) sd.bike.Add(b);
             foreach (int c in Rot) if (IsRoad(c)) sd.rot.Add(c);
+            sd.startVer = StartVer; sd.startCell = StartCell;
             return JsonUtility.ToJson(sd);
         }
     }
@@ -1245,7 +1251,9 @@ public static partial class PlanetCity
         try
         {
             if (!File.Exists(FilePath)) return false;
-            return Restore(File.ReadAllText(FilePath));
+            if (!Restore(File.ReadAllText(FilePath))) return false;
+            if (StartVer > 0 && StartVer < StartTownVersion) { int s = StartCell >= 0 && StartCell < Planet.Cells.Length ? StartCell : Planet.North; ClearAll(); StartTown(s); Save(); }   // de nieuwe startstad
+            return true;
         }
         catch (Exception e) { Debug.LogWarning("Laden mislukt: " + e.Message); return false; }
     }
@@ -1254,6 +1262,7 @@ public static partial class PlanetCity
         try
         {
             var sd = JsonUtility.FromJson<PSaveData>(json); if (sd == null || sd.m != Planet.M) return false;
+            StartVer = sd.startVer; StartCell = sd.startCell; startFresh = false;
             Cells = new Dictionary<int, List<string>>();
             foreach (var c in sd.cells) if (c.items != null && c.items.Length > 0 && c.i >= 0 && c.i < Planet.Cells.Length) Cells[c.i] = new List<string>(c.items);
             ClearLinks();
@@ -2014,7 +2023,7 @@ public static partial class PlanetCity
         Vector2 w = (o0 + o1 - i0 - i1) * 0.5f;
         m.Quad(fr.P(o0.x, skb, o0.y), fr.P(o1.x, skb, o1.y), fr.P(o1.x, SY, o1.y), fr.P(o0.x, SY, o0.y), fr.D(w.x, 0, w.y));
     }
-    public static float LaneOffset(int i) { byte s = StyleOf(i); return s == 1 ? 2.5f : s == 2 ? 2.9f : 1.25f; }   // rijbaan van de auto, rechts van het midden
+    public static float LaneOffset(int i, int lane = -1) { byte s = StyleOf(i); return s == 1 ? (lane < 0 ? 2.5f : lane == 0 ? 1.05f : 3.15f) : s == 2 ? 2.9f : 1.35f; }   // rijbaan van de auto, rechts van het midden; een brede weg heeft twee stroken per richting (0 links, 1 rechts)
     public static float WalkOffset(int i) { byte s = StyleOf(i); return s == 0 ? 3.5f : 5.2f; }                       // looplijn van voetgangers op de stoep
     static Vector2 PoleAt(Vector2 e, Vector2 d) { Vector2 r = new Vector2(d.y, -d.x); return e - d * 0.8f + r * (hwS - 0.6f); }   // verkeerslicht: rechts op de stoep van de arm, net voor de stopstreep (buiten de kruising, anders staat hij bij een scherpe hoek op het asfalt van een andere arm)
     // wereldpositie (bovenkant) van het verkeerslicht bij vak i voor verkeer dat uit buur p komt
@@ -2450,7 +2459,7 @@ public static partial class PlanetCity
             if (st == 1 && na <= 2) for (int ln = -1; ln <= 1; ln += 2) for (float s0 = 0.6f; s0 + 1.2f < L - 0.5f; s0 += 2.6f) { Vector2 off = r * (ln * hwA * 0.5f); Vector2 a0 = e + d * s0 + off, a1 = e + d * (s0 + 1.4f) + off; M("lijn").Quad(fr.P(a0.x - r.x * 0.05f, LY, a0.y - r.y * 0.05f), fr.P(a0.x + r.x * 0.05f, LY, a0.y + r.y * 0.05f), fr.P(a1.x + r.x * 0.05f, LY, a1.y + r.y * 0.05f), fr.P(a1.x - r.x * 0.05f, LY, a1.y - r.y * 0.05f), fr.u); }
             bool medEnd = na == 2 && stA[order[(c + 1) % na]] != 2;   // een laan die in de knoop overgaat in een smallere weg: de berm houdt daar op
             if (st == 2 && (na == 1 || na >= 3 || medEnd)) Median(M, fr, e + d * 0.2f, e + d * Mathf.Max(0.2f, L - 1f));
-            if (na >= 3 && L > 3f) { int zm = Mathf.FloorToInt((hwA - 0.5f) / 0.95f); for (int z = -zm; z <= zm; z++) { Vector2 off = r * (z * 0.95f); Vector2 a0 = e + d * 0.6f + off - r * 0.28f, b0 = e + d * 0.6f + off + r * 0.28f, c0 = e + d * 2.6f + off + r * 0.28f, e0 = e + d * 2.6f + off - r * 0.28f; M("lijn").Quad(fr.P(a0.x, LY, a0.y), fr.P(b0.x, LY, b0.y), fr.P(c0.x, LY, c0.y), fr.P(e0.x, LY, e0.y), fr.u); } }
+            // zebrapaden, stopstrepen en haaientanden staan op de arm buiten de knoop (ChainMesh: daar is de weg recht, ook bij scherpe hoeken)
             if (signals && CanDrive(ids[a], i)) { Vector2 pp = PoleAt(e, d); Cone(M("paal"), fr, pp.x, pp.y, 0.08f, SY, 3.9f, 0.06f); Cone(M("paal"), fr, pp.x, pp.y, 0.24f, 3.3f, 3.95f, 0.24f); }
             if (bridgeNow) { Parapet(M, fr, P(a, -hwS, 0f), P(a, -hwS, sB[cp]), -r); Parapet(M, fr, P(a, hwS, 0f), P(a, hwS, sA[c]), r); }
         }
@@ -2490,8 +2499,7 @@ public static partial class PlanetCity
         var wp = new Vector2[n]; var rnd = new System.Random(hash);
         for (int k = 0; k < n; k++)
         {
-            bool both = open[(k + n - 1) % n] && open[k];
-            float kk = both ? 1.0f : (open[(k + n - 1) % n] || open[k]) ? 0.9f : 0.68f + (float)rnd.NextDouble() * 0.1f;
+            float kk = (open[(k + n - 1) % n] || open[k]) ? 1.0f : 0.68f + (float)rnd.NextDouble() * 0.1f;   // naast een open rand precies op het hoekpunt (anders blijft er een driehoekje open tussen de buurmeren)
             wp[k] = fr.poly[k] * kk;
         }
         float wy = h - 0.35f;

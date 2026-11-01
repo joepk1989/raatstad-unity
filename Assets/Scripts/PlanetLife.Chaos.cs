@@ -18,6 +18,7 @@ public partial class PlanetLife
 
     // per persona (0 netjes, 1 racer, 2 ontwijker, 3 jager): doelsnelheid, op een lang recht stuk, grip in de bocht
     static readonly float[] PTarget = { 0f, 26f, 20f, 17f }, PLong = { 0f, 42f, 32f, 30f }, PGrip = { 9f, 6.5f, 9.5f, 7.5f };
+    const float StopBack = 4.8f;   // zo ver voor het eind van de boog (de vakrand) staat het hart van de auto stil: de neus bij de stopstreep, voor het zebrapad
     const float HL = 2.3f, HW = 0.95f, INERT = (4f * HL * HL + 4f * HW * HW) / 12f;
 
     void GivePersona(Car c)
@@ -27,6 +28,7 @@ public partial class PlanetLife
     }
 
     static Vector3 Flat(Vector3 v, Vector3 up) => v - up * Vector3.Dot(v, up);
+    static Vector3[] pathPts;
     static Vector3 Vel(Car c) => c.free ? c.vel : c.fwd * c.v;
 
     void DriveCar(Car c, float dt)
@@ -44,21 +46,36 @@ public partial class PlanetLife
             if (bendNext > 0.3f) want = Mathf.Min(want, Mathf.Sqrt(81f + 2f * 7.5f * c.late * (1f - c.s) * len));   // afremmen voor wat komt (soms te laat)
         }
 
-        // de auto vlak vooruit op dezelfde strook
-        Car lead = null; float leadD = 1e9f, leadLat = 0f;
+        // keren in de ronde kop van een doodlopende weg: stapvoets, en ervoor afremmen
+        if (c.a == c.c) want = Mathf.Min(want, 3f);
+        else if (c.n == c.b && c.c != c.b) want = Mathf.Min(want, Mathf.Sqrt(9f + 2f * 3f * (1f - c.s) * len));
+
+        // de voorligger: de eerste auto die op mijn eigen pad staat (punten om de 1,5 m tot 22 m vooruit, ook door de bocht en over
+        // de kruising), getoetst tegen zijn doos. Een tegenligger op zijn eigen helft telt niet.
+        Car lead = null; float leadD = 1e9f, leadLat = 0f; bool wideNow = PlanetCity.StyleOf(c.b) == 1;
+        const int NP = 15; if (pathPts == null) pathPts = new Vector3[NP];
+        for (int k = 0; k < NP; k++) pathPts[k] = Ahead(c, 1.5f * (k + 1));
         foreach (var o in cars)
         {
-            if (o == c || o.dead) continue; Vector3 d = o.root.position - pos; float ahead = Vector3.Dot(d, c.fwd);
-            if (ahead < 0.5f || ahead > 26f) continue; float lat = Vector3.Dot(d, right); if (Mathf.Abs(lat) > 2.2f || Mathf.Abs(Vector3.Dot(d, up)) > 2.5f) continue;
-            if (ahead < leadD) { lead = o; leadD = ahead; leadLat = lat; }
+            if (o == c || o.dead) continue; Vector3 d = o.root.position - pos; if (Mathf.Abs(Vector3.Dot(d, up)) > 2.5f || d.sqrMagnitude > 30f * 30f) continue;
+            float lat = Vector3.Dot(d, right), ah0 = Vector3.Dot(d, c.fwd); if (ah0 < -2.5f) continue;
+            if (Vector3.Dot(o.fwd, c.fwd) < -0.3f && Mathf.Abs(lat) > 1.6f) continue;   // een tegenligger op zijn eigen helft
+            Vector3 of = Flat(o.fwd, up).normalized, orr = Vector3.Cross(up, of);
+            for (int k = 0; k < NP; k++)
+            {
+                Vector3 dd = Flat(pathPts[k] - o.root.position, up);
+                if (Mathf.Abs(Vector3.Dot(dd, of)) < HL + 0.3f && Mathf.Abs(Vector3.Dot(dd, orr)) < HW + 0.95f) { float ahead = 1.5f * (k + 1); if (ahead < leadD) { lead = o; leadD = ahead; leadLat = lat; } break; }
+            }
         }
-        float leadV = lead == null ? 0f : Vel(lead).magnitude;
+        float leadV = lead == null ? 0f : Vel(lead).magnitude; c.leadCar = lead;
+        c.idleT = Mathf.Abs(c.v) < 0.3f ? c.idleT + dt : 0f;
         bool ignoreLead = lead != null && (c.dodgeT > 0f || lead == c.stuckCar || lead == c.ovOther);
         bool head = lead != null && leadD < 9f && (lead.free || lead.burnT >= 0f || (Mathf.Abs(lead.v) < 0.5f && !lead.blocked && !lead.atLight));
         c.blocked = lead != null && leadD < 11f && !ignoreLead;
         if (c.blocked) want = Mathf.Min(want, Mathf.Max(0f, (leadD - 4.5f) * (chaos ? 1.6f : 1.2f)));
 
         c.atLight = false;
+        if (!chaos) { ChooseLane(c, lead, leadD, leadV); if (MustMerge(c, len)) want = Mathf.Min(want, 2.5f); }   // ritsen waar de weg smaller wordt: wie links rijdt en er niet tussen past laat zich terugzakken
         // de rotonde op (de volgende boog is de rotonde): voorrang aan wie er al rijdt en naar onze inrit toe komt
         if (!chaos && c.c != c.b && PlanetCity.IsRot(c.c) && !PlanetCity.IsRot(c.b))
         {
@@ -96,10 +113,28 @@ public partial class PlanetLife
             var ts = Traffic.State(c.c, c.b);
             if (ts != Traffic.S.Groen)
             {
-                float d = Mathf.Max(0f, (1f - c.s) * len - 1.2f);
+                float d = Mathf.Max(0f, (1f - c.s) * len - StopBack);   // de neus bij de stopstreep
                 if (ts == Traffic.S.Rood || d > c.v * c.v / 10f) { want = Mathf.Min(want, Mathf.Sqrt(2f * 4f * d)); c.atLight = true; }
             }
         }
+
+        // voorrang op een kruising (PlanetLife.Physics)
+        yieldWhy = ""; bool yieldNow = !chaos && MustYield(c, len);
+        if (yieldNow) { float d = Mathf.Max(0f, (1f - c.s) * len - StopBack); want = Mathf.Min(want, Mathf.Sqrt(2f * 4f * d)); c.atLight = true; }
+        c.waitPri = yieldNow ? c.waitPri + dt : Mathf.Abs(c.v) > 1f ? 0f : c.waitPri;   // hoe lang hij al voorrang geeft; pas weer nul als hij echt rijdt (anders pendelt het escape na 6 s heen en weer)
+
+        // kruisend verkeer (webversie): komen we elkaar binnen 3 s dwars tegen (dichter dan 2,3 m), dan wacht wie later bij het
+        // kruispunt is (bij gelijk: vaste volgorde)
+        if (!chaos && c.v > -0.5f)
+            foreach (var o in cars)
+            {
+                if (o == c || o.dead || Mathf.Abs(Vector3.Dot(o.fwd, c.fwd)) > 0.9f) continue;
+                Vector3 dp = Flat(o.root.position - pos, up); if (dp.sqrMagnitude > 400f || Mathf.Abs(Vector3.Dot(o.root.position - pos, up)) > 2.5f) continue;
+                Vector3 w = Flat(Vel(o), up) - c.fwd * c.v; float w2 = w.sqrMagnitude; if (w2 < 0.25f) continue;
+                float tc = -Vector3.Dot(dp, w) / w2; if (tc <= 0f || tc > 3.5f || (dp + w * tc).sqrMagnitude > 3f * 3f) continue;
+                int myT = Vector3.Dot(dp, c.fwd) > 0f ? 1 : 0, otherT = Vector3.Dot(-dp, o.fwd) > 0f ? 1 : 0;
+                if (myT > otherT || (myT == otherT && c.GetHashCode() > o.GetHashCode())) { want = Mathf.Min(want, tc < 1.2f ? 0f : 2f); c.atLight = true; break; }
+            }
 
         // persona's
         if (p == 1)   // racer: inhalen over de linker strook
@@ -146,12 +181,17 @@ public partial class PlanetLife
             }
         }
 
+        // neus aan neus met een tegenligger (een van beiden is om een obstakel heen op de verkeerde helft beland) en allebei stil:
+        // wie het langst staat rijdt een stukje achteruit en gaat terug naar zijn eigen strook, zodat de ander erlangs kan
+        if (!chaos && lead != null && leadD < 7.5f && Mathf.Abs(c.v) < 0.3f && Mathf.Abs(lead.v) < 0.3f && Vector3.Dot(lead.fwd, c.fwd) < -0.3f && c.idleT > 5f && c.backT <= 0f
+            && (c.idleT > lead.idleT + 0.5f || (Mathf.Abs(c.idleT - lead.idleT) <= 0.5f && c.GetHashCode() > lead.GetHashCode())))
+        { c.backT = 1.6f; c.retreat = true; c.latT = 0f; c.aroundT = 0f; c.stuckCar = null; c.oppWait = 0f; c.beepT = 0f; c.idleT = 0f; }
         // vastzitten achter een auto die niet meer rijdt: wachten, achteruit, eromheen
         if (c.backT > 0f)
         {
             c.backT -= dt; c.beepT -= dt;
             if (c.type == "bestel" && c.beepT <= 0f) { c.beepT = 0.6f; OneShot(c, beepClip, 0.5f); }
-            if (c.backT <= 0f) { c.aroundT = chaos ? 3.5f : 5f; c.oppWait = 0f; }
+            if (c.backT <= 0f) { if (c.retreat) c.retreat = false; else { c.aroundT = chaos ? 3.5f : 5f; c.oppWait = 0f; } }
         }
         else if (c.aroundT > 0f || c.stuckCar != null)
         {
@@ -185,17 +225,15 @@ public partial class PlanetLife
         }
         else c.waitT = 0f;
 
-        // snelheid
+        // snelheid: de bestuurder geeft gas of remt en stuurt naar zijn rijlijn; de auto zelf rijdt met fysica (PlanetLife.Physics)
         if (c.burnT >= 0f) want = 0f;
         if (c.ghostT > 0f) want = Mathf.Min(want, 2.5f);
-        if (c.backT > 0f) c.v = Mathf.MoveTowards(c.v, chaos ? -3f : -1.6f, 8f * dt);
-        else
-        {
-            float acc = !chaos ? 4f : p == 1 && straight ? 12f : 7f, brk = c.burnT >= 0f ? 3f : 9f;
-            c.v = Mathf.MoveTowards(c.v, want, (want > c.v ? acc : brk) * dt);
-        }
+        float acc = !chaos ? 4f : p == 1 && straight ? 12f : 7f, brk = c.burnT >= 0f ? 3f : 9f;
+        if (c.backT > 0f) { want = chaos ? -3f : -1.6f; acc = 8f; }
         c.lat = Mathf.MoveTowards(c.lat, c.latT, (chaos ? 3f : 1.5f) * dt);
-        c.s += c.v * dt / len; if (c.s < 0f) { c.s = 0f; c.v = 0f; }
+        if (diagOn) c.why = $"a{c.a} pri{c.waitPri:0} want{want:0.0} blk{c.blocked} lead{(lead == null ? -1f : leadD):0.0} leadv{leadV:0.0} licht{c.atLight} yield{yieldNow}{yieldWhy} back{c.backT:0.0} around{c.aroundT:0.0} opp{c.oppWait:0.0} wait{c.waitT:0.0} stuck{(c.stuckCar != null)}";
+        Physics(c, want, acc, brk, chaos ? PGrip[p] : 11f, dt);
+        Track(c, dt);
         while (c.s >= 1f)
         {
             c.s -= 1f; c.a = c.b; c.b = c.c; c.c = PlanetCity.IsRoad(c.n) ? c.n : NextRoad(c.b, c.a); c.n = NextRoad(c.c, c.b);
@@ -285,7 +323,7 @@ public partial class PlanetLife
             Arc(c.a, c.b, c.c, k / 10f, Lane(c.a, c.b), 0.1f, out Vector3 q, out _, out _);
             float d = (q.normalized - pd).sqrMagnitude; if (d < best) { best = d; bestS = k / 10f; }
         }
-        c.s = bestS; c.v = 0f; c.free = false; c.air = false; c.fromPos = p; c.fromRot = c.root.rotation; c.blendT = 1.2f; c.ghostT = 3f;
+        c.s = bestS; c.free = false; c.air = false; c.w = 0f; c.ghostT = 3f; c.v = Vector3.Dot(c.vel, c.fwd);   // hij rijdt zelf terug naar de rijlijn (fysica), zonder sprong
         c.lat = c.latT = 0f; c.ovOther = null; c.stuckCar = null; c.prey = null; c.aroundT = c.backT = c.waitT = c.dodgeT = c.huntT = 0f;
     }
 
@@ -308,17 +346,15 @@ public partial class PlanetLife
                 }
                 if (!hit) continue; if (Vector3.Dot(d, n) < 0f) n = -n;
                 Vector3 va = Vel(A), vb = Vel(B); float impact = Vector3.Dot(va - vb, n);
-                if (impact > 1.5f)
+                if (impact > 0.3f)   // een duw: beide auto's krijgen een stoot in hun snelheid en draaien wat; bij een harde klap tollen ze los
                 {
-                    if (!A.free) GoFree(A, va, 0f, 6f); if (!B.free) GoFree(B, vb, 0f, 6f); A.fric = B.fric = 6f;
+                    if (impact > 6f) { if (!A.free) GoFree(A, va, 0f, 6f); if (!B.free) GoFree(B, vb, 0f, 6f); A.fric = B.fric = 6f; }
                     float J = 1.25f * impact / 2f; A.vel -= n * J; B.vel += n * J;
                     Vector3 cp = (pa + pb) * 0.5f;
                     A.w += Vector3.Dot(Vector3.Cross(cp - pa, -n * J), up) / INERT; B.w += Vector3.Dot(Vector3.Cross(cp - pb, n * J), up) / INERT;
-                    Damage(A, impact * 1.9f); Damage(B, impact * 1.9f); A.stillT = B.stillT = 0f; Crashes++; LastIncident = cp; LastIncidentT = Time.time;
+                    if (impact > 1.5f) { Damage(A, impact * 1.9f); Damage(B, impact * 1.9f); A.stillT = B.stillT = 0f; Crashes++; LastIncident = cp; LastIncidentT = Time.time; if (diagOn) CrashLog += $"klap {impact:0.0}: A b{A.b} c{A.c} n{A.n} s{A.s:0.00} v{A.v:0.0} free{A.free} {A.why} | B b{B.b} c{B.c} n{B.n} s{B.s:0.00} v{B.v:0.0} free{B.free} {B.why}\n"; }
                 }
-                if (A.free) A.root.position -= n * best * (B.free ? 0.5f : 1f);
-                if (B.free) B.root.position += n * best * (A.free ? 0.5f : 1f);
-                if (!A.free && !B.free) { if (Vector3.Dot(d, A.fwd) > 0f) A.v *= 0.5f; else B.v *= 0.5f; }
+                A.root.position -= n * best * 0.5f; B.root.position += n * best * 0.5f;
             }
     }
 

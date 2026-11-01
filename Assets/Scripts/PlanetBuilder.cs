@@ -145,7 +145,7 @@ public class PlanetBuilder : MonoBehaviour
     }
     // na een wijziging: het deel onder de muis meteen opnieuw tekenen, de rest (buurdelen, raster, opslaan) in de volgende beelden
     bool rebuilding;
-    void Changed() { beautyVer++; PlanetCity.Save(); PlanetCity.RebuildSoon(hasHover ? hover : -1); rebuilding = true; RebuildTick(0f); beautyT = -99f; }   // 0: in dit beeld alleen het deel van de klik
+    void Changed() { PlanetCity.UserEdit(); beautyVer++; PlanetCity.Save(); PlanetCity.RebuildSoon(hasHover ? hover : -1); rebuilding = true; RebuildTick(0f); beautyT = -99f; }   // 0: in dit beeld alleen het deel van de klik
     void RebuildTick(float budget) { if (PlanetCity.RebuildSome(budget)) { PlanetCity.RebuildGrid(); rebuilding = false; } }
     void ToggleSound() { Babble.Muted = !Babble.Muted; Ambience.Muted = Babble.Muted; Say(Babble.Muted ? "Geluid uit" : "Geluid aan"); }
     void ToggleHelp()
