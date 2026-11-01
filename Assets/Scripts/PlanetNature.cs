@@ -123,6 +123,15 @@ public static partial class PlanetCity
     // (de buren houden hun hoogte: CornerBase0 slaat een gracht over). Een brug over een gracht houdt de gracht eronder.
     public const float LakeBed = SeaLevel - 2.5f, CanalBed = SeaLevel - 2f;
     static float LakeG(int i, float h) => h > LakeBed && Cells.TryGetValue(i, out var l) && l.Count == 1 && l[0] == "meer" ? LakeBed : h;
+    static bool IsLake(int i) => Cells.TryGetValue(i, out var l) && l.Count == 1 && l[0] == "meer";
+    // een dam: op een hoekpunt waar een weg of pad aan een meer grenst telt het meer niet mee, zodat de grond onder de weg niet in
+    // het meer zakt; het meer loopt daar schuin op naar de dam
+    static void DamSkip(int i, int a, int b, ref bool qi, ref bool qa, ref bool qb)
+    {
+        bool li = IsLake(i), la = IsLake(a), lb = IsLake(b); if (!li && !la && !lb) return;
+        if (!IsWalk(i) && !IsWalk(a) && !IsWalk(b)) return;
+        qi |= li; qa |= la; qb |= lb;
+    }
     public static bool Quay(int i) => (Cells.TryGetValue(i, out var l) && l.Count == 1 && l[0] == "water") || (Under.TryGetValue(i, out var u) && u == "water");
     static void Canal(System.Func<string, MeshBuilder> M, int i)
     {
@@ -177,6 +186,27 @@ public static partial class PlanetCity
         go.AddComponent<MeshFilter>().sharedMesh = mb.Build();
         var mat = Mats.Get("p_zee", new Color(0.16f, 0.42f, 0.62f, 0.78f)); if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.85f);
         var mr = go.AddComponent<MeshRenderer>(); mr.sharedMaterial = mat; mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        var reeds = new MeshBuilder();
+        for (int i = c0; i < c1; i++) if (Wet(i) && !Quay(i)) Reeds(reeds, i);
+        if (reeds.v.Count == 0) return;
+        var rg = new GameObject("Riet " + (c0 / ChunkN)); rg.transform.SetParent(parent, false); made.Add(rg);
+        rg.AddComponent<MeshFilter>().sharedMesh = reeds.Build(); rg.AddComponent<MeshRenderer>().sharedMaterial = Mats.Get("p_riet", ColorOf("riet"));
+    }
+    // riet langs de waterlijn: pollen op de plekken van het vak waar de grond net onder of boven het water ligt
+    static void Reeds(MeshBuilder m, int i)
+    {
+        var fr = new Frame(i); var rnd = new System.Random(i * 7919 + 13);
+        for (int s = 0; s < 10; s++)
+        {
+            float a = (float)rnd.NextDouble() * Mathf.PI * 2f, rr = (0.2f + (float)rnd.NextDouble() * 0.75f) * fr.rad, x = Mathf.Cos(a) * rr, z = Mathf.Sin(a) * rr;
+            float gt = TerrainAt((fr.o + fr.e * x + fr.n * z).normalized); if (gt < SeaLevel - 0.5f || gt > SeaLevel + 0.15f) continue;
+            float y0 = gt - G(i) - 0.1f;
+            for (int t = 0; t < 4; t++)
+            {
+                float ox = x + ((float)rnd.NextDouble() - 0.5f) * 0.9f, oz = z + ((float)rnd.NextDouble() - 0.5f) * 0.9f;
+                Cone(m, fr, ox, oz, 0.07f, y0, y0 + 1.3f + (float)rnd.NextDouble() * 0.8f, 0f);
+            }
+        }
     }
 
     static bool NatureColor(string k, out Color c)

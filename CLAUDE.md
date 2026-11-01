@@ -39,7 +39,7 @@ Erbij gekomen op 25 oktober 2026:
 - Bouwblokken winkel, plein, toren en molen (draaiende `Wieken`), ook in de schoonheidsscore en de praatjes. Bloktypes staan in `Blocks` (`City.cs`), tekenen per blok in `PlanetCity.BuildChunk`.
 - Polen gemarkeerd: `Planet.North`/`South`/`IsPole`, gestreepte paal met vlag op een ijswit vak; toets N springt ernaartoe (P is pauze, zoals de webversie).
 - Wegprofiel van de webversie: asfalt 10 cm, schuine stoeprand 30 cm, stoep 25 cm; geen stoep over het asfalt van een andere arm, ronde stoephoeken op kruisingen.
-- Terrein (low poly, als `07b-terrein.js`): hoogte per vak 0–30 m in `PlanetCity.Terr`, bebouwde vakken op een sokkel, wegen hellen mee (`Frame.H`, `PlanetCity.SurfaceH`). Boetseren met het gereedschap Terrein (toets 9): ophogen, afgraven, egaliseren, gladstrijken, helling; penseel 1/7/19/37 vakken.
+- Terrein (low poly, als `07b-terrein.js`): hoogte per vak −12 tot 90 m in `PlanetCity.Terr`, bebouwde vakken op een sokkel, wegen hellen mee (`Frame.H`, `PlanetCity.SurfaceH`). Boetseren met het gereedschap Terrein (toets 9): ophogen, afgraven, egaliseren, gladstrijken, helling; penseel 1/7/19/37 vakken.
 
 Erbij gekomen op 28 oktober 2026:
 - Bediening gelijk aan de webversie: Q/E draaien, WASD/pijltjes schuiven, +/− zoomen, rechts of Shift slepen schuift, middelste knop of Alt slepen draait; P pauze, O weer, N polen, I eenrichting, M menu, ? bediening. Het venster Bediening (`PlanetBuilder.Help`) hoort gelijk te blijven met de code.
@@ -59,6 +59,11 @@ Erbij gekomen op 31 oktober 2026:
 - Fietsers houden het stuur vast en trappen mee: na de animatie buigen arm en been (twee botten, cosinusregel) naar handvat en pedaal (`PlanetLife.LateUpdate`); omafietsstuur, trappers draaien met de wielen mee.
 - Voertuigen en rijgedrag van de webversie: zeven low-poly auto's uit zeshoekige doorsneden; netjes verkeer komt los achter een stilstaande auto; Totale chaos (menu) geeft elke auto een persona (racer, ontwijker, jager), met slippen, botsen, schade, brand en mensen omverrijden.
 - Interface: zes vaste bouwcategorieën (1–6) met een lade, Tab vasthouden voor een zeshoekig keuzewiel, middelste klik als pipet, vooraf het effect op de schoonheid bij de muis en een TIP voor het zwakste onderdeel; blokpatronen, laagkiezer, uitleg bij aanwijzen (`Ui.Tip`), interfacegrootte in het menu, ongelukjesteller.
+
+Erbij gekomen op 1 november 2026 (natuur, `PlanetNature.cs`):
+- Bomen los op het terrein, zonder grasplaat of sokkel (park, meer en gracht zijn geen plateau: `OpenGround`): loofboom, den, berk en struik op ware grootte, soort naar hoogte, helling en een bosruis; boomgrens 48 m.
+- Zeeniveau (`SeaLevel` = −1 m): waar het maaiveld lager ligt staat water (`SeaChunk`), met zand en riet langs de waterlijn; wegen tellen niet mee. Meer: het vak ligt vanzelf op `LakeBed` (via `G`), een weg erover is een dam (`DamSkip`). Gracht: bodem en bakstenen kademuren (`Canal`, `Quay`), de buren houden hun hoogte.
+- Bergen tot 90 m (`TerrTop`): rots op steile flanken, sneeuw boven 54 m. Hele planeet vol maakt berggebieden zonder stadjes (`MountainMask`). De camera volgt het maaiveld vloeiend (`camH`) en blijft boven een bergflank.
 
 Nog te doen:
 1. Modules als JSON met edge-codes (nu nog in code)

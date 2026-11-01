@@ -10,7 +10,7 @@ public class PlanetBuilder : MonoBehaviour
 {
     public Camera Cam;
     Vector3 focus = Vector3.up, fwd = Vector3.forward;
-    float pitch = 55f, dist = 260f;
+    float pitch = 55f, dist = 260f, camH = float.NaN;   // camH: de hoogte waar de camera omheen draait, vloeiend over het terrein
     int hover = -1; bool hasHover;
     readonly List<string> undo = new List<string>();   // de hele stad per stap (PlanetCity.Snapshot): ook verbindingen, bruggen en terrein van voor een niveau
     LineRenderer outline; PlanetWalker walker; bool walking; string msg = ""; float msgT;
@@ -54,8 +54,8 @@ public class PlanetBuilder : MonoBehaviour
             case "molen": return "Molen met draaiende wieken";
             case "park": return "Gras en bomen";
             case "plein": return "Bestraat plein";
-            case "water": return "Gracht; een weg erover wordt een brug";
-            case "meer": return "Meertje met oever en riet";
+            case "water": return "Gracht met kademuren, water op het zeeniveau; een weg erover wordt een brug";
+            case "meer": return "Meer: een kom tot onder het zeeniveau, met zand en riet aan de oever; een weg erover wordt een dam";
             case "kuil": return "Uitgraving; een weg erover wordt een brug";
             case "t:0": return "Grond omhoog (Shift: omlaag)";
             case "t:1": return "Grond omlaag (Shift: omhoog)";
@@ -702,9 +702,11 @@ public class PlanetBuilder : MonoBehaviour
             }
         }
         up = focus; fwd = (fwd - up * Vector3.Dot(fwd, up)).normalized;
-        int fc = Planet.Nearest(focus); float h = PlanetCity.G(fc) + PlanetCity.StackHeight(fc);
-        Vector3 target = focus * (Planet.R + h);
+        int fc = Planet.Nearest(focus); float h = PlanetCity.Plateau(fc) ? PlanetCity.G(fc) + PlanetCity.StackHeight(fc) : PlanetCity.TerrainAt(focus);   // het maaiveld onder het midden (geen sprong per vak)
+        camH = float.IsNaN(camH) || Mathf.Abs(h - camH) > 150f ? h : Mathf.Lerp(camH, h, 1f - Mathf.Exp(-6f * dt));   // vloeiend mee omhoog en omlaag over bergen
+        Vector3 target = focus * (Planet.R + camH);
         Vector3 pos = target + (-fwd * Mathf.Cos(pitch * Mathf.Deg2Rad) + up * Mathf.Sin(pitch * Mathf.Deg2Rad)) * dist;
+        { float gp = PlanetCity.TerrainAt(pos.normalized) + 2f; if (pos.magnitude < Planet.R + gp) pos = pos.normalized * (Planet.R + gp); }   // niet door een bergflank
         Cam.transform.position = pos; Cam.transform.rotation = Geo.Look(target - pos, up);
     }
 

@@ -117,7 +117,7 @@ public static partial class PlanetCity
     static float CornerBase0(int i, int k)
     {
         Topo(); int a = cnA[i][k], b = cnB[i][k];
-        bool qi = Quay(i), qa = Quay(a), qb = Quay(b);   // een gracht heeft kademuren: de buren lopen niet naar de bodem af (PlanetNature.cs)
+        bool qi = Quay(i), qa = Quay(a), qb = Quay(b); DamSkip(i, a, b, ref qi, ref qa, ref qb);   // een gracht heeft kademuren: de buren lopen niet naar de bodem af; een weg over een meer is een dam (PlanetNature.cs)
         if (carved.Count == 0 && !qi && !qa && !qb) return Mathf.Min(G(i), Mathf.Min(G(a), G(b)));
         float h = float.MaxValue; if (!carved.Contains(i) && !qi) h = G(i); if (!carved.Contains(a) && !qa) h = Mathf.Min(h, G(a)); if (!carved.Contains(b) && !qb) h = Mathf.Min(h, G(b));
         if (h == float.MaxValue) h = Mathf.Min(G(i), Mathf.Min(G(a), G(b)));
