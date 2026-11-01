@@ -1063,6 +1063,7 @@ public static partial class PlanetCity
     public static string Place(int i, string type, bool autoLink = true)
     {
         if (!Cells.TryGetValue(i, out var l)) { l = new List<string>(); Cells[i] = l; }
+        if ((type == "weg" || type == "pad") && l.Count == 1 && l[0] == "park") l.Clear();   // een weg of pad kan altijd door een bos: de bomen wijken
         if (type == "weg")
         {
             if (l.Count == 1 && l[0] == "wegdeel") l.Clear();
