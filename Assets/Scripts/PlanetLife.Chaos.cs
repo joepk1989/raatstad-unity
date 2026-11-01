@@ -71,6 +71,25 @@ public partial class PlanetLife
             }
             if (give) { float d = Mathf.Max(0f, (1f - c.s) * len - 5f); want = Mathf.Min(want, Mathf.Sqrt(2f * 4f * d)); c.atLight = true; }   // achter de haaientanden wachten, niet op de ring
         }
+        // een zebrapad (een pad dat de weg oversteekt) in het midden van dit vak of het volgende: stoppen voor wie oversteekt
+        if (!chaos)
+        {
+            int zc = c.s < 0.5f && PlanetCity.HasZebra(c.b) ? c.b : c.c != c.b && PlanetCity.HasZebra(c.c) ? c.c : -1;
+            if (zc >= 0)
+            {
+                Vector3 zp = Planet.Cells[zc].dir * Planet.R; bool walking = false;
+                foreach (var a in People)
+                {
+                    if (a.downT > 0f || !((a.cellA == zc && PlanetCity.IsPath(a.cellB)) || (a.cellB == zc && PlanetCity.IsPath(a.cellA)))) continue;
+                    Vector3 d = a.root.position - zp; d -= zp.normalized * Vector3.Dot(d, zp.normalized); if (d.magnitude < 9f) { walking = true; break; }
+                }
+                if (walking)
+                {
+                    float d = (zc == c.b ? (0.5f - c.s) * len : (1f - c.s) * len + 0.5f * ArcLen(c.b, c.c, c.n)) - 3.5f;
+                    if (d > -1f) { want = Mathf.Min(want, Mathf.Sqrt(2f * 4f * Mathf.Max(0f, d))); c.atLight = true; }
+                }
+            }
+        }
         // verkeerslicht aan het eind van deze boog: remmen voor rood, en voor geel als dat nog kan
         if (c.c != c.b && Traffic.IsJunction(c.c))
         {

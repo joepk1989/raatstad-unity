@@ -35,7 +35,7 @@ public partial class PlanetLife : MonoBehaviour
     // volgend wegvak vanaf a, liefst niet terug naar prev
     static int NextRoad(int a, int prev, bool walk = false)
     {
-        var opts = new List<int>(6); foreach (int j in PlanetCity.Partners(a)) if ((walk ? PlanetCity.IsWalk(j) && !PlanetCity.IsRot(j) : PlanetCity.IsRoad(j) && PlanetCity.CanDrive(a, j)) && j != prev) opts.Add(j);   // voetgangers lopen niet over de rotonde   // auto's volgen het eenrichtingsverkeer
+        var opts = new List<int>(6); foreach (int j in PlanetCity.Partners(a)) if ((walk ? PlanetCity.IsWalk(j) : PlanetCity.IsRoad(j) && PlanetCity.CanDrive(a, j)) && j != prev) opts.Add(j);   // auto's volgen het eenrichtingsverkeer; voetgangers lopen om een rotonde heen (RotWalk)   // auto's volgen het eenrichtingsverkeer
         if (opts.Count == 0) return prev >= 0 && (walk ? PlanetCity.LinkedWalk(a, prev) : PlanetCity.LinkedRoad(a, prev) && PlanetCity.CanDrive(a, prev)) ? prev : a;
         return opts[Random.Range(0, opts.Count)];
     }
@@ -70,8 +70,14 @@ public partial class PlanetLife : MonoBehaviour
         bool ra = PlanetCity.IsRoad(a.cellA) && !PlanetCity.UnderLink(a.cellA, a.cellB), rb = PlanetCity.IsRoad(a.cellB) && !PlanetCity.UnderLink(a.cellB, a.cellA);   // onder een brug: op het pad
         float side = ra && rb ? (PlanetCity.WalkOffset(a.cellA) + PlanetCity.WalkOffset(a.cellB)) * 0.5f : ra ? PlanetCity.WalkOffset(a.cellA) * 0.5f : rb ? PlanetCity.WalkOffset(a.cellB) * 0.5f : PlanetCity.IsBike(a.cellA) && PlanetCity.IsBike(a.cellB) ? 2.4f : 0.35f;   // op een fietspad: rechts op de strook voor voetgangers
         float hgt = Mathf.Lerp(ra ? 0.25f : 0.11f, rb ? 0.25f : 0.11f, a.ct);   // op de stoep (25 cm) of op een pad
-        Where(a.cellA, a.cellB, a.ct, side, hgt, out Vector3 pos, out Vector3 fwd, out Vector3 up);
-        pos += up * (a.ct < 0.5f ? PlanetCity.SurfaceH(a.cellA, a.cellB, pos) : PlanetCity.SurfaceH(a.cellB, a.cellA, pos));   // terreinhoogte en de helling van de weg
+        Vector3 pos, fwd, up;
+        if (PlanetCity.IsRot(a.cellA) && a.prevCell >= 0 && a.prevCell != a.cellA) { RotWalk(a.prevCell, a.cellA, a.cellB, a.ct, out pos, out fwd, out up); pos += up * (PlanetCity.G(a.cellA) + 0.25f); }   // over de stoep om de rotonde
+        else
+        {
+            float ct = PlanetCity.IsRot(a.cellB) ? a.ct * RotWalkIn(a.cellA, a.cellB) : a.ct;   // naar een rotonde: tot de stoep eromheen
+            Where(a.cellA, a.cellB, ct, side, hgt, out pos, out fwd, out up);
+            pos += up * (ct < 0.5f ? PlanetCity.SurfaceH(a.cellA, a.cellB, pos) : PlanetCity.SurfaceH(a.cellB, a.cellA, pos));
+        }   // terreinhoogte en de helling van de weg
         // De route (van vak naar vak, met de sprongetjes van bochten en randen) is alleen het doel: de voetganger stuurt ernaartoe,
         // met een grens aan versnellen, en wijkt uit voor wie te dichtbij komt. Zo loopt hij vloeiend, ook om een bocht en bij keren.
         if (dt <= 0f || !a.hasAt) { a.at = pos; a.vel = Vector3.zero; a.hasAt = true; a.lag = 0f; }
@@ -146,6 +152,23 @@ public partial class PlanetLife : MonoBehaviour
         Vector3 right = Vector3.Cross(up, fwd);
         pos = up * (Planet.R + h) + right * side;
     }
+    // Voetgangers om een rotonde: over het midden van de stoep eromheen (straal RotW), de kortste kant van de arm waar ze vandaan komen
+    // naar de arm waar ze heen gaan; naar de rotonde toe lopen ze tot die stoep
+    const float RotW = PlanetCity.RotRo + PlanetCity.RotWalk * 0.5f;
+    static float RotWalkIn(int a, int rot) => Mathf.Clamp01((Vector3.Distance(Planet.Cells[a].dir, Planet.Cells[rot].dir) * Planet.R - RotW) / Mathf.Max(1f, Vector3.Distance(Planet.Cells[a].dir, Planet.Cells[rot].dir) * Planet.R));
+    static void RotAngles(int from, int rot, int to, out float f0, out float span)
+    {
+        var c = Planet.Cells[rot]; Vector3 d0 = Planet.Cells[from].dir - c.dir, d1 = Planet.Cells[to].dir - c.dir;
+        f0 = Mathf.Atan2(Vector3.Dot(d0, c.north), Vector3.Dot(d0, c.east)); float f1 = Mathf.Atan2(Vector3.Dot(d1, c.north), Vector3.Dot(d1, c.east));
+        span = Mathf.DeltaAngle(f0 * Mathf.Rad2Deg, f1 * Mathf.Rad2Deg) * Mathf.Deg2Rad; if (from == to) span = Mathf.PI;   // terug naar dezelfde arm: een halve ronde en weer terug zou raar zijn; dan maar half rond
+    }
+    static float RotWalkLen(int from, int rot, int to) { RotAngles(from, rot, to, out _, out float span); return Mathf.Max(1.5f, Mathf.Abs(span) * RotW); }
+    static void RotWalk(int from, int rot, int to, float t, out Vector3 pos, out Vector3 fwd, out Vector3 up)
+    {
+        var c = Planet.Cells[rot]; RotAngles(from, rot, to, out float f0, out float span); float f = f0 + span * t;
+        Vector3 rad = c.east * Mathf.Cos(f) + c.north * Mathf.Sin(f); up = (c.dir * Planet.R + rad * RotW).normalized; pos = up * Planet.R;
+        Vector3 tg = (-c.east * Mathf.Sin(f) + c.north * Mathf.Cos(f)) * Mathf.Sign(span == 0f ? 1f : span); fwd = (tg - up * Vector3.Dot(tg, up)).normalized;
+    }
     // het midden van de rand x–y, of bij een rotonde het punt op de cirkel van de rijbaan in de richting van de arm
     static Vector3 Mid(int x, int y)
     {
@@ -190,7 +213,7 @@ public partial class PlanetLife : MonoBehaviour
     {
         System.Func<int, bool> ok = walk ? (System.Func<int, bool>)PlanetCity.IsWalk : PlanetCity.IsRoad;
         if (a == b || !ok(a) || !ok(b)) { if (!ok(a)) return false; b = NextRoad(a, prev, walk); t = 0f; if (a == b) return true; }
-        float len = Vector3.Distance(Planet.Cells[a].dir, Planet.Cells[b].dir) * Planet.R;
+        float len = walk && PlanetCity.IsRot(b) ? 1.5f : walk && PlanetCity.IsRot(a) && prev >= 0 ? RotWalkLen(prev, a, b) : Vector3.Distance(Planet.Cells[a].dir, Planet.Cells[b].dir) * Planet.R;   // om een rotonde: over de stoep
         t += speed * dt / Mathf.Max(0.1f, len);
         while (t >= 1f) { t -= 1f; prev = a; a = b; b = NextRoad(a, prev, walk); if (a == b) { t = 0f; break; } }
         return true;

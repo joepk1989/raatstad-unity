@@ -14,12 +14,14 @@ public static partial class PlanetCity
     public static bool IsRot(int i) => Rot.Contains(i) && IsRoad(i);
     // de rotonde waar vak i bij hoort (het midden zelf of een vak van de ring), of -1
     public static int RotOf(int i) { if (IsRot(i)) return i; foreach (int j in Planet.Cells[i].nb) if (IsRot(j)) return j; return -1; }
-    static bool RotFree(int x) => !Under.ContainsKey(x) && (!Cells.TryGetValue(x, out var l) || l.Count == 0 || (l.Count == 1 && (l[0] == "weg" || l[0] == "pad")));
+    static bool RotFree(int x) => !Under.ContainsKey(x) && (!Cells.TryGetValue(x, out var l) || l.Count == 0 || (l.Count == 1 && (l[0] == "weg" || l[0] == "pad" || l[0] == "wegdeel")));   // een half vak naast een schuine weg mag ook
 
     // een rotonde met midden c: het midden en de ring moeten leeg zijn (of weg of pad); wegen op de ring sluiten erop aan
     public static string PlaceRoundabout(int c)
     {
         if (RotOf(c) >= 0) return null;   // hoort al bij een rotonde (slepen over de rotonde)
+        if (!(IsRoad(c) && RoadNb(c).Count >= 3))   // naast een kruispunt geklikt: de rotonde komt op dat kruispunt
+        { int best = -1, most = 2; foreach (int j in Planet.Cells[c].nb) if (IsRoad(j) && RoadNb(j).Count > most) { most = RoadNb(j).Count; best = j; } if (best >= 0) { c = best; if (RotOf(c) >= 0) return null; } }
         foreach (int j in Planet.Cells[c].nb) foreach (int k in Planet.Cells[j].nb) if (k != c && IsRot(k)) return "Hier ligt al een rotonde vlakbij";
         if (!RotFree(c)) return "Hier staat iets in de weg: een rotonde is ongeveer 32 m breed (het vak en de zes eromheen)";
         foreach (int j in Planet.Cells[c].nb) if (!RotFree(j)) return "Hier staat iets in de weg: een rotonde is ongeveer 32 m breed (het vak en de zes eromheen)";
@@ -97,6 +99,8 @@ public static partial class PlanetCity
                 M("lijn").Tri(fr.P(b0.x, LY, b0.y), fr.P(b1.x, LY, b1.y), fr.P(tip.x, LY, tip.y), fr.u);
             }
         }
+        // een zebrapad op elke arm, net buiten de ring: daar steken de voetgangers over die om de rotonde heen lopen
+        foreach (int k in ord) { Vector2 ax = At(openA[k], 1f); Zebra(M, fr, ax * (RotRo + 1.6f), ax, openW[k], 2.4f); }
         // een lantaarn op de stoep tussen twee armen
         { float an = m > 0 ? openA[ord[0]] + 0.6f : 0.4f; Vector2 lp = At(an, rS - 0.6f); Cone(M("paal"), fr, lp.x, lp.y, 0.08f, SY, 5.2f, 0.06f); Cone(M("lamp"), fr, lp.x, lp.y, 0.28f, 4.9f, 5.35f, 0.2f); }
     }

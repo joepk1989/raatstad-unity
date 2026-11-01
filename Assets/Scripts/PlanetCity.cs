@@ -2015,13 +2015,13 @@ public static partial class PlanetCity
     }
     public static float LaneOffset(int i) { byte s = StyleOf(i); return s == 1 ? 2.5f : s == 2 ? 2.9f : 1.25f; }   // rijbaan van de auto, rechts van het midden
     public static float WalkOffset(int i) { byte s = StyleOf(i); return s == 0 ? 3.5f : 5.2f; }                       // looplijn van voetgangers op de stoep
-    static Vector2 PoleAt(Vector2 e, Vector2 d) { Vector2 r = new Vector2(d.y, -d.x); return e + d * 3.2f + r * (hwS - 0.7f); }   // verkeerslicht: rechts van de arm, na het zebrapad
+    static Vector2 PoleAt(Vector2 e, Vector2 d) { Vector2 r = new Vector2(d.y, -d.x); return e - d * 0.8f + r * (hwS - 0.6f); }   // verkeerslicht: rechts op de stoep van de arm, net voor de stopstreep (buiten de kruising, anders staat hij bij een scherpe hoek op het asfalt van een andere arm)
     // wereldpositie (bovenkant) van het verkeerslicht bij vak i voor verkeer dat uit buur p komt
     public static bool PolePos(int i, int p, out Vector3 pos)
     {
         pos = Vector3.zero; if (!IsRoad(i)) return false;
         var fr = new Frame(i); float a, s; Dims(ArmStyle(i, p), out a, out s); float old = hwS; hwS = s;
-        Vector3 d3 = Planet.Cells[p].dir * Planet.R - fr.o; Vector2 q = new Vector2(Vector3.Dot(d3, fr.e), Vector3.Dot(d3, fr.n)) * 0.5f; Vector2 d = (-q).normalized;   // armen van een kruising lopen naar het hart
+        Vector3 d3 = Planet.Cells[p].dir * Planet.R - fr.o; Vector2 q = new Vector2(Vector3.Dot(d3, fr.e), Vector3.Dot(d3, fr.n)); q = q.normalized * NodeTrim(i, p, RoadNb(i).Count); Vector2 d = (-q).normalized;   // armen van een kruising lopen naar het hart; de arm begint waar de knoop ophoudt (zoals RoadNode)
         Vector2 pp = PoleAt(q, d); hwS = old; pos = fr.P(pp.x, 3.75f, pp.y); return true;
     }
 

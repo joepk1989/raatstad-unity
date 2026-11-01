@@ -247,8 +247,9 @@ public static partial class PlanetCity
             }
         }
         else for (float s = 3.5f; s < L - 2f; s += 7f) { int k = seg(s); Vector3 b = At(s, 0f, 0.2f); Prism3D(M("stam"), b, up[k], 0.2f, 0.15f, 2.1f); Prism3D(M("blad"), b + up[k] * 1.7f, up[k], 1.5f, 0f, 2.9f); }
-        // lantaarns om de 24 m aan één kant
-        for (float s = Mathf.Min(6f, L * 0.5f); s < L - 2f; s += 24f) { int k = seg(s); Vector3 b = At(s, hwS - 0.6f, SY); Prism3D(M("paal"), b, up[k], 0.08f, 0.06f, 4.95f); Prism3D(M("lamp"), b + up[k] * 4.65f, up[k], 0.28f, 0.2f, 0.45f); }
+        // lantaarns aan beide kanten om de 24 m, om en om (elke 12 m een)
+        for (int sg = 1; sg >= -1; sg -= 2)
+            for (float s = sg > 0 ? Mathf.Min(6f, L * 0.5f) : 18f; s < L - 2f; s += 24f) { int k = seg(s); Vector3 b = At(s, sg * (hwS - 0.6f), SY); Prism3D(M("paal"), b, up[k], 0.08f, 0.06f, 4.95f); Prism3D(M("lamp"), b + up[k] * 4.65f, up[k], 0.28f, 0.2f, 0.45f); }
         // eenrichtingsverkeer: een pijl halverwege elk stuk tussen twee vakmiddens, in de rijrichting
         for (int c = 0; c + 1 < ch.Count; c++)
         {

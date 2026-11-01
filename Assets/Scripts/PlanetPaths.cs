@@ -136,6 +136,38 @@ public static partial class PlanetCity
             foreach (int j in arms) { sig = Mix(sig, j); sig = Mix(sig, Cm(LevelFor(j, n))); sig = Mix(sig, PArmStyle(n, j)); sig = Mix(sig, IsRoad(j) ? 1 : 2); }
             Piece(key, sig, mb => PathNodeMesh(mb, n, arms));
         }
+        foreach (var kv in Cells)   // zebrapaden waar een pad een weg oversteekt
+        {
+            int i = kv.Key; if (!HasZebra(i)) continue; string key = "z:" + i; want.Add(key);
+            long sig = Mix(Mix(Mix(1469598103934665603L, i), Cm(G(i))), StyleOf(i)); foreach (int j in Partners(i)) { sig = Mix(sig, j); sig = Mix(sig, Cm(G(j))); }
+            int ii = i; Piece(key, sig, mb => ZebraMesh(mb, ii));
+        }
+    }
+
+    // ---------- zebrapaden ----------
+    // Een zebrapad: witte balken in de rijrichting d (0,56 m breed, om de 0,95 m) over de hele rijbaan (halve breedte hw), depth lang.
+    static void Zebra(System.Func<string, MeshBuilder> M, Frame fr, Vector2 c, Vector2 d, float hw, float depth)
+    {
+        d = d.normalized; Vector2 r = new Vector2(d.y, -d.x); int zm = Mathf.FloorToInt((hw - 0.5f) / 0.95f);
+        for (int z = -zm; z <= zm; z++)
+        {
+            Vector2 o = c + r * (z * 0.95f), a0 = o - d * depth * 0.5f - r * 0.28f, b0 = o - d * depth * 0.5f + r * 0.28f, c0 = o + d * depth * 0.5f + r * 0.28f, e0 = o + d * depth * 0.5f - r * 0.28f;
+            M("lijn").Quad(fr.P(a0.x, LY, a0.y), fr.P(b0.x, LY, b0.y), fr.P(c0.x, LY, c0.y), fr.P(e0.x, LY, e0.y), fr.u);
+        }
+    }
+    // Waar een pad gelijkvloers een weg oversteekt (het wegvak heeft een pad als buur, niet eronderdoor): een zebrapad over de weg.
+    // Niet op een kruising (die heeft ze al op de armen) of een rotonde (die heeft ze op elke arm).
+    public static bool HasZebra(int i)
+    {
+        if (!IsRoad(i) || IsRot(i) || Underpass(i) || UpperRoadDir(i) == Vector3.zero) return false;
+        foreach (int j in Partners(i)) if (IsPath(j) && !UnderLink(i, j)) return true;
+        return false;
+    }
+    static void ZebraMesh(Dictionary<string, MeshBuilder> mb, int i)
+    {
+        System.Func<string, MeshBuilder> M = k => { if (!mb.TryGetValue(k, out var x)) { x = new MeshBuilder(); mb[k] = x; } return x; };
+        var fr = new Frame(i, true); Vector3 rd = UpperRoadDir(i); Dims(StyleOf(i), out float a, out _);
+        Zebra(M, fr, Vector2.zero, new Vector2(Vector3.Dot(rd, fr.e), Vector3.Dot(rd, fr.n)), a, 2.4f);
     }
 
     // ---------- een padlijn ----------

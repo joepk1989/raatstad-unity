@@ -159,13 +159,34 @@ public class WegVoorbeeld : MonoBehaviour
         System.Func<int, int> Out = j => Planet.Nearest((Planet.Cells[j].dir * 5f - Planet.Cells[r2].dir * 4f).normalized * Planet.R);   // 4 vakken verder naar buiten
         RoadLine(Out(rn[1]), rn[1]); PlanetCity.DragStyle = 1; RoadLine(Out(rn[3]), rn[3]); PlanetCity.DragStyle = 0; RoadLine(Out(rn[5]), rn[5]);
         PlanetCity.DragBike = true; { var l = PlanetCity.LinePlan(rn[4], Out(rn[4])); PlanetCity.PlaceLine(l, "pad"); PlanetCity.SetLevel(l, 0, "pad"); } PlanetCity.DragBike = false;
+        // een rotonde op een bestaand kruispunt: recht (vier armen), met een schuine weg erdoor, naast een kruispunt, en op een T
+        int r3 = At(home, 2f * D60, 170f), r4 = At(home, 4f * D60, 170f), r5c = At(home, 3f * D60, 170f), r6 = At(home, 1f * D60, 300f);
+        Leg(r3, 0f, 0); Leg(r3, 2f * D60, 0); Leg(r3, Mathf.PI, 0); Leg(r3, 5f * D60, 0);
+        Leg(r4, 0f, 0); Leg(r4, Mathf.PI, 0); Leg(r4, Mathf.PI / 2f, 0); Leg(r4, -Mathf.PI / 2f, 0);
+        Leg(r5c, 0f, 0); Leg(r5c, 2f * D60, 0); Leg(r5c, 4f * D60, 0);
+        Leg(r6, 0f, 1); Leg(r6, Mathf.PI, 1); Leg(r6, D60 * 2f, 0);
+        int r5 = Planet.Cells[r5c].nb[0];
+        var msg = new System.Text.StringBuilder();
+        foreach (var (nm, c) in new[] { ("r3", r3), ("r4", r4), ("r5", r5), ("r6", r6) }) msg.Append(nm).Append(": ").Append(PlanetCity.PlaceRoundabout(c) ?? "ok").AppendLine();
+        File.WriteAllText(Path.Combine(Dir, "plaatsen.txt"), msg.ToString());
         PlanetCity.Rebuild(); PlanetCity.Rebuild(); yield return null; yield return null;
+        foreach (var (nm, c) in new[] { ("r3", r3), ("r4", r4), ("r5", r5), ("r6", r6) }) { yield return Shot(nm + "_boven", c, Dir2(c, 0f), 55f, 89f); yield return Shot(nm + "_schuin", c, Dir2(c, 0.4f), 40f, 35f); }
         foreach (var (nm, c) in new[] { ("r1", r1), ("r2", r2) })
         {
             yield return Shot(nm + "_boven", c, Dir2(c, 0f), 50f, 89f); yield return Shot(nm + "_schuin", c, Dir2(c, 0.4f), 40f, 35f); yield return Shot(nm + "_laag", c, Dir2(c, 1.4f), 26f, 14f);
         }
         DayNight.Speed = 1f;
         for (int t = 0; t < 4; t++) { float w = Time.time + 6f; while (Time.time < w) yield return null; yield return Shot("r1_autos" + t, r1, Dir2(r1, 0.2f), 42f, 55f); }
+        // voetgangers bij de rotondes: van welke arm naar welke (om de rotonde heen, niet omkeren)
+        var walks = new System.Text.StringBuilder(); var seen = new HashSet<string>(); float until = Time.time + 25f;
+        while (Time.time < until && PlanetLife.I != null)
+        {
+            foreach (var p in PlanetLife.I.People) if ((p.cellA == r1 || p.cellA == r2) && p.cellB != p.cellA && seen.Add(p.GetHashCode() + ":" + p.prevCell + ">" + p.cellB))
+                walks.Append("rotonde ").Append(p.cellA).Append(": van ").Append(p.prevCell).Append(" naar ").Append(p.cellB).Append(p.prevCell == p.cellB ? "  OMKEREN" : "").AppendLine();
+            yield return null;
+        }
+        File.WriteAllText(Path.Combine(Dir, "voetgangers.txt"), walks.ToString());
+        yield return Shot("r2_mensen", r2, Dir2(r2, 0.3f), 30f, 45f);
         var info = new System.Text.StringBuilder(); foreach (int c in new[] { r1, r2 }) { info.Append("rotonde ").Append(c).Append(" armen:"); foreach (int j in PlanetCity.Partners(c)) info.Append(' ').Append(j).Append(PlanetCity.IsRoad(j) ? "W" : "P"); info.AppendLine(); }
         File.WriteAllText(Path.Combine(Dir, "rotondes.txt"), info.ToString());
         File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar");
