@@ -1804,7 +1804,8 @@ public static partial class PlanetCity
         }
         // Hoogte boven het hart van het vak op (x, z): langs elke arm lineair van het hart naar de rand, waar de weg op de
         // gemiddelde hoogte van de twee vakken ligt. Tussen armen in mengt het naar de arm waar het punt het meest in ligt.
-        public Frame Flat() { sq = null; sd = null; return this; }   // zonder de helling naar de buren (die rekent de padknoop zelf)
+        public Frame Flat() { sq = null; sd = null; return this; }
+        public Frame At(Vector3 dir) { if (dir == cdir) return this; cdir = dir; o = dir * (Planet.R + cg); sq = null; sd = null; return this; }   // het hart van de knoop op de rand (NodeDir), vlak   // zonder de helling naar de buren (die rekent de padknoop zelf)
         public bool Sloped => sq != null;   // helt mee met een buur: vlakken in kleine stukjes, zodat ze de gebogen hoogte volgen
         public float H(float x, float z)
         {
@@ -2020,7 +2021,7 @@ public static partial class PlanetCity
     public static bool PolePos(int i, int p, out Vector3 pos)
     {
         pos = Vector3.zero; if (!IsRoad(i)) return false;
-        var fr = new Frame(i); float a, s; Dims(ArmStyle(i, p), out a, out s); float old = hwS; hwS = s;
+        var fr = new Frame(i).At(NodeDir(i)); float a, s; Dims(ArmStyle(i, p), out a, out s); float old = hwS; hwS = s;
         Vector3 d3 = Planet.Cells[p].dir * Planet.R - fr.o; Vector2 q = new Vector2(Vector3.Dot(d3, fr.e), Vector3.Dot(d3, fr.n)); q = q.normalized * NodeTrim(i, p, RoadNb(i).Count); Vector2 d = (-q).normalized;   // armen van een kruising lopen naar het hart; de arm begint waar de knoop ophoudt (zoals RoadNode)
         Vector2 pp = PoleAt(q, d); hwS = old; pos = fr.P(pp.x, 3.75f, pp.y); return true;
     }

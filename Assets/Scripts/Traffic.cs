@@ -19,7 +19,7 @@ public class Traffic : MonoBehaviour
     // groep 0 = de wegen in de lijn van de eerste weg, groep 1 = de rest
     static int Group(int j, int p)
     {
-        Vector3 cj = Planet.Cells[j].dir, first = Vector3.zero; bool got = false;
+        Vector3 cj = PlanetCity.NodeDir(j), first = Vector3.zero; bool got = false;
         foreach (int q in PlanetCity.Partners(j))
         {
             if (!PlanetCity.IsRoad(q)) continue;

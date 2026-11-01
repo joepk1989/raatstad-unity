@@ -32,6 +32,23 @@ public static partial class PlanetCity
     }
     static float CellDist(int a, int b) => Vector3.Distance(Planet.Cells[a].dir, Planet.Cells[b].dir) * Planet.R;
     // tot hier (vanaf het knooppunt) tekent de knoop; daarna begint het lint naar buur j
+    // Een schuine weg die een rechte weg kruist op de rand tussen twee vakken (vak i en zijn buur h): het kruispunt ligt op die
+    // rand, zodat beide wegen recht blijven. Vak i is dan verbonden met h en met de twee vakken aan weerszijden van de rand i|h,
+    // die zelf niet met h verbonden zijn. Bijgewerkt in RebuildRoads.
+    static readonly Dictionary<int, int> edgeMate = new Dictionary<int, int>();
+    static int EdgeMateOf(int i)
+    {
+        if (Rot.Contains(i)) return -1;
+        foreach (int h in Partners(i))
+        {
+            if (!IsRoad(h) || !IsNeighbour(i, h) || UnderLink(i, h)) continue;
+            int cnt = 0; foreach (int p in Partners(i)) if (p != h && IsRoad(p) && IsNeighbour(p, h) && !Linked(p, h) && !UnderLink(i, p)) cnt++;
+            if (cnt == 2) return h;
+        }
+        return -1;
+    }
+    // het hart van een wegknoop op de bol (eenheidsvector): het vakmidden, of het midden van de rand bij zo'n schuine kruising
+    public static Vector3 NodeDir(int i) => edgeMate.TryGetValue(i, out int h) ? (Planet.Cells[i].dir + Planet.Cells[h].dir).normalized : Planet.Cells[i].dir;
     static float NodeTrim(int n, int j, int deg) => IsRot(n) ? RotTrim(n, j) : Mathf.Min(deg == 1 ? 7.0f : 7.5f, CellDist(n, j) * 0.48f);
 
     // Een knoop: geen twee wegburen, een knik, of een overgang naar een smallere weg (het bredere vak wordt de knoop en tekent
@@ -92,6 +109,7 @@ public static partial class PlanetCity
     {
         if (roadRoot == null) return;
         RoadGraph(out var nbs, out var nodes, out var chains, out var closed);
+        edgeMate.Clear(); foreach (int n in nodes) if (nbs[n].Count >= 4) { int h = EdgeMateOf(n); if (h >= 0) edgeMate[n] = h; }
         var want = new HashSet<string>();
         var xs = EdgeCrossings(); crossAt.Clear(); var crossEnds = new HashSet<int>();
         foreach (var x in xs)
@@ -107,12 +125,14 @@ public static partial class PlanetCity
             long sig = 1469598103934665603L;
             foreach (int i in ch) { sig = Mix(sig, i); sig = Mix(sig, Cm(G(i))); sig = Mix(sig, StyleOf(i)); sig = Mix(sig, Cm(MinCorner(i))); sig = Mix(sig, Under.ContainsKey(i) ? 1 : 0); sig = Mix(sig, nbs[i].Count); sig = Mix(sig, crossEnds.Contains(i) ? 1 : 0); }
             for (int k = 0; k + 1 < ch.Count; k++) sig = Mix(sig, Flow(ch[k], ch[k + 1]));
+            sig = Mix(sig, edgeMate.TryGetValue(ch[0], out int m0) ? m0 : -1); sig = Mix(sig, edgeMate.TryGetValue(ch[ch.Count - 1], out int m1) ? m1 : -1);
             Piece(key, sig, mb => ChainMesh(mb, ch, closed[c], nbs, nodes));
         }
         foreach (int n in nodes)
         {
             string key = "n:" + n; want.Add(key);
             long sig = Mix(Mix(Mix(Mix(Mix(1469598103934665603L, n), Cm(G(n))), StyleOf(n)), Cm(MinCorner(n))), (Lights ? 2 : 0) + (Under.ContainsKey(n) ? 1 : 0) + (Rot.Contains(n) ? 4 : 0));
+            sig = Mix(sig, edgeMate.TryGetValue(n, out int em) ? em : -1);
             foreach (int j in Partners(n)) { sig = Mix(sig, j); sig = Mix(sig, Cm(G(j))); sig = Mix(sig, IsRoad(j) ? 1 : IsPath(j) ? 2 : 0); sig = Mix(sig, Flow(n, j)); sig = Mix(sig, IsRoad(j) ? ArmStyle(n, j) : 0); }
             Piece(key, sig, mb => NodeMesh(mb, n, nbs[n]));
         }
@@ -140,10 +160,10 @@ public static partial class PlanetCity
     // ---------- een knoop ----------
     static void NodeMesh(Dictionary<string, MeshBuilder> mb, int n, List<int> arms)
     {
-        var fr = new Frame(n, true); var ends = new List<Vector2>();
+        var fr = new Frame(n, true).At(NodeDir(n)); var ends = new List<Vector2>();
         foreach (int j in arms)
         {
-            Vector3 d3 = (Planet.Cells[j].dir - Planet.Cells[n].dir) * Planet.R; Vector2 q = new Vector2(Vector3.Dot(d3, fr.e), Vector3.Dot(d3, fr.n));
+            Vector3 d3 = (Planet.Cells[j].dir - NodeDir(n)) * Planet.R; Vector2 q = new Vector2(Vector3.Dot(d3, fr.e), Vector3.Dot(d3, fr.n));
             ends.Add(q.normalized * NodeTrim(n, j, arms.Count));
         }
         if (IsRot(n)) { RoundaboutMesh(mb, n, arms); return; }
@@ -156,7 +176,7 @@ public static partial class PlanetCity
     // de lijn door de vakmiddens met ronde hoeken (smoothPts), ongeveer elke 1,5 m een punt, op de bol
     static List<RP> SmoothLine(List<int> ch, bool closed, float[] hs = null)   // hs: de hoogte per vak (anders G)
     {
-        var v = new List<RP>(); for (int k = 0; k < ch.Count; k++) { int i = ch[k]; v.Add(new RP { p = Planet.Cells[i].dir * Planet.R, h = hs != null ? hs[k] : G(i), cell = i }); }
+        var v = new List<RP>(); for (int k = 0; k < ch.Count; k++) { int i = ch[k]; v.Add(new RP { p = NodeDir(i) * Planet.R, h = hs != null ? hs[k] : G(i), cell = i }); }
         if (closed) { var m = LerpRP(v[0], v[1], 0.5f); m.cell = ch[0]; var w = new List<RP> { m }; for (int k = 1; k < v.Count; k++) w.Add(v[k]); w.Add(v[0]); w.Add(m); v = w; }
         var o = new List<RP> { v[0] }; RP cur = v[0];
         System.Action<RP, RP> lineTo = (a, b) => { int n = Mathf.Max(1, Mathf.CeilToInt(Vector3.Distance(a.p, b.p) / 1.5f)); for (int k = 1; k <= n; k++) o.Add(LerpRP(a, b, k / (float)n)); };
