@@ -22,6 +22,7 @@ public static partial class PlanetCity
         {
             int c = order[oi]; Vector3 d = Planet.Cells[c].dir; bool ok = true;
             foreach (int t in towns) if (Vector3.Dot(d, Planet.Cells[t].dir) > cosMin) { ok = false; break; }
+            if (ok && MountainMask(d) > 0.05f) ok = false;   // in een berggebied geen stadje
             if (ok && Sample(c, rnd.Next(), true) == null) { towns.Add(c); prog?.Invoke(0.75f * oi / n, "Stadjes bouwen (" + towns.Count + ")"); yield return null; }
         }
         // wegen tussen de stadjes (voor het platteland, dat er dan omheen komt)
@@ -37,7 +38,7 @@ public static partial class PlanetCity
             }
             while (q.Count > 0) { int c = q.Dequeue(); if (roadDist[c] >= 6) continue; foreach (int j in Planet.Cells[c].nb) if (!roadDist.ContainsKey(j)) { roadDist[j] = roadDist[c] + 1; q.Enqueue(j); } }
         }
-        prog?.Invoke(0.9f, "Platteland: heuvels, bossen en meertjes"); yield return null;
+        prog?.Invoke(0.9f, "Platteland: bergen, heuvels, bossen en meren"); yield return null;
         long tTowns = sw.ElapsedMilliseconds;
         // platteland: alles wat nog leeg is
         for (int c = 0; c < n; c++)
@@ -51,7 +52,11 @@ public static partial class PlanetCity
             float k = Mathf.Clamp01((Mathf.Min(near, flag + 4f) - 8.5f) / 5f);   // vlak bij de stadjes, heuvels verder weg
             if (roadDist.TryGetValue(c, out int rd)) k = Mathf.Min(k, Mathf.Clamp01((rd - 1.5f) / 4f));   // en vlak langs de wegen ertussen
             float h = Mathf.Max(0f, (Noise(d, 1f / 140f, 0f) - 0.4f) / 0.6f) * 30f * k;
+            // bergketens: een grove ruis zegt waar, een richel-ruis (1 - |2n - 1|) maakt er kammen van; tot TerrTop, met rots en sneeuw (PlanetNature.cs)
+            float mt = MountainMask(d), ridge = 1f - Mathf.Abs(2f * Noise(d, 1f / 110f, 17f) - 1f);
+            if (mt > 0f) h = Mathf.Max(h, Mathf.Pow(mt, 0.7f) * (55f + 45f * ridge) * k * k);   // k * k: rustig aanlopen vanaf de stadjes en wegen
             if (h > 0.3f) SetTerr(c, h);
+            if (h > TreeLine) continue;   // kaal gebergte: geen bos, molen of boerderij
             float wet = Noise(d, 1f / 90f, 37f), wood = Noise(d, 1f / 70f, 71f), r = (float)rnd.NextDouble();
             if (fieldCells.Contains(c) && NearSeg(d, Planet.Cells[c].radius)) { if (wood > 0.46f && r < 0.6f) Place(c, "park"); continue; }   // op het talud van een verdiepte weg alleen bomen (een gebouw staat plat op een sokkel, een meer ook)
             if (h < 0.5f && wet > 0.66f && k > 0.4f) { SetTerr(c, SeaLevel - 1f - (wet - 0.66f) * 22f * k); continue; }   // laagte onder het zeeniveau: een meer (PlanetNature.cs), tot zo'n 8 m diep
@@ -120,6 +125,8 @@ public static partial class PlanetCity
         DragStyle = ks; DragOneWay = ko; DragUnder = ku; DragLevel = kl;
         return line;
     }
+    // waar de bergketens liggen (0 = geen berg, 1 = het hart van het gebergte); daar komen geen stadjes
+    static float MountainMask(Vector3 d) => Mathf.Max(0f, (Noise(d, 1f / 240f, 91f) - 0.6f) / 0.4f);
     // vloeiende ruis op de bol (0..1): drie Perlin-vlakken door het punt, rond 0,5 opgerekt
     static float Noise(Vector3 d, float f, float off)
     {

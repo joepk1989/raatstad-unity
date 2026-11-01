@@ -29,9 +29,9 @@ public static partial class PlanetCity
     // vak is zo een puntje, een groep een plateau met schuine randen. Een vak met iets erop is een vlak plateau op zijn eigen
     // hoogte met een stenen sokkel tot op het maaiveld; weg- en padvakken volgen de helling naar hun buren.
     public static readonly Dictionary<int, float> Terr = new Dictionary<int, float>();
-    public const float TerrTop = 30f, TerrLow = -12f;   // afgraven kan tot 12 m onder het gewone maaiveld
-    public static float G(int i) => Terr.TryGetValue(i, out var h) ? h : 0f;
-    public static bool Plateau(int i) => Cells.TryGetValue(i, out var l) && l.Count > 0 && !IsWalk(i) && !LooseTrees(l);   // bomen staan los op het terrein (PlanetNature.cs)
+    public const float TerrTop = 90f, TerrLow = -12f;   // bergen tot 90 m (rots en sneeuw, PlanetNature.cs); afgraven kan tot 12 m onder het gewone maaiveld
+    public static float G(int i) => LakeG(i, Terr.TryGetValue(i, out var h) ? h : 0f);   // een meer ligt vanzelf onder het zeeniveau (PlanetNature.cs)
+    public static bool Plateau(int i) => Cells.TryGetValue(i, out var l) && l.Count > 0 && !IsWalk(i) && !OpenGround(l);   // bomen, meren en grachten liggen in het terrein (PlanetNature.cs)
     public static bool SetTerr(int i, float h)   // geeft true als de hoogte echt veranderde
     {
         h = Mathf.Clamp(Mathf.Round(h * 100f) / 100f, TerrLow, TerrTop); if (Mathf.Abs(h - G(i)) < 0.005f) return false;
@@ -117,8 +117,9 @@ public static partial class PlanetCity
     static float CornerBase0(int i, int k)
     {
         Topo(); int a = cnA[i][k], b = cnB[i][k];
-        if (carved.Count == 0) return Mathf.Min(G(i), Mathf.Min(G(a), G(b)));
-        float h = float.MaxValue; if (!carved.Contains(i)) h = G(i); if (!carved.Contains(a)) h = Mathf.Min(h, G(a)); if (!carved.Contains(b)) h = Mathf.Min(h, G(b));
+        bool qi = Quay(i), qa = Quay(a), qb = Quay(b);   // een gracht heeft kademuren: de buren lopen niet naar de bodem af (PlanetNature.cs)
+        if (carved.Count == 0 && !qi && !qa && !qb) return Mathf.Min(G(i), Mathf.Min(G(a), G(b)));
+        float h = float.MaxValue; if (!carved.Contains(i) && !qi) h = G(i); if (!carved.Contains(a) && !qa) h = Mathf.Min(h, G(a)); if (!carved.Contains(b) && !qb) h = Mathf.Min(h, G(b));
         if (h == float.MaxValue) h = Mathf.Min(G(i), Mathf.Min(G(a), G(b)));
         return h;
     }
@@ -1566,8 +1567,8 @@ public static partial class PlanetCity
             {
                 if (fieldCells.Contains(i)) UseNear(i); else UseAll();
                 var c = Planet.Cells[i]; int m = c.corners.Length; bool pent = m == 5;
-                bool cut = (Cells.TryGetValue(i, out var stack) && stack.Count > 0 && (stack[0] == "meer" || stack[0] == "kuil"))
-                        || (Under.TryGetValue(i, out var und) && (und == "meer" || und == "kuil" || und == "pad" || und == "weg")) && !FieldBridge(i);   // meer, uitgraving of brug daarover: geen bodem
+                bool cut = (Cells.TryGetValue(i, out var stack) && stack.Count > 0 && (stack[0] == "water" || stack[0] == "kuil"))
+                        || (Under.TryGetValue(i, out var und) && (und == "water" || und == "kuil" || und == "pad" || und == "weg")) && !FieldBridge(i);   // gracht, uitgraving of brug daarover: geen bodem (een meer is gewoon diep terrein, PlanetNature.cs)
                 float g = G(i), RG = Planet.R + g; bool plat = FlatGround(i);
                 // hoogte van het midden en de hoeken; onder een weg of pad een kom tot de laagste hoek, zodat het maaiveld nooit door de hellende weg steekt
                 var hk = new float[m]; for (int k = 0; k < m; k++) hk[k] = OwnCorner(i, k);
@@ -1587,8 +1588,8 @@ public static partial class PlanetCity
                         string tag = null; float up = Mathf.Abs(Vector3.Dot(Vector3.Cross(P1 - P0, P2 - P0).normalized, c.dir));
                         if (steep) { if (up < SteepUp) tag = "aarde"; }   // een talud is gras, alleen waar het steiler is dan 40° kale aarde
                         else if (!special && (Mathf.Max(h0, Mathf.Max(h1, h2)) > 0.03f || Mathf.Min(h0, Mathf.Min(h1, h2)) < -0.03f))   // verhoogd: kleur naar de hoogte, aarde waar het steiler is dan zo'n 45°
-                            tag = up < 0.72f ? "aarde" : "t" + Mathf.Clamp(Mathf.FloorToInt((h0 + h1 + h2) / 9f), 0, 9);
-                        if (!steep) tag = SeaTag(i, tag, h0, h1, h2);   // strand en zeebodem onder het zeeniveau (PlanetNature.cs)
+                            tag = up < 0.72f ? "aarde" : "t" + Mathf.Clamp(Mathf.FloorToInt((h0 + h1 + h2) / 9f), 0, 29);
+                        if (!steep) tag = NatureTag(i, tag, h0, h1, h2, up);   // rots, sneeuw, strand en zeebodem (PlanetNature.cs)
                         (tag == null ? mb0 : TB(tag)).Tri(P0, P1, P2, c.dir); rec?.Add(new GTri { tag = tag, a = P0, b = P1, c = P2 });
                     }
                     // bij een geul of dijk: het maaiveld zonder geul als vlak, de geul of dijk komt er precies in (ExactGround)
@@ -1631,7 +1632,7 @@ public static partial class PlanetCity
                     skewRoad = Vector2.zero;
                 }
                 // sokkel: een plateau boven het maaiveld krijgt stenen wanden tot op het maaiveld ernaast (tussen twee plateaus: een keermuur)
-                if (plat || cut)
+                if ((plat || cut) && !Quay(i))   // een gracht heeft kademuren in plaats van een sokkel (PlanetNature.cs)
                     for (int k = 0; k < m; k++)
                     {
                         int j = edN[i][k]; if (FlatGround(j) && G(j) >= g - 0.01f) continue;   // alleen naast een echt vlak buurvak geen wand (een half wegvak in een talud is dat niet)
@@ -2300,8 +2301,8 @@ public static partial class PlanetCity
     {
         System.Func<string, MeshBuilder> M = k => { if (!mb.TryGetValue(k, out var x)) { x = new MeshBuilder(); mb[k] = x; } return x; };
         if (!Under.TryGetValue(i, out var u)) return;
-        if (u == "meer") Lake(mb, fr, i, 0f, hash);
-        else if (u == "water") { Top(M("water"), fr, 1.0f, 0.03f); Wall(M("water"), fr, 1.0f, -0.2f, 0.03f); }
+        if (u == "meer") { }   // een weg over een meer is een dam: wegen blijven droog (PlanetNature.cs)
+        else if (u == "water") Canal(M, i);   // brug over een gracht
         else if (u == "pad" || u == "weg")   // onderdoorgang, naar het voorbeeld overpass_path: een dek van 1,08 m met een zeshoekige koker eronder en betonnen portalen
         {
             bool roadUnder = u == "weg"; var tends = roadUnder ? TunnelEnds(i) : null; tubeW = roadUnder ? RoadHW : PathHW;
@@ -2661,7 +2662,7 @@ public static partial class PlanetCity
                 }
                 list = rest; from = Mathf.Max(0, from - 1);
             }
-            if (list.Count == 1 && list[0] == "meer") { Lake(mb, fr, i, 0f, i * 73856093); return; }
+            if (list.Count == 1 && list[0] == "meer") return;   // een meer is diep terrein onder het zeeniveau (PlanetNature.cs)
             if (list.Count == 1 && list[0] == "pad") return;   // paden tekent het wegennet (PlanetPaths.cs)
             float h = 0f; int hash = i * 73856093;
             for (int k = 0; k < list.Count; k++)
@@ -2687,10 +2688,8 @@ public static partial class PlanetCity
                         Trees(M, fr, i, hash, h + 0.05f, k > 0);   // PlanetNature.cs
                         break;
                     case "water":
-                        Top(M("water"), fr, 1.0f, h + 0.03f); if (k == 0) Wall(M("water"), fr, 1.0f, -0.2f, h + 0.03f);
-                        break;
+                        Canal(M, i); break;   // gracht: bodem en kademuren, het water komt van het zeeniveau (PlanetNature.cs)
                     case "meer":
-                        Lake(mb, fr, i, h, hash);
                         break;
                     case "kuil":   // uitgraving: de bodem 3 m lager, zeshoekige grashellingen van de rand naar beneden
                         for (int e2 = 0; e2 < fr.poly.Length; e2++)

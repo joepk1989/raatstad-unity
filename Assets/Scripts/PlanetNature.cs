@@ -7,7 +7,8 @@ using UnityEngine;
 // de helling (steiler dan 35° alleen struiken) en een grove ruis, zodat een bos vooral uit één soort bestaat.
 public static partial class PlanetCity
 {
-    static bool LooseTrees(List<string> l) => l.Count == 1 && l[0] == "park";
+    // geen plateau (geen sokkel): bomen, een meer en een gracht liggen in het terrein
+    static bool OpenGround(List<string> l) => l.Count == 1 && (l[0] == "park" || l[0] == "meer" || l[0] == "water");
 
     // de bomen van vak i; roof: een daktuin bovenop een gebouw (op hoogte h, kleine boompjes), anders op het terrein
     static void Trees(System.Func<string, MeshBuilder> M, Frame fr, int i, int hash, float h, bool roof)
@@ -41,6 +42,8 @@ public static partial class PlanetCity
                 float pine = Mathf.Clamp01((H - 6f) / 14f) * 0.8f + (wood > 0.62f ? 0.45f : 0f), birch = wood < 0.38f ? 0.45f : 0.1f, q = (float)rnd.NextDouble();
                 kind = q < pine ? 1 : q < pine + birch ? 2 : 0;
             }
+            if (!roof && H > TreeLine) continue;   // boven de boomgrens niets
+            if (!roof && H > TreeLine - 12f && kind != 3) { kind = 1; sc *= Mathf.Lerp(1f, 0.6f, (H - TreeLine + 12f) / 12f); }   // eronder alleen dennen, steeds kleiner
             float rot = (float)rnd.NextDouble() * Mathf.PI / 3f;
             switch (kind)
             {
@@ -105,12 +108,55 @@ public static partial class PlanetCity
     }
     public static bool Wet(int i)
     {
+        if (Quay(i)) return true;
         if (IsWalk(i) || carved.Contains(i) || levelled.Contains(i) || (fieldCells.Contains(i) && NearSeg(Planet.Cells[i].dir, Planet.Cells[i].radius))) return false;
-        if (Cells.TryGetValue(i, out var l) && l.Count > 0 && (l[0] == "meer" || l[0] == "kuil")) return false;   // een meer tekent zijn eigen water
+        if (Cells.TryGetValue(i, out var l) && l.Count > 0 && l[0] == "kuil") return false;
         if (G(i) + CenterOfs1(i) < SeaLevel) return true;
         for (int k = 0; k < Planet.Cells[i].corners.Length; k++) if (SeaCorner(i, k) < SeaLevel) return true;
         return false;
     }
+    // ---------- meer en gracht ----------
+    // Meer: het vak ligt vanzelf op LakeBed (G), zonder het opgeslagen terrein te veranderen; de buren lopen er schuin naartoe af
+    // (de hoekpunten nemen het laagste vak) en het water komt van het zeeniveau. Een weg over een meer is een dam (het vak is dan een
+    // weg en ligt weer op zijn eigen hoogte); haal je de weg weg, dan is het meer er weer.
+    // Gracht: het terrein blijft liggen; het vak krijgt een bodem op CanalBed en bakstenen kademuren naar elke buur die geen gracht is
+    // (de buren houden hun hoogte: CornerBase0 slaat een gracht over). Een brug over een gracht houdt de gracht eronder.
+    public const float LakeBed = SeaLevel - 2.5f, CanalBed = SeaLevel - 2f;
+    static float LakeG(int i, float h) => h > LakeBed && Cells.TryGetValue(i, out var l) && l.Count == 1 && l[0] == "meer" ? LakeBed : h;
+    public static bool Quay(int i) => (Cells.TryGetValue(i, out var l) && l.Count == 1 && l[0] == "water") || (Under.TryGetValue(i, out var u) && u == "water");
+    static void Canal(System.Func<string, MeshBuilder> M, int i)
+    {
+        Topo(); var c = Planet.Cells[i]; int m = c.corners.Length; float rb = Planet.R + CanalBed; Vector3 mid = c.dir * rb;
+        for (int k = 0; k < m; k++)
+        {
+            Vector3 a = c.corners[k], b = c.corners[(k + 1) % m];
+            M("zeebodem").Tri(mid, a * rb, b * rb, c.dir);
+            if (Quay(edN[i][k])) continue;   // open naar de volgende gracht
+            float ha = CornerBase(i, k), hb = CornerBase(i, (k + 1) % m); if (ha <= CanalBed + 0.01f && hb <= CanalBed + 0.01f) continue;
+            Vector3 inward = c.dir - (a + b) * 0.5f;
+            M("baksteen").Quad(a * rb, b * rb, b * (Planet.R + Mathf.Max(hb, CanalBed)), a * (Planet.R + Mathf.Max(ha, CanalBed)), inward);
+        }
+    }
+
+    // ---------- bergen ----------
+    // Terrein tot TerrTop (90 m). Boven de 30 m loopt het grijsgroen over in rots, steile flanken boven de 22 m zijn kale rots,
+    // en boven de 54 m ligt sneeuw (op steile flanken pas boven de 72 m). Bomen tot de boomgrens (Trees).
+    public const float SnowLine = 54f, TreeLine = 48f;
+    static string NatureTag(int i, string tag, float h0, float h1, float h2, float up)
+    {
+        if (tag == null) return null;
+        float ha = (h0 + h1 + h2) / 3f;
+        if (ha > SnowLine && (up > 0.6f || ha > SnowLine + 18f)) return "sneeuw";
+        if (tag == "aarde" && ha > 22f) return "rots";
+        return SeaTag(i, tag, h0, h1, h2);
+    }
+    // hoogteband t10..t29 (30-90 m): van grijsgroen naar rots
+    static Color MountainBand(float h)
+    {
+        Color top = new Color(0.512f, 0.618f, 0.436f), rock = new Color(0.56f, 0.54f, 0.50f);   // top: de kleur van TerrColor op 30 m
+        return Color.Lerp(top, rock, Mathf.SmoothStep(0f, 1f, (h - 30f) / 20f));
+    }
+
     // de kleur van een stukje terrein in een nat vak: zand langs de waterlijn, donkere bodem in het diepe
     static string SeaTag(int i, string tag, float h0, float h1, float h2)
     {
@@ -138,12 +184,16 @@ public static partial class PlanetCity
         switch (k)
         {
             case "zeebodem": c = new Color(0.47f, 0.45f, 0.36f); return true;
+            case "rots": c = new Color(0.50f, 0.48f, 0.46f); return true;
+            case "sneeuw": c = new Color(0.94f, 0.95f, 0.97f); return true;
             case "loof2": c = new Color(0.36f, 0.56f, 0.22f); return true;
             case "naald": c = new Color(0.13f, 0.34f, 0.21f); return true;
             case "berk": c = new Color(0.88f, 0.86f, 0.80f); return true;
             case "berkblad": c = new Color(0.50f, 0.66f, 0.28f); return true;
             case "struik": c = new Color(0.29f, 0.50f, 0.23f); return true;
-            default: c = default; return false;
+            default:
+                if (k.Length > 1 && k[0] == 't' && int.TryParse(k.Substring(1), out int band) && band >= 10) { c = MountainBand((band + 0.5f) * 3f); return true; }
+                c = default; return false;
         }
     }
 }
