@@ -253,6 +253,7 @@ public static partial class PlanetCity
             {
                 M("rand").Quad(W(k, -1.3f, 0.2f), W(k, 1.3f, 0.2f), W(m, 1.3f, 0.2f), W(m, -1.3f, 0.2f), u);
                 M("gras").Quad(W(k, -1.1f, 0.23f), W(k, 1.1f, 0.23f), W(m, 1.1f, 0.23f), W(m, -1.1f, 0.23f), u);
+                foreach (int sg in new[] { -1, 1 }) M("rand").Quad(W(k, sg * 1.3f, AY), W(m, sg * 1.3f, AY), W(m, sg * 1.3f, 0.2f), W(k, sg * 1.3f, 0.2f), side[k] * sg);   // zijkant van de berm
             }
         }
         float L = S[N - 1];

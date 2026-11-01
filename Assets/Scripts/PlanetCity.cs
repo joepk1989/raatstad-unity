@@ -2046,10 +2046,22 @@ public static partial class PlanetCity
     // middenberm van een laan met bomen, van a naar b
     static void Median(System.Func<string, MeshBuilder> M, Frame fr, Vector2 a, Vector2 b)
     {
-        Vector2 d = b - a; float len = d.magnitude; if (len < 2f) return; d /= len; Vector2 r = new Vector2(d.y, -d.x); const float w = 1.1f;
-        M("rand").Quad(fr.P(a.x - r.x * (w + 0.2f), 0.2f, a.y - r.y * (w + 0.2f)), fr.P(a.x + r.x * (w + 0.2f), 0.2f, a.y + r.y * (w + 0.2f)), fr.P(b.x + r.x * (w + 0.2f), 0.2f, b.y + r.y * (w + 0.2f)), fr.P(b.x - r.x * (w + 0.2f), 0.2f, b.y - r.y * (w + 0.2f)), fr.u);
+        Vector2 d = b - a; float len = d.magnitude; if (len < 0.05f) return; d /= len; Vector2 r = new Vector2(d.y, -d.x); const float w = 1.1f, wr = w + 0.2f;
+        M("rand").Quad(fr.P(a.x - r.x * wr, 0.2f, a.y - r.y * wr), fr.P(a.x + r.x * wr, 0.2f, a.y + r.y * wr), fr.P(b.x + r.x * wr, 0.2f, b.y + r.y * wr), fr.P(b.x - r.x * wr, 0.2f, b.y - r.y * wr), fr.u);
         M("gras").Quad(fr.P(a.x - r.x * w, 0.23f, a.y - r.y * w), fr.P(a.x + r.x * w, 0.23f, a.y + r.y * w), fr.P(b.x + r.x * w, 0.23f, b.y + r.y * w), fr.P(b.x - r.x * w, 0.23f, b.y - r.y * w), fr.u);
-        for (float s = Mathf.Min(3.5f, len * 0.5f); s < len - 1.5f; s += 7f)
+        foreach (int sg in new[] { -1, 1 }) { Vector2 pa = a + r * (sg * wr), pb = b + r * (sg * wr); M("rand").Quad(fr.P(pa.x, AY, pa.y), fr.P(pb.x, AY, pb.y), fr.P(pb.x, 0.2f, pb.y), fr.P(pa.x, 0.2f, pa.y), fr.D(r.x * sg, 0, r.y * sg)); }   // de zijkanten
+        // de kop rond: een halve cirkel om b, met de rand, het gras en de zijkant
+        const int nk = 10;
+        for (int k = 0; k < nk; k++)
+        {
+            float t0 = Mathf.PI * k / nk, t1 = Mathf.PI * (k + 1) / nk;
+            Vector2 u0 = r * Mathf.Cos(t0) + d * Mathf.Sin(t0), u1 = r * Mathf.Cos(t1) + d * Mathf.Sin(t1);
+            Vector2 o0 = b + u0 * wr, o1 = b + u1 * wr, g0 = b + u0 * w, g1 = b + u1 * w;
+            M("rand").Quad(fr.P(g0.x, 0.2f, g0.y), fr.P(g1.x, 0.2f, g1.y), fr.P(o1.x, 0.2f, o1.y), fr.P(o0.x, 0.2f, o0.y), fr.u);
+            M("gras").Tri(fr.P(b.x, 0.23f, b.y), fr.P(g0.x, 0.23f, g0.y), fr.P(g1.x, 0.23f, g1.y), fr.u);
+            Vector2 um = (u0 + u1) * 0.5f; M("rand").Quad(fr.P(o0.x, AY, o0.y), fr.P(o1.x, AY, o1.y), fr.P(o1.x, 0.2f, o1.y), fr.P(o0.x, 0.2f, o0.y), fr.D(um.x, 0, um.y));
+        }
+        for (float s = Mathf.Min(3.5f, len * 0.5f); len >= 2f && s < len - 1.5f; s += 7f)
         {
             Vector2 p = a + d * s; Cone(M("stam"), fr, p.x, p.y, 0.2f, 0.2f, 2.3f, 0.15f); Cone(M("blad"), fr, p.x, p.y, 1.5f, 1.9f, 4.8f, 0f);
         }
@@ -2458,7 +2470,7 @@ public static partial class PlanetCity
             else if (na <= 2 && st != 2) for (float s0 = 0.6f; s0 + 1.2f < L - 0.5f; s0 += 2.6f) { Vector2 a0 = e + d * s0, a1 = e + d * (s0 + 1.4f); M("lijn").Quad(fr.P(a0.x - r.x * 0.07f, LY, a0.y - r.y * 0.07f), fr.P(a0.x + r.x * 0.07f, LY, a0.y + r.y * 0.07f), fr.P(a1.x + r.x * 0.07f, LY, a1.y + r.y * 0.07f), fr.P(a1.x - r.x * 0.07f, LY, a1.y - r.y * 0.07f), fr.u); }
             if (st == 1 && na <= 2) for (int ln = -1; ln <= 1; ln += 2) for (float s0 = 0.6f; s0 + 1.2f < L - 0.5f; s0 += 2.6f) { Vector2 off = r * (ln * hwA * 0.5f); Vector2 a0 = e + d * s0 + off, a1 = e + d * (s0 + 1.4f) + off; M("lijn").Quad(fr.P(a0.x - r.x * 0.05f, LY, a0.y - r.y * 0.05f), fr.P(a0.x + r.x * 0.05f, LY, a0.y + r.y * 0.05f), fr.P(a1.x + r.x * 0.05f, LY, a1.y + r.y * 0.05f), fr.P(a1.x - r.x * 0.05f, LY, a1.y - r.y * 0.05f), fr.u); }
             bool medEnd = na == 2 && stA[order[(c + 1) % na]] != 2;   // een laan die in de knoop overgaat in een smallere weg: de berm houdt daar op
-            if (st == 2 && (na == 1 || na >= 3 || medEnd)) Median(M, fr, e + d * 0.2f, e + d * Mathf.Max(0.2f, L - 1f));
+            if (st == 2 && (na == 1 || na >= 3 || medEnd)) Median(M, fr, e, e + d * Mathf.Max(0.2f, na >= 3 ? Mathf.Min(L - 1f, 1.2f) : L - 1f));   // op een kruising houdt de berm op bij de monding: daar slaat het verkeer af
             // zebrapaden, stopstrepen en haaientanden staan op de arm buiten de knoop (ChainMesh: daar is de weg recht, ook bij scherpe hoeken)
             if (signals && CanDrive(ids[a], i)) { Vector2 pp = PoleAt(e, d); Cone(M("paal"), fr, pp.x, pp.y, 0.08f, SY, 3.9f, 0.06f); Cone(M("paal"), fr, pp.x, pp.y, 0.24f, 3.3f, 3.95f, 0.24f); }
             if (bridgeNow) { Parapet(M, fr, P(a, -hwS, 0f), P(a, -hwS, sB[cp]), -r); Parapet(M, fr, P(a, hwS, 0f), P(a, hwS, sA[c]), r); }

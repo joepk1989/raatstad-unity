@@ -25,7 +25,7 @@ public partial class PlanetLife : MonoBehaviour
     public static int CarBoost;   // extra auto's (voor het wegvoorbeeld)
     public static bool PeopleOn = true, CarsOn = true;   // aan/uit in het tijdpaneel en het menu
     public static void ResetStatics() { hum = null; PeopleOn = true; CarsOn = true; CarBoost = 0; Chaos = false; boomClip = hornClip = beepClip = null; ico = null; }
-    float roadsT, spawnT, idleT = 4f;
+    float roadsT, spawnT, carSpawnT, idleT = 4f;
     PlanetWalker walker;
 
     void Awake() { I = this; if (GetComponent<Traffic>() == null) gameObject.AddComponent<Traffic>(); }
@@ -241,13 +241,10 @@ public partial class PlanetLife : MonoBehaviour
         float dt = Mathf.Min(Time.deltaTime, 0.05f);
         if (walker == null) walker = FindAnyObjectByType<PlanetWalker>(FindObjectsInactive.Include);
         roadsT -= dt; if (roadsT <= 0f) { roadsT = 2f; RefreshRoads(); RefreshBikes(); }
-        int targetP = PeopleOn ? Mathf.Clamp(walks.Count / 2, 0, 40) : 0, targetC = CarsOn ? Mathf.Clamp(roads.Count / 6 + CarBoost, 0, 16 + CarBoost) : 0;
-        spawnT -= dt;
-        if (spawnT <= 0f)
-        {
-            if (walks.Count > 0 && People.Count < targetP) { People.Add(SpawnPerson()); spawnT = 0.4f; }
-            else if (roads.Count > 0 && cars.Count < targetC) { var nc = SpawnCar(); if (Crowded(nc)) Destroy(nc.root.gameObject); else cars.Add(nc); spawnT = 0.7f; }   // niet op een andere auto verschijnen
-        }
+        int targetP = PeopleOn ? Mathf.Clamp(walks.Count / 2, 0, 40) : 0, targetC = CarsOn ? Mathf.Clamp(roads.Count / 3 + CarBoost, 0, 40 + CarBoost) : 0;   // een auto per drie wegvakken, hooguit 40
+        spawnT -= dt; carSpawnT -= dt;   // mensen en auto's elk met hun eigen tempo, zodat er meteen verkeer is
+        if (spawnT <= 0f && walks.Count > 0 && People.Count < targetP) { People.Add(SpawnPerson()); spawnT = 0.4f; }
+        if (carSpawnT <= 0f && roads.Count > 0 && cars.Count < targetC) { var nc = SpawnCar(); if (Crowded(nc)) Destroy(nc.root.gameObject); else cars.Add(nc); carSpawnT = 0.35f; }   // niet op een andere auto verschijnen
         while (People.Count > targetP) { Destroy(People[People.Count - 1].root.gameObject); People.RemoveAt(People.Count - 1); }
         while (cars.Count > targetC) { Destroy(cars[cars.Count - 1].root.gameObject); cars.RemoveAt(cars.Count - 1); }
 
