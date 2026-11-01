@@ -1,8 +1,8 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-// De hele planeet vol met wat er nu is: voorbeeldstadjes (Sample, met winkels, pleinen en torens) verspreid over de bol, op ruim
-// 15 vakken van elkaar, en daartussen platteland: heuvels (terrein tot 30 m, vlak rond de stadjes), bossen, meertjes in de laagtes,
+// De hele planeet vol met wat er nu is: dorpen van vijf soorten (PlanetVillages.cs: gehucht, kerkdorp, brinkdorp, marktstad, stad)
+// verspreid over de bol, op hun eigen straal plus 2 vakken van elkaar, en daartussen platteland: heuvels (terrein tot 30 m, vlak rond de stadjes), bossen, meertjes in de laagtes,
 // molens en boerderijtjes. Vast bepaald door de seed.
 public static partial class PlanetCity
 {
@@ -16,14 +16,18 @@ public static partial class PlanetCity
         var rnd = new System.Random(seed); int n = Planet.Cells.Length;
         var order = new int[n]; for (int i = 0; i < n; i++) order[i] = i;
         for (int i = n - 1; i > 0; i--) { int j = rnd.Next(i + 1); (order[i], order[j]) = (order[j], order[i]); }
-        float cosMin = Mathf.Cos(15.5f * 15.6f / Planet.R);
-        var towns = FillTowns; towns.Clear();
+        var towns = FillTowns; towns.Clear(); FillKinds.Clear();
         for (int oi = 0; oi < n; oi++)
         {
-            int c = order[oi]; Vector3 d = Planet.Cells[c].dir; bool ok = true;
-            foreach (int t in towns) if (Vector3.Dot(d, Planet.Cells[t].dir) > cosMin) { ok = false; break; }
-            if (ok && MountainMask(d) > 0.05f) ok = false;   // in een berggebied geen stadje
-            if (ok && Sample(c, rnd.Next(), true) == null) { towns.Add(c); prog?.Invoke(0.75f * oi / n, "Stadjes bouwen (" + towns.Count + ")"); yield return null; }
+            int c = order[oi]; Vector3 d = Planet.Cells[c].dir;
+            if (MountainMask(d) > 0.2f) continue;   // in een berggebied geen dorp (aan de voet alleen een gehucht: PickVillage)
+            int cities = 0; foreach (var k in FillKinds) if (k == Village.Stad) cities++;
+            var kind = PickVillage(rnd, d); int seedV = rnd.Next(); bool ok = true;
+            if (cities < 4 && MountainMask(d) == 0f) kind = Village.Stad;   // eerst een paar grote steden, dan de dorpen
+            // afstand tussen de middens: beide stralen plus 2 vakken voor de weg ertussen (twee marktsteden: 16 vakken, zoals eerst),
+            // en altijd minstens 11, anders vullen de kleine gehuchten de hele bol
+            for (int t = 0; t < towns.Count && ok; t++) if (Vector3.Dot(d, Planet.Cells[towns[t]].dir) > Mathf.Cos(Mathf.Max(kind == Village.Stad && FillKinds[t] == Village.Stad ? 45f : 11f, VillageRadius(kind) + VillageRadius(FillKinds[t]) + 2f) * 15.6f / Planet.R)) ok = false;   // steden ver uit elkaar
+            if (ok && BuildVillage(c, seedV, kind) == null) { towns.Add(c); FillKinds.Add(kind); prog?.Invoke(0.75f * oi / n, "Dorpen bouwen (" + towns.Count + ")"); yield return null; }
         }
         // wegen tussen de stadjes (voor het platteland, dat er dan omheen komt)
         var roadDist = new Dictionary<int, int>();   // afstand in vakken tot een verbindingsweg (tot 6)
@@ -35,6 +39,28 @@ public static partial class PlanetCity
                 if (line != null) linked++;
                 if (line != null) foreach (int c in line) if (!roadDist.ContainsKey(c)) { roadDist[c] = 0; q.Enqueue(c); }
                 prog?.Invoke(0.75f + 0.15f * e / edges.Count, "Wegen tussen de stadjes (" + e + "/" + edges.Count + ")"); if (e % 3 == 0) yield return null;
+            }
+            // doodlopende einden: waar het kan een eigen weg naar het dichtstbijzijnde dorp in die richting (hooguit één weg per paar dorpen)
+            var pairs = new HashSet<long>(); foreach (var (a, b) in edges) pairs.Add(PairKey(a, b));
+            for (int t = 0; t < towns.Count; t++)
+            {
+                int a = towns[t]; Vector3 da = Planet.Cells[a].dir; float rad = Mathf.Cos((VillageRadius(FillKinds[t]) + 1.5f) * 15.6f / Planet.R);
+                var ends = new List<int>(); foreach (var kv in Cells) if (Vector3.Dot(Planet.Cells[kv.Key].dir, da) > rad && DeadEnd(kv.Key)) ends.Add(kv.Key);
+                foreach (int de in ends)
+                {
+                    if (!DeadEnd(de)) continue;   // intussen al aangesloten
+                    Vector3 dd = Planet.Cells[de].dir, outv = dd - da; outv -= dd * Vector3.Dot(outv, dd); if (outv.sqrMagnitude < 1e-12f) continue; outv.Normalize();
+                    int best = -1; float bd = Mathf.Cos(30f * 15.6f / Planet.R);
+                    foreach (int b in towns)
+                    {
+                        if (b == a || pairs.Contains(PairKey(a, b))) continue; Vector3 db = Planet.Cells[b].dir, tv = db - dd; tv -= dd * Vector3.Dot(tv, dd);
+                        float dot = Vector3.Dot(dd, db); if (dot > bd && Vector3.Dot(tv.normalized, outv) > 0.5f) { bd = dot; best = b; }
+                    }
+                    if (best < 0) continue;
+                    var line = Connect(a, best, de); if (line == null) continue; pairs.Add(PairKey(a, best));
+                    foreach (int c in line) if (!roadDist.ContainsKey(c)) { roadDist[c] = 0; q.Enqueue(c); }
+                }
+                if (t % 8 == 7) { prog?.Invoke(0.9f, "Doodlopende wegen aansluiten (" + (t + 1) + "/" + towns.Count + ")"); yield return null; }
             }
             while (q.Count > 0) { int c = q.Dequeue(); if (roadDist[c] >= 6) continue; foreach (int j in Planet.Cells[c].nb) if (!roadDist.ContainsKey(j)) { roadDist[j] = roadDist[c] + 1; q.Enqueue(j); } }
         }
@@ -85,7 +111,11 @@ public static partial class PlanetCity
     // een weg van stadje a naar stadje b: de goedkoopste route over lege vakken (Dijkstra), van een gewoon wegvak van a (liefst een
     // doodlopend eind van een hoofdweg) naar een van b; een bocht kost wat extra, zodat hij zoveel mogelijk rechtdoor loopt. Niet
     // langs de verdiepte weg (zijn talud), niet door de polen of de vlaggen. Gelegd zoals slepen (PlaceLine), op het maaiveld.
-    static List<int> Connect(int a, int b)
+    static long PairKey(int a, int b) => a < b ? (long)a << 32 | (uint)b : (long)b << 32 | (uint)a;
+    // een wegvak op het maaiveld dat maar aan één kant verder gaat
+    public static bool DeadEnd(int c) { if (!IsRoad(c) || Underpass(c) || WalkLevel(c) != 0 || fieldCells.Contains(c)) return false; int n = 0; foreach (int j in Partners(c)) n++; return n == 1; }
+    // from >= 0: alleen vanaf dat wegvak (een doodlopend eind)
+    static List<int> Connect(int a, int b, int from = -1)
     {
         float span = Mathf.Acos(Mathf.Clamp(Vector3.Dot(Planet.Cells[a].dir, Planet.Cells[b].dir), -1f, 1f)) * Planet.R / 15.6f;   // in vakken
         bool InTown(int c, int t) => Vector3.Dot(Planet.Cells[c].dir, Planet.Cells[t].dir) > Mathf.Cos(8.5f * 15.6f / Planet.R);
@@ -97,14 +127,14 @@ public static partial class PlanetCity
         {
             int c = kv.Key; if (!Joinable(c)) continue;
             if (InTown(c, b)) goal.Add(c);
-            else if (InTown(c, a)) { int n = 0; foreach (int j in Partners(c)) n++; float c0 = n <= 1 ? 0f : 4f; cost[c] = c0; prev[c] = -1; open.Add((c0, c)); }
+            else if (InTown(c, a) && (from < 0 || c == from)) { int n = 0; foreach (int j in Partners(c)) n++; float c0 = n <= 1 ? 0f : 4f; cost[c] = c0; prev[c] = -1; open.Add((c0, c)); }
         }
         if (goal.Count == 0 || open.Count == 0) return null;
         Vector3 Step(int x, int y) { Vector3 d = Planet.Cells[y].dir - Planet.Cells[x].dir; return (d - Planet.Cells[x].dir * Vector3.Dot(d, Planet.Cells[x].dir)).normalized; }
-        int end = -1; float limit = span * 3f + 20f;
+        int end = -1; float limit = span * 3f + 20f, endCost = float.MaxValue;
         while (open.Count > 0)
         {
-            var (cc, c) = open.Min; open.Remove(open.Min); if (cc > cost[c]) continue; if (cc > limit) break;
+            var (cc, c) = open.Min; open.Remove(open.Min); if (cc > cost[c]) continue; if (cc > limit || cc >= endCost) break;
             foreach (int j in Planet.Cells[c].nb)
             {
                 bool g = goal.Contains(j); if (!g && !Free(j)) continue;
@@ -112,11 +142,10 @@ public static partial class PlanetCity
                 float step = 1f; int p = prev[c];
                 if (p >= 0) { float dot = Vector3.Dot(Step(p, c), Step(c, j)); step += dot > 0.95f ? 0f : dot > 0.3f ? 0.6f : 4f; }   // rechtdoor, flauwe bocht (60 graden), scherpe bocht
                 float nc = cc + step;
-                if (g) { if (p < 0) continue; cost[j] = nc; prev[j] = c; end = j; break; }   // niet direct van stadje naar stadje zonder lege vakken
+                if (g) { if (p < 0) continue; float tot = nc + (DeadEnd(j) ? 0f : 4f); if (tot < endCost) { endCost = tot; prev[j] = c; end = j; } continue; }   // niet direct van stadje naar stadje zonder lege vakken; liefst op een doodlopend eind
                 if (cost.TryGetValue(j, out float old) && old <= nc) continue;
                 cost[j] = nc; prev[j] = c; open.Add((nc, j));
             }
-            if (end >= 0) break;
         }
         if (end < 0) return null;
         var line = new List<int>(); for (int c = end; c >= 0; c = prev[c]) line.Add(c); line.Reverse();

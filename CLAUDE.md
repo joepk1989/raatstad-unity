@@ -72,6 +72,10 @@ Erbij gekomen op 1 november 2026 (wegen en verkeer):
 - Nieuwe startstad (`StartTownVersion`): een laan als rondweg met keerkoppen binnenin. Menu Raatstad > Teststad (verkeersmeting, auto's bekijken) en Raatstad > Wegvoorbeeld (wegbreedtes, fietspaden, rotondes).
 - De hoogtefunctie langs wegen op een niveau (`GroundField`, `LineGround`) staat als JavaScript in de webversie: `src/js/07a-terreinveld.js` in `joepk1989/raatstad-web` (nog niet aangesloten; uitleg in `docs/terreinveld.md` daar). Daar is het veld doorlopend gemaakt: een weg graaft pas in als zijn wegdek onder het terrein ligt en een kop ligt ook 5 cm onder het wegdek. In Unity zit op die plek nog een sprongetje van 5 cm.
 
+Erbij gekomen op 1 november 2026 (dorpen, `PlanetVillages.cs`):
+- Hele planeet vol maakt vijf soorten: gehucht (boerderijen, molen, boomgaard), kerkdorp (lintdorp met kerk), brinkdorp (driehoekige brink), marktstad (`Sample`) en 4 grote steden (ruit van straten onder 60°, hoge kantoren in het centrum). Aan de voet van de bergen alleen gehuchten.
+- Wegen tussen de dorpen sluiten liefst aan op doodlopende einden (`Connect` met `from`); een overgebleven eind krijgt een weg naar het dorp in die richting.
+
 Nog te doen:
 1. Modules als JSON met edge-codes (nu nog in code)
 2. Onderdelen uit `docs/overdracht-webversie.md` bouwen: stadsgenerator, wenteltrap, geluiden
