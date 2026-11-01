@@ -26,7 +26,7 @@ public class PlanetBuilder : MonoBehaviour
     static Item It(string id, string name, string tab, string block = null, Color? col = null) => new Item { id = id, name = name, tab = tab, block = block ?? id, col = col ?? Ui.ToolColor(block ?? id) };
     static readonly string[] Tabs = { "Wegen", "Paden", "Gebouwen", "Groen", "Water", "Terrein" };   // de zes categorieën (toetsen 1–6, de zes kanten van het keuzewiel)
     static readonly Item[] Catalog = {
-        It("weg", "Gewone weg", "Wegen"), It("weg:breed", "Brede weg", "Wegen", "weg", new Color(0.38f, 0.4f, 0.43f)), It("weg:laan", "Laan", "Wegen", "weg", new Color(0.33f, 0.5f, 0.32f)),
+        It("weg", "Gewone weg", "Wegen"), It("weg:breed", "Brede weg", "Wegen", "weg", new Color(0.38f, 0.4f, 0.43f)), It("weg:laan", "Laan", "Wegen", "weg", new Color(0.33f, 0.5f, 0.32f)), It("rotonde", "Rotonde", "Wegen"),
         It("pad", "Pad", "Paden"),
         It("woning", "Woning", "Gebouwen"), It("kantoor", "Kantoor", "Gebouwen"), It("winkel", "Winkel", "Gebouwen"), It("dak", "Dak", "Gebouwen"), It("blok", "Blok", "Gebouwen"), It("toren", "Toren", "Gebouwen"), It("molen", "Molen", "Gebouwen"),
         It("park", "Park", "Groen"), It("plein", "Plein", "Groen"), It("water", "Gracht", "Water"), It("meer", "Meer", "Water"),
@@ -43,6 +43,7 @@ public class PlanetBuilder : MonoBehaviour
             case "weg": return "Slepen voor een rechte weg met stoepen";
             case "weg:breed": return "Bredere weg voor drukke routes";
             case "weg:laan": return "Weg met bomen langs de kant";
+            case "rotonde": return "Klik op een vak: rotonde over 7 vakken; wegen op de ring sluiten aan";
             case "pad": return "Voetpad, of met B een fiets- en voetpad";
             case "woning": return "Om in te wonen, stapelbaar";
             case "kantoor": return "Werkplekken, stapelbaar";

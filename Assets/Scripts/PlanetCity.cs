@@ -8,7 +8,7 @@ using UnityEngine;
 // assenstelsel van het vak gebouwd, zodat gebouwen overal recht op de bol staan. De bodem is één mesh per
 // deel (128 vakken); blokken en wegen worden per deel opnieuw gemaakt als er iets verandert.
 [Serializable] public class PCellSave { public int i; public string[] items; }
-[Serializable] public class PSaveData { public int m; public float r; public List<PCellSave> cells = new List<PCellSave>(); public List<int> links = new List<int>(); public List<int> style = new List<int>(), under = new List<int>(), oneway = new List<int>(), terr = new List<int>(), low = new List<int>(), tunnel = new List<int>(), lower = new List<int>(), precarve = new List<int>(), prelevel = new List<int>(), corner = new List<int>(), center = new List<int>(), bike = new List<int>(); }   // corner: per hoekpunt drie vakken en de verschuiving in cm   // paren: vak/stijl, vak/onder (1 meer, 2 water, 3 kuil, 4 pad, 5 weg), van/naar, vak/terreinhoogte in cm
+[Serializable] public class PSaveData { public int m; public float r; public List<PCellSave> cells = new List<PCellSave>(); public List<int> links = new List<int>(); public List<int> style = new List<int>(), under = new List<int>(), oneway = new List<int>(), terr = new List<int>(), low = new List<int>(), tunnel = new List<int>(), lower = new List<int>(), precarve = new List<int>(), prelevel = new List<int>(), corner = new List<int>(), center = new List<int>(), bike = new List<int>(), rot = new List<int>(); }   // corner: per hoekpunt drie vakken en de verschuiving in cm   // paren: vak/stijl, vak/onder (1 meer, 2 water, 3 kuil, 4 pad, 5 weg), van/naar, vak/terreinhoogte in cm
 
 public static partial class PlanetCity
 {
@@ -18,7 +18,7 @@ public static partial class PlanetCity
     static readonly Dictionary<int, Transform> chunks = new Dictionary<int, Transform>();
     static readonly HashSet<int> dirty = new HashSet<int>();
 
-    public static void ResetAll() { Cells = new Dictionary<int, List<string>>(); Terr.Clear(); CornerOfs.Clear(); CenterOfs.Clear(); cnA = cnB = edN = null; Links.Clear(); partners.Clear(); Style.Clear(); Bike.Clear(); DragBike = false; Under.Clear(); Low.Clear(); OneWay.Clear(); TunnelLinks.Clear(); LowerLinks.Clear(); DragUnder = false; DragLevel = 0; DragStyle = 0; DragOneWay = false; Lights = true; chunks.Clear(); groundChunks.Clear(); dirty.Clear(); root = null; groundRoot = null; grid = null; equator = null; GridOn = true; Slot = 1; roadPieces.Clear(); roadRoot = null; }
+    public static void ResetAll() { Cells = new Dictionary<int, List<string>>(); Terr.Clear(); CornerOfs.Clear(); CenterOfs.Clear(); cnA = cnB = edN = null; Links.Clear(); partners.Clear(); Style.Clear(); Bike.Clear(); Rot.Clear(); DragBike = false; Under.Clear(); Low.Clear(); OneWay.Clear(); TunnelLinks.Clear(); LowerLinks.Clear(); DragUnder = false; DragLevel = 0; DragStyle = 0; DragOneWay = false; Lights = true; chunks.Clear(); groundChunks.Clear(); dirty.Clear(); root = null; groundRoot = null; grid = null; equator = null; GridOn = true; Slot = 1; roadPieces.Clear(); roadRoot = null; }
     public static bool IsRoad(int i) => Cells.TryGetValue(i, out var l) && l.Count > 0 && l[0] == "weg";
     public static bool IsPath(int i) => Cells.TryGetValue(i, out var l) && l.Count == 1 && l[0] == "pad";
     public static bool IsWalk(int i) => IsRoad(i) || IsPath(i);
@@ -812,7 +812,7 @@ public static partial class PlanetCity
     static readonly Dictionary<int, List<int>> partners = new Dictionary<int, List<int>>();
     static readonly List<int> none = new List<int>();
     static long Key(int i, int j) => i < j ? ((long)i << 20) | (uint)j : ((long)j << 20) | (uint)i;
-    public static void ClearLinks() { Links.Clear(); partners.Clear(); Style.Clear(); Bike.Clear(); Under.Clear(); Low.Clear(); OneWay.Clear(); TunnelLinks.Clear(); LowerLinks.Clear(); preCarve.Clear(); preLevel.Clear(); }
+    public static void ClearLinks() { Links.Clear(); partners.Clear(); Style.Clear(); Bike.Clear(); Rot.Clear(); Under.Clear(); Low.Clear(); OneWay.Clear(); TunnelLinks.Clear(); LowerLinks.Clear(); preCarve.Clear(); preLevel.Clear(); }
     public static bool Linked(int i, int j) => Links.Contains(Key(i, j));
     // Per wegvak: stijl (1 = brede weg, 2 = laan; ontbreekt = gewone weg), brug (wat eronder ligt: meer, water of kuil) en
     // eenrichtingsverkeer per verbinding (alleen van i naar j)
@@ -1047,6 +1047,7 @@ public static partial class PlanetCity
         if (!Cells.TryGetValue(i, out var l)) return false;
         if (IsHalf(i)) { if (l.Count <= 1) return ClearOver(i); l.RemoveRange(1, l.Count - 1); Touch(i); return true; }   // eerst wat op de vrije helft staat, daarna de schuine weg erover
         if (Under.TryGetValue(i, out var under)) { RestoreUnder(i, under); return true; }   // een brug: het water of de kuil komt terug
+        if (IsRot(i)) ClearRoundabout(i);
         bool walk = IsWalk(i); Cells.Remove(i); Style.Remove(i); Bike.Remove(i); Unlink(i); if (walk) RestoreLevel(i); Touch(i); return true;
     }
     public static float StackHeight(int i) { float h = 0f; if (Cells.TryGetValue(i, out var l)) foreach (var t in l) h += Blocks.Height(t); return h; }
@@ -1070,14 +1071,17 @@ public static partial class PlanetCity
             if (l.Count > 0 && !(l.Count == 1 && l[0] == "weg")) return "Eerst het vak leegmaken (rechtermuisknop) voor een weg";
             if (l.Count == 0) l.Add("weg");
             SetStyle(i); if (autoLink) { foreach (int j in ClickLinks(i)) Link(i, j); CarvePaths(); }
+            LinkRot(i);   // een weg op de ring van een rotonde sluit erop aan
             Touch(i); return null;
         }
+        if (type == "rotonde") { if (l.Count == 0) Cells.Remove(i); return PlaceRoundabout(i); }
+        if (RotOf(i) >= 0 && !IsRot(i) && type != "pad") { if (l.Count == 0) Cells.Remove(i); return "Hier ligt een rotonde: op de ring kun je niet bouwen"; }
         if (type == "pad" && l.Count == 1 && l[0] == "wegdeel") l.Clear();   // een pad over een schuine weg: het halve wegvak wordt een padvak (de brug komt op de rand)
         if (type == "pad" && l.Count == 1 && l[0] == "weg" && (Underpass(i) || ((DragUnder || DragLevel < 0) && WalkLevel(i) >= 0 && DigUnder(i))))   // een pad onder een weg door: met ongelijkvloers of een lager niveau (niet onder een verdiepte weg: daar kruist het pad op de hoogte van de weg)
         { if (autoLink) { foreach (int j in Planet.Cells[i].nb) if (IsPath(j)) Link(i, j); DigTrench(i); } Touch(i); return null; }
         if (type == "pad" && l.Count == 1 && l[0] == "weg")   // gelijkvloers: het pad sluit aan op de weg (een oversteek)
         { if (autoLink) foreach (int j in ClickLinks(i)) if (IsPath(j)) Link(i, j); Touch(i); return null; }
-        if (type == "pad" && l.Count == 0) { l.Add("pad"); if (DragBike) Bike.Add(i); if (autoLink) { foreach (int j in ClickLinks(i)) Link(i, j); DigCrossings(); } Touch(i); return null; }
+        if (type == "pad" && l.Count == 0) { l.Add("pad"); LinkRot(i); if (DragBike) Bike.Add(i); if (autoLink) { foreach (int j in ClickLinks(i)) Link(i, j); DigCrossings(); } Touch(i); return null; }
         if (type == "pad" && l.Count == 1 && l[0] == "pad") { if (DragBike && Bike.Add(i)) Touch(i); if (autoLink) foreach (int j in ClickLinks(i)) Link(i, j); Touch(i); return null; }
         if (l.Count > 0 && l[0] == "weg") return "Op een weg kun je niet bouwen; haal de weg eerst weg (rechtermuisknop)";
         if (l.Count > 0 && l[0] == "wegdeel" && !Buildable(type)) return "Hier loopt een weg overheen: op de vrije helft passen alleen gebouwen en parken";
@@ -1231,6 +1235,7 @@ public static partial class PlanetCity
             foreach (var kv in CornerOfs) { sd.corner.Add((int)(kv.Key >> 40)); sd.corner.Add((int)((kv.Key >> 20) & 0xFFFFF)); sd.corner.Add((int)(kv.Key & 0xFFFFF)); sd.corner.Add(Mathf.RoundToInt(kv.Value * 100f)); }
             foreach (var kv in CenterOfs) { sd.center.Add(kv.Key); sd.center.Add(Mathf.RoundToInt(kv.Value * 100f)); }
             foreach (int b in Bike) if (Cells.ContainsKey(b)) sd.bike.Add(b);
+            foreach (int c in Rot) if (IsRoad(c)) sd.rot.Add(c);
             return JsonUtility.ToJson(sd);
         }
     }
@@ -1256,6 +1261,7 @@ public static partial class PlanetCity
             else foreach (var kv in Cells) if (IsWalk(kv.Key)) foreach (int j in Planet.Cells[kv.Key].nb) if (IsWalk(j)) Link(kv.Key, j);   // oude opslag: alles naast elkaar verbonden
             if (sd.style != null) for (int k = 0; k + 1 < sd.style.Count; k += 2) Style[sd.style[k]] = (byte)sd.style[k + 1];
             if (sd.bike != null) foreach (int b in sd.bike) Bike.Add(b);
+            if (sd.rot != null) foreach (int c in sd.rot) Rot.Add(c);
             if (sd.under != null) for (int k = 0; k + 1 < sd.under.Count; k += 2) Under[sd.under[k]] = sd.under[k + 1] == 1 ? "meer" : sd.under[k + 1] == 2 ? "water" : sd.under[k + 1] == 4 ? "pad" : sd.under[k + 1] == 5 ? "weg" : "kuil";
             if (sd.low != null) for (int k = 0; k + 1 < sd.low.Count; k += 2) Low[sd.low[k]] = sd.low[k + 1] / 100f;
             if (sd.tunnel != null) for (int k = 0; k + 1 < sd.tunnel.Count; k += 2) LinkTunnel(sd.tunnel[k], sd.tunnel[k + 1]);
@@ -2565,6 +2571,8 @@ public static partial class PlanetCity
     // Kan blok 'type' op vak i? null = ja, anders de reden. Dezelfde regels als Place (voor blokken, niet voor wegen), zonder iets te veranderen.
     public static string CanPlace(int i, string type)
     {
+        if (type == "rotonde") return RotOf(i) >= 0 ? null : RotFree(i) ? null : "Hier staat iets in de weg";
+        if (RotOf(i) >= 0 && !IsRot(i)) return "Hier ligt een rotonde: op de ring kun je niet bouwen";
         if (!Cells.TryGetValue(i, out var l) || l.Count == 0) return null;
         if (type == "pad" && l.Count == 1 && l[0] == "pad") return null;
         if (l[0] == "weg") return "Op een weg kun je niet bouwen; haal de weg eerst weg (rechtermuisknop)";
@@ -2582,6 +2590,7 @@ public static partial class PlanetCity
     public static Mesh GhostMesh(int i, string type, bool erase, out Vector3 origin)
     {
         origin = Planet.Cells[i].dir * (Planet.R + G(i));
+        if (type == "rotonde" && !erase) { var rmb = new Dictionary<string, MeshBuilder>(); var ra = new List<int>(); foreach (int j in Planet.Cells[i].nb) if (IsRoad(j)) ra.Add(j); RoundaboutMesh(rmb, i, ra); return MergeMesh(rmb, origin); }
         Cells.TryGetValue(i, out var cur); var list = cur != null ? new List<string>(cur) : new List<string>(); int from;
         if (erase) { if (list.Count == 0 || list[0] == "weg") return null; from = 0; }
         else

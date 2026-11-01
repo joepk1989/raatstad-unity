@@ -37,7 +37,7 @@ public static partial class PlanetCity
     {
         if (IsRoad(n))   // tot onder de rand van de stoep (bij een schuine aansluiting verder: gedeeld door de sinus van de hoek met de weg)
         {
-            if (UnderLink(n, j)) return CellDist(n, j) * 0.5f; Dims(StyleOf(n), out _, out float s);
+            if (UnderLink(n, j)) return CellDist(n, j) * 0.5f; if (IsRot(n)) return RotRo + RotWalk - 0.3f; Dims(StyleOf(n), out _, out float s);
             Vector3 rd = UpperRoadDir(n), c = Planet.Cells[n].dir; float sin = rd == Vector3.zero ? 1f : Vector3.Cross(rd.normalized, Tan(Planet.Cells[j].dir - c, c)).magnitude;
             return Mathf.Min((s - 0.3f) / Mathf.Max(0.35f, sin), CellDist(n, j) * 0.6f);
         }

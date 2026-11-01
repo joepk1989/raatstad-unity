@@ -29,13 +29,13 @@ public partial class PlanetLife : MonoBehaviour
 
     void RefreshRoads()
     {
-        roads.Clear(); walks.Clear(); foreach (var kv in PlanetCity.Cells) { if (kv.Value.Count > 0 && kv.Value[0] == "weg") { roads.Add(kv.Key); walks.Add(kv.Key); } else if (kv.Value.Count == 1 && kv.Value[0] == "pad") walks.Add(kv.Key); }
+        roads.Clear(); walks.Clear(); foreach (var kv in PlanetCity.Cells) { if (kv.Value.Count > 0 && kv.Value[0] == "weg") { roads.Add(kv.Key); if (!PlanetCity.IsRot(kv.Key)) walks.Add(kv.Key); } else if (kv.Value.Count == 1 && kv.Value[0] == "pad") walks.Add(kv.Key); }
     }
 
     // volgend wegvak vanaf a, liefst niet terug naar prev
     static int NextRoad(int a, int prev, bool walk = false)
     {
-        var opts = new List<int>(6); foreach (int j in PlanetCity.Partners(a)) if ((walk ? PlanetCity.IsWalk(j) : PlanetCity.IsRoad(j) && PlanetCity.CanDrive(a, j)) && j != prev) opts.Add(j);   // auto's volgen het eenrichtingsverkeer
+        var opts = new List<int>(6); foreach (int j in PlanetCity.Partners(a)) if ((walk ? PlanetCity.IsWalk(j) && !PlanetCity.IsRot(j) : PlanetCity.IsRoad(j) && PlanetCity.CanDrive(a, j)) && j != prev) opts.Add(j);   // voetgangers lopen niet over de rotonde   // auto's volgen het eenrichtingsverkeer
         if (opts.Count == 0) return prev >= 0 && (walk ? PlanetCity.LinkedWalk(a, prev) : PlanetCity.LinkedRoad(a, prev) && PlanetCity.CanDrive(a, prev)) ? prev : a;
         return opts[Random.Range(0, opts.Count)];
     }
@@ -134,7 +134,8 @@ public partial class PlanetLife : MonoBehaviour
     // precies op het asfalt blijft. De auto houdt rechts (zijwaarts langs de raaklijn).
     static void Arc(int a, int b, int cc, float s, float side, float h, out Vector3 pos, out Vector3 fwd, out Vector3 up)
     {
-        Vector3 P0 = ((Planet.Cells[a].dir + Planet.Cells[b].dir) * 0.5f).normalized, P3 = ((Planet.Cells[b].dir + Planet.Cells[cc].dir) * 0.5f).normalized;
+        if (PlanetCity.IsRot(b) && a != b) { RotArc(a, b, cc, s, h, out pos, out fwd, out up); return; }
+        Vector3 P0 = Mid(a, b), P3 = Mid(b, cc);
         Vector3 t0 = EdgeDir(a, b), t3 = EdgeDir(b, cc); float k = Vector3.Distance(P0, P3) * 0.4f;
         Vector3 P1 = P0 + t0 * k, P2 = P3 - t3 * k;
         if (a == cc) { P1 = Planet.Cells[b].dir + t0 * k * 0.5f; P2 = Planet.Cells[b].dir - t3 * k * 0.5f; }   // keren: lus door het hart
@@ -145,9 +146,26 @@ public partial class PlanetLife : MonoBehaviour
         Vector3 right = Vector3.Cross(up, fwd);
         pos = up * (Planet.R + h) + right * side;
     }
-    static float ArcLen(int a, int b, int cc) => (Vector3.Distance(Planet.Cells[a].dir, Planet.Cells[b].dir) + Vector3.Distance(Planet.Cells[b].dir, Planet.Cells[cc].dir)) * 0.5f * Planet.R;
+    // het midden van de rand x–y, of bij een rotonde het punt op de cirkel van de rijbaan in de richting van de arm
+    static Vector3 Mid(int x, int y)
+    {
+        if (PlanetCity.IsRot(y)) { Vector3 c = Planet.Cells[y].dir; Vector3 d = Planet.Cells[x].dir - c; d -= c * Vector3.Dot(d, c); return (c * Planet.R + d.normalized * PlanetCity.RotRc).normalized; }
+        if (PlanetCity.IsRot(x)) return Mid(y, x);
+        return ((Planet.Cells[x].dir + Planet.Cells[y].dir) * 0.5f).normalized;
+    }
+    // over de rotonde in vak b, van arm a naar arm cc (tegen de klok in, zie PlanetCity.RotPath)
+    static void RotArc(int a, int b, int cc, float s, float h, out Vector3 pos, out Vector3 fwd, out Vector3 up)
+    {
+        PlanetCity.RotPath(a, b, cc, Lane(a, b), Lane(b, cc), out Vector3 C, out Vector3 e, out Vector3 n, out float f0, out float span, out float r0, out float r1);
+        float f = f0 + span * s, r = Mathf.Lerp(r0, r1, s); Vector3 rad = e * Mathf.Cos(f) + n * Mathf.Sin(f);
+        Vector3 p = C + rad * r; up = p.normalized; pos = up * (Planet.R + h);
+        Vector3 t = (-e * Mathf.Sin(f) + n * Mathf.Cos(f)) * Mathf.Sign(span); fwd = (t - up * Vector3.Dot(t, up)).normalized;
+    }
+    static float ArcLen(int a, int b, int cc) => PlanetCity.IsRot(b) && a != b ? RotLen(a, b, cc) : (Vector3.Distance(Planet.Cells[a].dir, Planet.Cells[b].dir) + Vector3.Distance(Planet.Cells[b].dir, Planet.Cells[cc].dir)) * 0.5f * Planet.R;
+    static float RotLen(int a, int b, int cc) { PlanetCity.RotPath(a, b, cc, Lane(a, b), Lane(b, cc), out _, out _, out _, out _, out float span, out float r0, out float r1); return Mathf.Abs(span) * (r0 + r1) * 0.5f; }
     static float Bend(int a, int b, int cc)   // 0 = rechtdoor, 1 = haakse of scherpere bocht
     {
+        if (PlanetCity.IsRot(b)) return 0.8f;   // over de rotonde: rustig
         Vector3 d1 = (Planet.Cells[b].dir - Planet.Cells[a].dir).normalized, d2 = (Planet.Cells[cc].dir - Planet.Cells[b].dir).normalized;
         return Mathf.Clamp01(Mathf.Acos(Mathf.Clamp(Vector3.Dot(d1, d2), -1f, 1f)) * Mathf.Rad2Deg / 90f);
     }

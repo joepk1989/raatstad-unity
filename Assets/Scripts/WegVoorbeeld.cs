@@ -35,6 +35,7 @@ public class WegVoorbeeld : MonoBehaviour
         int home = At(Planet.South, 1.0f, 160f);
         float D60 = Mathf.PI / 3f;
         if (mode == "fiets") { yield return Bikes(home); yield break; }
+        if (mode == "rotonde") { yield return Roundabouts(home); yield break; }
         var scenes = new (string name, int c)[] { ("1_rechtdoor_breed_naar_gewoon", home), ("2_T_breed_met_gewone_zijweg", At(home, 0f, 150f)), ("3_laan_naar_gewone_weg", At(home, 2f * D60, 150f)), ("4_knik_breed_naar_gewoon", At(home, 4f * D60, 150f)), ("5_kruispunt_breed_en_gewoon", At(home, 3f * D60, 150f)) };
         int endBroad = Leg(scenes[0].c, 0f, 1), endNormal = Leg(scenes[0].c, Mathf.PI, 0);
         Leg(scenes[1].c, 0f, 1); Leg(scenes[1].c, Mathf.PI, 1); Leg(scenes[1].c, D60, 0);
@@ -147,7 +148,30 @@ public class WegVoorbeeld : MonoBehaviour
         File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar");
         if (pb != null) pb.enabled = true;
     }
-    static void RoadLine(int a, int b) { var l = PlanetCity.LinePlan(a, b); if (l == null || l.Count < 2) return; PlanetCity.DragStyle = 0; PlanetCity.PlaceLine(l, "weg"); PlanetCity.SetLevel(l, 0, "weg"); }
+    // rotondes: met vier gewone wegen (eerst de wegen, dan de rotonde), en een rotonde waar daarna een brede weg, een gewone weg
+    // en een fietspad naartoe gesleept worden; daarna rijden er auto's
+    IEnumerator Roundabouts(int home)
+    {
+        float D60 = Mathf.PI / 3f; int r1 = home, r2 = At(home, 0f, 160f);
+        Leg(r1, 0f, 0); Leg(r1, 2f * D60, 0); Leg(r1, Mathf.PI, 0); Leg(r1, 5f * D60, 0); PlanetCity.PlaceRoundabout(r1);
+        PlanetCity.PlaceRoundabout(r2);
+        var rn = Planet.Cells[r2].nb;   // naar een vak van de ring slepen
+        System.Func<int, int> Out = j => Planet.Nearest((Planet.Cells[j].dir * 5f - Planet.Cells[r2].dir * 4f).normalized * Planet.R);   // 4 vakken verder naar buiten
+        RoadLine(Out(rn[1]), rn[1]); PlanetCity.DragStyle = 1; RoadLine(Out(rn[3]), rn[3]); PlanetCity.DragStyle = 0; RoadLine(Out(rn[5]), rn[5]);
+        PlanetCity.DragBike = true; { var l = PlanetCity.LinePlan(rn[4], Out(rn[4])); PlanetCity.PlaceLine(l, "pad"); PlanetCity.SetLevel(l, 0, "pad"); } PlanetCity.DragBike = false;
+        PlanetCity.Rebuild(); PlanetCity.Rebuild(); yield return null; yield return null;
+        foreach (var (nm, c) in new[] { ("r1", r1), ("r2", r2) })
+        {
+            yield return Shot(nm + "_boven", c, Dir2(c, 0f), 50f, 89f); yield return Shot(nm + "_schuin", c, Dir2(c, 0.4f), 40f, 35f); yield return Shot(nm + "_laag", c, Dir2(c, 1.4f), 26f, 14f);
+        }
+        DayNight.Speed = 1f;
+        for (int t = 0; t < 4; t++) { float w = Time.time + 6f; while (Time.time < w) yield return null; yield return Shot("r1_autos" + t, r1, Dir2(r1, 0.2f), 42f, 55f); }
+        var info = new System.Text.StringBuilder(); foreach (int c in new[] { r1, r2 }) { info.Append("rotonde ").Append(c).Append(" armen:"); foreach (int j in PlanetCity.Partners(c)) info.Append(' ').Append(j).Append(PlanetCity.IsRoad(j) ? "W" : "P"); info.AppendLine(); }
+        File.WriteAllText(Path.Combine(Dir, "rotondes.txt"), info.ToString());
+        File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar");
+        if (pb != null) pb.enabled = true;
+    }
+    static void RoadLine(int a, int b) { var l = PlanetCity.LinePlan(a, b); if (l == null || l.Count < 2) return; PlanetCity.PlaceLine(l, "weg"); PlanetCity.SetLevel(l, 0, "weg"); }
     static void Pad(int c, float ang, float len = 60f)
     {
         var l = PlanetCity.LinePlan(c, At(c, ang, len)); if (l == null || l.Count < 2) return;

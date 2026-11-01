@@ -357,7 +357,7 @@ public static class Ui
     {
         switch (t)
         {
-            case "weg": return new Color(0.3f, 0.32f, 0.35f); case "woning": return new Color(0.75f, 0.35f, 0.25f); case "kantoor": return new Color(0.55f, 0.65f, 0.78f);
+            case "weg": return new Color(0.3f, 0.32f, 0.35f); case "rotonde": return new Color(0.36f, 0.44f, 0.36f); case "woning": return new Color(0.75f, 0.35f, 0.25f); case "kantoor": return new Color(0.55f, 0.65f, 0.78f);
             case "park": return new Color(0.4f, 0.68f, 0.3f); case "water": return new Color(0.22f, 0.5f, 0.78f); case "meer": return new Color(0.3f, 0.62f, 0.8f);
             case "pad": return new Color(0.82f, 0.76f, 0.63f); case "dak": return new Color(0.6f, 0.3f, 0.22f); case "heuvel": case "terrein": return new Color(0.5f, 0.7f, 0.35f);
             case "kuil": return new Color(0.35f, 0.5f, 0.28f); case "blok": return new Color(0.6f, 0.58f, 0.56f);

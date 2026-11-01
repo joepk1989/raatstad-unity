@@ -58,8 +58,20 @@ public partial class PlanetLife
         c.blocked = lead != null && leadD < 11f && !ignoreLead;
         if (c.blocked) want = Mathf.Min(want, Mathf.Max(0f, (leadD - 4.5f) * (chaos ? 1.6f : 1.2f)));
 
-        // verkeerslicht aan het eind van deze boog: remmen voor rood, en voor geel als dat nog kan
         c.atLight = false;
+        // de rotonde op (de volgende boog is de rotonde): voorrang aan wie er al rijdt en naar onze inrit toe komt
+        if (!chaos && c.c != c.b && PlanetCity.IsRot(c.c) && !PlanetCity.IsRot(c.b))
+        {
+            PlanetCity.RotPath(c.b, c.c, c.n, Lane(c.b, c.c), Lane(c.c, c.n), out Vector3 C, out Vector3 e, out Vector3 nn, out float f0, out _, out float r0, out _);
+            Vector3 entry = C + (e * Mathf.Cos(f0) + nn * Mathf.Sin(f0)) * r0; bool give = false;
+            foreach (var o in cars)
+            {
+                if (o == c || o.dead || o.free || o.b != c.c || o.a == c.b) continue; Vector3 d = entry - o.root.position;
+                if (d.magnitude < 13f && Vector3.Dot(d, o.fwd) > -1.5f) { give = true; break; }
+            }
+            if (give) { float d = Mathf.Max(0f, (1f - c.s) * len - 5f); want = Mathf.Min(want, Mathf.Sqrt(2f * 4f * d)); c.atLight = true; }   // achter de haaientanden wachten, niet op de ring
+        }
+        // verkeerslicht aan het eind van deze boog: remmen voor rood, en voor geel als dat nog kan
         if (c.c != c.b && Traffic.IsJunction(c.c))
         {
             var ts = Traffic.State(c.c, c.b);

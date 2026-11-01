@@ -11,7 +11,7 @@ public class Traffic : MonoBehaviour
 
     public static bool IsJunction(int j)
     {
-        if (!PlanetCity.Lights || !PlanetCity.IsRoad(j)) return false;
+        if (!PlanetCity.Lights || !PlanetCity.IsRoad(j) || PlanetCity.IsRot(j)) return false;   // een rotonde heeft geen lichten
         int n = 0; foreach (int p in PlanetCity.Partners(j)) if (PlanetCity.IsRoad(p)) n++;
         return n >= 3;
     }

@@ -32,14 +32,14 @@ public static partial class PlanetCity
     }
     static float CellDist(int a, int b) => Vector3.Distance(Planet.Cells[a].dir, Planet.Cells[b].dir) * Planet.R;
     // tot hier (vanaf het knooppunt) tekent de knoop; daarna begint het lint naar buur j
-    static float NodeTrim(int n, int j, int deg) => Mathf.Min(deg == 1 ? 7.0f : 7.5f, CellDist(n, j) * 0.48f);
+    static float NodeTrim(int n, int j, int deg) => IsRot(n) ? RotTrim(n, j) : Mathf.Min(deg == 1 ? 7.0f : 7.5f, CellDist(n, j) * 0.48f);
 
     // Een knoop: geen twee wegburen, een knik, of een overgang naar een smallere weg (het bredere vak wordt de knoop en tekent
     // de overgang, zodat elke lijn één breedte heeft)
     static bool NodeShape(int i, List<int> nb)
     {
-        if (nb.Count != 2 || TurnAt(i, nb[0], nb[1]) >= BendNode) return true;
-        byte s = StyleOf(i); return (StyleOf(nb[0]) < s && RoadNb(nb[0]).Count == 2) || (StyleOf(nb[1]) < s && RoadNb(nb[1]).Count == 2);   // de stijl van een kruising of eind telt niet: die volgt zijn armen
+        if (Rot.Contains(i) || nb.Count != 2 || TurnAt(i, nb[0], nb[1]) >= BendNode) return true;   // een rotonde is altijd een knoop
+        byte s = StyleOf(i); return (StyleOf(nb[0]) < s && RoadNb(nb[0]).Count == 2 && !Rot.Contains(nb[0])) || (StyleOf(nb[1]) < s && RoadNb(nb[1]).Count == 2 && !Rot.Contains(nb[1]));   // de stijl van een kruising of eind telt niet: die volgt zijn armen
     }
     static bool IsRoadNode(int i) => NodeShape(i, RoadNb(i));
     // de stijl van de arm van knoop n naar wegbuur j: die van de lijn erachter (het eerste vak ervan). Twee knopen naast elkaar:
@@ -49,7 +49,7 @@ public static partial class PlanetCity
         if (styleOverride >= 0) return (byte)styleOverride;
         if (!IsRoad(j)) return StyleOf(n);
         if (!IsRoadNode(j)) return StyleOf(j);
-        bool dn = RoadNb(n).Count == 2, dj = RoadNb(j).Count == 2;
+        bool dn = RoadNb(n).Count == 2 && !Rot.Contains(n), dj = RoadNb(j).Count == 2 && !Rot.Contains(j);
         return dn && !dj ? StyleOf(n) : dj && !dn ? StyleOf(j) : (byte)Mathf.Min(StyleOf(n), StyleOf(j));
     }
     static byte ChainStyle(List<int> ch, bool closed) => closed || ch.Count > 2 ? StyleOf(ch[closed ? 0 : 1]) : ArmStyle(ch[0], ch[ch.Count - 1]);
@@ -112,7 +112,7 @@ public static partial class PlanetCity
         foreach (int n in nodes)
         {
             string key = "n:" + n; want.Add(key);
-            long sig = Mix(Mix(Mix(Mix(Mix(1469598103934665603L, n), Cm(G(n))), StyleOf(n)), Cm(MinCorner(n))), (Lights ? 2 : 0) + (Under.ContainsKey(n) ? 1 : 0));
+            long sig = Mix(Mix(Mix(Mix(Mix(1469598103934665603L, n), Cm(G(n))), StyleOf(n)), Cm(MinCorner(n))), (Lights ? 2 : 0) + (Under.ContainsKey(n) ? 1 : 0) + (Rot.Contains(n) ? 4 : 0));
             foreach (int j in Partners(n)) { sig = Mix(sig, j); sig = Mix(sig, Cm(G(j))); sig = Mix(sig, IsRoad(j) ? 1 : IsPath(j) ? 2 : 0); sig = Mix(sig, Flow(n, j)); sig = Mix(sig, IsRoad(j) ? ArmStyle(n, j) : 0); }
             Piece(key, sig, mb => NodeMesh(mb, n, nbs[n]));
         }
@@ -146,6 +146,7 @@ public static partial class PlanetCity
             Vector3 d3 = (Planet.Cells[j].dir - Planet.Cells[n].dir) * Planet.R; Vector2 q = new Vector2(Vector3.Dot(d3, fr.e), Vector3.Dot(d3, fr.n));
             ends.Add(q.normalized * NodeTrim(n, j, arms.Count));
         }
+        if (IsRot(n)) { RoundaboutMesh(mb, n, arms); return; }
         RoadNode(mb, fr, n, ends, arms);
     }
 
