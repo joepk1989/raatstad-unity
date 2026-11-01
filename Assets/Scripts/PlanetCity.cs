@@ -31,7 +31,7 @@ public static partial class PlanetCity
     public static readonly Dictionary<int, float> Terr = new Dictionary<int, float>();
     public const float TerrTop = 30f, TerrLow = -12f;   // afgraven kan tot 12 m onder het gewone maaiveld
     public static float G(int i) => Terr.TryGetValue(i, out var h) ? h : 0f;
-    public static bool Plateau(int i) => Cells.TryGetValue(i, out var l) && l.Count > 0 && !IsWalk(i);
+    public static bool Plateau(int i) => Cells.TryGetValue(i, out var l) && l.Count > 0 && !IsWalk(i) && !LooseTrees(l);   // bomen staan los op het terrein (PlanetNature.cs)
     public static bool SetTerr(int i, float h)   // geeft true als de hoogte echt veranderde
     {
         h = Mathf.Clamp(Mathf.Round(h * 100f) / 100f, TerrLow, TerrTop); if (Mathf.Abs(h - G(i)) < 0.005f) return false;
@@ -2552,7 +2552,7 @@ public static partial class PlanetCity
             case "bord": return new Color(0.95f, 0.70f, 0.23f); case "klinker": return new Color(0.70f, 0.55f, 0.45f); case "hout": return new Color(0.52f, 0.36f, 0.22f);
             case "baksteen": return new Color(0.62f, 0.33f, 0.25f); case "leien": return new Color(0.24f, 0.27f, 0.32f); case "klok": return new Color(0.95f, 0.95f, 0.9f); case "goud": return new Color(0.9f, 0.72f, 0.25f);
             case "molen": return new Color(0.30f, 0.30f, 0.28f); case "kap": return new Color(0.42f, 0.36f, 0.26f); case "wiek": return new Color(0.35f, 0.22f, 0.15f); case "zeil": return new Color(0.92f, 0.9f, 0.84f);
-            default: return new Color(0.40f, 0.28f, 0.18f);
+            default: return NatureColor(k, out var nc) ? nc : new Color(0.40f, 0.28f, 0.18f);
         }
     }
 
@@ -2680,19 +2680,8 @@ public static partial class PlanetCity
                         Cone(M("dak"), fr, 0, 0, fr.rad * 0.95f, h, h1, fr.rad * 0.5f); Top(M("dak"), fr, 0.5f, h1);
                         break;
                     case "park":
-                        bool onSlope = k == 0 && SlopePark(i);   // naast een weg op een niveau: geen grasplaat, de bomen op het talud
-                        if (!onSlope) { Top(M("gras"), fr, 0.98f, h + 0.05f); if (k == 0) Wall(M("gras"), fr, 0.98f, -0.2f, h + 0.05f); }
-                        for (int j = 0; j < 3; j++)
-                        {
-                            float a = ((hash >> (j * 5)) & 31) / 31f * 6.28f + j * 2.1f, rr = (0.25f + ((hash >> (j * 3 + 2)) & 7) / 7f * 0.45f) * fr.rad;
-                            float tx = Mathf.Cos(a) * rr, tz = Mathf.Sin(a) * rr, th = h + 0.05f;
-                            if (onSlope)
-                            {
-                                float gt = TerrainAt((fr.o + fr.e * tx + fr.n * tz).normalized) - G(i); if (gt < -0.6f) continue;   // niet in de bak
-                                th = gt - 0.1f;
-                            }
-                            Cone(M("stam"), fr, tx, tz, 0.22f, th, th + 1.15f, 0.18f); Cone(M("blad"), fr, tx, tz, 1.5f, th + 0.95f, th + 3.95f, 0f);
-                        }
+                        if (k > 0) Top(M("gras"), fr, 0.98f, h + 0.05f);   // daktuin; op de grond staan de bomen los op het terrein
+                        Trees(M, fr, i, hash, h + 0.05f, k > 0);   // PlanetNature.cs
                         break;
                     case "water":
                         Top(M("water"), fr, 1.0f, h + 0.03f); if (k == 0) Wall(M("water"), fr, 1.0f, -0.2f, h + 0.03f);
