@@ -90,10 +90,54 @@ public static partial class PlanetCity
         }
     }
 
+    // ---------- zeeniveau ----------
+    // Overal op de planeet hetzelfde waterpeil: waar het maaiveld lager ligt dan SeaLevel staat water (afgraven met Terrein maakt
+    // dus een meer of een zee). Wegen tellen niet mee: een wegvak, en de geul of het talud van een weg op een niveau, blijft droog.
+    // Per vak een vlakke zeshoek op het peil over het hele vak; het terrein dat erboven uitsteekt maakt vanzelf de oever, en buurvakken
+    // sluiten naadloos aan (zelfde hoekpunten, zelfde hoogte).
+    public const float SeaLevel = -1f;
+    // het natuurlijke maaiveld op hoekpunt k van vak i: het laagste van de drie vakken eromheen, zonder wegen en paden
+    static float SeaCorner(int i, int k)
+    {
+        Topo(); float h = float.MaxValue;
+        foreach (int j in new[] { i, cnA[i][k], cnB[i][k] }) if (!IsWalk(j)) h = Mathf.Min(h, G(j));
+        return h;
+    }
+    public static bool Wet(int i)
+    {
+        if (IsWalk(i) || carved.Contains(i) || levelled.Contains(i) || (fieldCells.Contains(i) && NearSeg(Planet.Cells[i].dir, Planet.Cells[i].radius))) return false;
+        if (Cells.TryGetValue(i, out var l) && l.Count > 0 && (l[0] == "meer" || l[0] == "kuil")) return false;   // een meer tekent zijn eigen water
+        if (G(i) + CenterOfs1(i) < SeaLevel) return true;
+        for (int k = 0; k < Planet.Cells[i].corners.Length; k++) if (SeaCorner(i, k) < SeaLevel) return true;
+        return false;
+    }
+    // de kleur van een stukje terrein in een nat vak: zand langs de waterlijn, donkere bodem in het diepe
+    static string SeaTag(int i, string tag, float h0, float h1, float h2)
+    {
+        if (tag == null || Mathf.Min(h0, Mathf.Min(h1, h2)) > SeaLevel + 0.4f || !Wet(i)) return tag;
+        return Mathf.Max(h0, Mathf.Max(h1, h2)) < SeaLevel - 1.5f ? "zeebodem" : "zand";
+    }
+    // het wateroppervlak van de vakken c0..c1 (één deel van de bodem)
+    static void SeaChunk(int c0, int c1, Transform parent, List<GameObject> made)
+    {
+        var mb = new MeshBuilder(); float r = Planet.R + SeaLevel;
+        for (int i = c0; i < c1; i++)
+        {
+            if (!Wet(i)) continue; var c = Planet.Cells[i]; int m = c.corners.Length; Vector3 mid = c.dir * r;
+            for (int k = 0; k < m; k++) mb.Tri(mid, c.corners[k] * r, c.corners[(k + 1) % m] * r, c.dir);
+        }
+        if (mb.v.Count == 0) return;
+        var go = new GameObject("Zee " + (c0 / ChunkN)); go.transform.SetParent(parent, false); go.layer = Layers.Water; made.Add(go);
+        go.AddComponent<MeshFilter>().sharedMesh = mb.Build();
+        var mat = Mats.Get("p_zee", new Color(0.16f, 0.42f, 0.62f, 0.78f)); if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.85f);
+        var mr = go.AddComponent<MeshRenderer>(); mr.sharedMaterial = mat; mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+    }
+
     static bool NatureColor(string k, out Color c)
     {
         switch (k)
         {
+            case "zeebodem": c = new Color(0.47f, 0.45f, 0.36f); return true;
             case "loof2": c = new Color(0.36f, 0.56f, 0.22f); return true;
             case "naald": c = new Color(0.13f, 0.34f, 0.21f); return true;
             case "berk": c = new Color(0.88f, 0.86f, 0.80f); return true;

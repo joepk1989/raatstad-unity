@@ -1588,6 +1588,7 @@ public static partial class PlanetCity
                         if (steep) { if (up < SteepUp) tag = "aarde"; }   // een talud is gras, alleen waar het steiler is dan 40° kale aarde
                         else if (!special && (Mathf.Max(h0, Mathf.Max(h1, h2)) > 0.03f || Mathf.Min(h0, Mathf.Min(h1, h2)) < -0.03f))   // verhoogd: kleur naar de hoogte, aarde waar het steiler is dan zo'n 45°
                             tag = up < 0.72f ? "aarde" : "t" + Mathf.Clamp(Mathf.FloorToInt((h0 + h1 + h2) / 9f), 0, 9);
+                        if (!steep) tag = SeaTag(i, tag, h0, h1, h2);   // strand en zeebodem onder het zeeniveau (PlanetNature.cs)
                         (tag == null ? mb0 : TB(tag)).Tri(P0, P1, P2, c.dir); rec?.Add(new GTri { tag = tag, a = P0, b = P1, c = P2 });
                     }
                     // bij een geul of dijk: het maaiveld zonder geul als vlak, de geul of dijk komt er precies in (ExactGround)
@@ -1693,6 +1694,7 @@ public static partial class PlanetCity
                 var tmesh = kv.Value.Build(); tg.AddComponent<MeshFilter>().sharedMesh = tmesh; tg.AddComponent<MeshRenderer>().sharedMaterial = Mats.Get("p_terr_" + kv.Key, TerrColor(kv.Key));
                 tg.AddComponent<MeshCollider>().sharedMesh = tmesh;
             }
+            SeaChunk(c0, Mathf.Min(n, c0 + ChunkN), groundRoot, made);   // water op het zeeniveau (PlanetNature.cs)
             if (pm.v.Count > 0)
             {
                 var pg = new GameObject("Vijfhoeken " + (c0 / ChunkN)); pg.transform.SetParent(groundRoot, false); made.Add(pg); pg.layer = Layers.Bodem;
@@ -1727,6 +1729,7 @@ public static partial class PlanetCity
     // kleuren van het terrein (zoals TC0-TC3 in de webversie): gras, dieper groen omhoog, grijsgroen boven de 16 m, aarde op steile flanken
     static Color TerrColor(string k)
     {
+        if (NatureColor(k, out var nc)) return nc;
         if (k == "aarde") return new Color(0.545f, 0.482f, 0.345f);
         if (k == "sokkel") return new Color(0.61f, 0.58f, 0.53f);
         if (k == "zand") return new Color(0.86f, 0.79f, 0.55f);

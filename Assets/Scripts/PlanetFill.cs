@@ -54,7 +54,8 @@ public static partial class PlanetCity
             if (h > 0.3f) SetTerr(c, h);
             float wet = Noise(d, 1f / 90f, 37f), wood = Noise(d, 1f / 70f, 71f), r = (float)rnd.NextDouble();
             if (fieldCells.Contains(c) && NearSeg(d, Planet.Cells[c].radius)) { if (wood > 0.46f && r < 0.6f) Place(c, "park"); continue; }   // op het talud van een verdiepte weg alleen bomen (een gebouw staat plat op een sokkel, een meer ook)
-            if (h < 0.5f && wet > 0.68f && near > 8.5f) Place(c, "meer");
+            if (h < 0.5f && wet > 0.66f && k > 0.4f) { SetTerr(c, SeaLevel - 1f - (wet - 0.66f) * 22f * k); continue; }   // laagte onder het zeeniveau: een meer (PlanetNature.cs), tot zo'n 8 m diep
+            if (h < 0.5f && wet > 0.6f && k > 0.4f) { SetTerr(c, SeaLevel + 0.3f); continue; }   // de oever eromheen: vlak, net boven het water
             else if (wood > 0.56f) { if (r < 0.85f) Place(c, "park"); }
             else if (r < 0.006f && h < 18f) Place(c, "molen");
             else if (r < 0.02f && h < 12f) Place(c, "woning");   // een boerderijtje
