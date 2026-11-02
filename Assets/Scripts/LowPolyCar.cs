@@ -19,6 +19,8 @@ public static class LowPolyCar
     static Mesh tyreMesh, rimMesh, hubMesh;   // één wiel (rechts, as langs x, hart in de oorsprong), gedeeld door alle auto's
     static readonly Dictionary<string, Parts> cache = new Dictionary<string, Parts>();
 
+    public static void ResetStatics() { cache.Clear(); tyreMesh = rimMesh = hubMesh = null; }
+
     public static Color Hex(string h) { ColorUtility.TryParseHtmlString(h, out var c); return c; }
 
     // een auto als kind van parent (oorsprong op het wegdek, vooruit = +z); type en kleur willekeurig volgens de kansen van de webversie
@@ -31,7 +33,7 @@ public static class LowPolyCar
     }
     public static void Build(Transform parent, string type, Color paint)
     {
-        if (!cache.TryGetValue(type, out var P)) { P = Make(type); cache[type] = P; }
+        if (!cache.TryGetValue(type, out var P) || P.body == null) { P = Make(type); cache[type] = P; }   // ook als Unity de mesh na een vorige Play heeft opgeruimd
         Put(parent, P.body, Mats.Get("lp_" + ColorUtility.ToHtmlStringRGB(paint) + (P.metal ? "m" : ""), paint));
         Put(parent, P.glass, Mats.Get("lp_glas", Hex("#1d2b36")));
         Put(parent, P.trim, Mats.Get("lp_donker", Hex("#25282c")));
