@@ -78,11 +78,12 @@ Erbij gekomen op 1 november 2026 (dorpen, `PlanetVillages.cs`):
 
 Erbij gekomen op 2 november 2026 (terrein):
 - Geen sprongetje van 5 cm meer waar een verdiepte weg het terrein raakt (zoals de webversie): een weg graaft pas in als zijn wegdek (5 cm onder de weg) onder het terrein ligt, een kop ligt ook 5 cm onder het wegdek; `LineGround` snijdt op de voet van het talud met het terrein als vlak over de driehoek.
+- Een gewone weg op een helling ligt niet meer in een kom: een hoekpunt tussen twee verbonden weg- of padvakken ligt op weghoogte (`RoadCorner` in `CornerBase0`) in plaats van op het laagste van de drie vakken.
 - Gereedschap Terrein toont de hoekpunten rond de muis (`PlanetBuilder.ShowVerts`): wit een hoekpunt, oranje zelf verzet met Rand, blauw het midden van een vak.
 
 Nog te doen:
 1. Modules als JSON met edge-codes (nu nog in code)
 2. Onderdelen uit `docs/overdracht-webversie.md` bouwen: stadsgenerator, wenteltrap, geluiden
 3. Laadscherm (`Assets/Scripts/UI/HexLoadingScreen.cs`) in de startscène hangen
-4. Terrein: hoogtelijnen tijdens het boetseren; een weg tussen twee vakken met een groot hoogteverschil ligt nog in een kom (oorzaak: een hoekpunt neemt het laagste van zijn drie vakken, `CornerBase0`, ook tussen twee wegvakken op een helling); bruine driehoek naast de stoep bij een schuine onderdoorgang (nog niet teruggevonden)
+4. Terrein: hoogtelijnen tijdens het boetseren; tunnels door hoog terrein (bestaande koker, portalen en `TunnelLinks` hergebruiken); bruine driehoek naast de stoep bij een schuine onderdoorgang (nog niet teruggevonden)
 5. Ragdolls voor mensen die bij de chaos worden geraakt

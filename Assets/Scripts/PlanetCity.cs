@@ -117,12 +117,25 @@ public static partial class PlanetCity
     static float CornerBase0(int i, int k)
     {
         Topo(); int a = cnA[i][k], b = cnB[i][k];
+        if (RoadCorner(i, a, b, out float rh)) return rh;
         bool qi = Quay(i), qa = Quay(a), qb = Quay(b); DamSkip(i, a, b, ref qi, ref qa, ref qb);   // een gracht heeft kademuren: de buren lopen niet naar de bodem af; een weg over een meer is een dam (PlanetNature.cs)
         if (carved.Count == 0 && !qi && !qa && !qb) return Mathf.Min(G(i), Mathf.Min(G(a), G(b)));
         float h = float.MaxValue; if (!carved.Contains(i) && !qi) h = G(i); if (!carved.Contains(a) && !qa) h = Mathf.Min(h, G(a)); if (!carved.Contains(b) && !qb) h = Mathf.Min(h, G(b));
         if (h == float.MaxValue) h = Mathf.Min(G(i), Mathf.Min(G(a), G(b)));
         return h;
     }
+    // Een hoekpunt waar twee verbonden gewone weg- of padvakken samenkomen ligt op de weg (het gemiddelde van die vakken: de weg loopt
+    // van hart tot hart), niet op het laagste van de drie vakken: anders zakt de grond op een helling onder de weg weg en ligt de weg
+    // in een kom. Wegen op een niveau, bruggen en geulen regelen hun hoekpunten zelf (GroundField, Carve).
+    static bool RoadCorner(int i, int a, int b, out float h)
+    {
+        h = 0f; bool wi = PlainWalk(i), wa = PlainWalk(a), wb = PlainWalk(b); if ((wi ? 1 : 0) + (wa ? 1 : 0) + (wb ? 1 : 0) < 2) return false;
+        bool ia = wi && wa && Partners(i).Contains(a), ib = wi && wb && Partners(i).Contains(b), ab = wa && wb && Partners(a).Contains(b);
+        float s = 0f; int n = 0;
+        if (ia || ib) { s += G(i); n++; } if (ia || ab) { s += G(a); n++; } if (ib || ab) { s += G(b); n++; }
+        if (n < 2) return false; h = s / n; return true;
+    }
+    static bool PlainWalk(int x) => IsWalk(x) && !Underpass(x) && !levelled.Contains(x) && !carved.Contains(x) && !preCarve.ContainsKey(x) && !Quay(x);
     public static float OwnCorner(int i, int k) => FlatGround(i) ? G(i) : fieldCells.Contains(i) && NearSeg(Planet.Cells[i].corners[k]) ? GroundField(Planet.Cells[i].corners[k], CornerBase(i, k)) : CornerH(i, k);   // zoals het vak zelf getekend wordt: een bebouwd vak plat (met een sokkel tot op het talud)
     public static float MinCornerNoCut(int i) { Topo(); float m = G(i); for (int k = 0; k < Planet.Cells[i].corners.Length; k++) { int a = cnA[i][k], b = cnB[i][k]; if (!carved.Contains(a)) m = Mathf.Min(m, G(a)); if (!carved.Contains(b)) m = Mathf.Min(m, G(b)); } return m; }
     // een vlak plateau op de eigen hoogte (bebouwd), behalve een half wegvak dat in een geul ligt
