@@ -134,7 +134,7 @@ public static partial class PlanetCity
         {
             string key = "n:" + n; want.Add(key);
             long sig = Mix(Mix(Mix(Mix(Mix(1469598103934665603L, n), Cm(G(n))), StyleOf(n)), Cm(MinCorner(n))), (Lights ? 2 : 0) + (Under.ContainsKey(n) ? 1 : 0) + (Rot.Contains(n) ? 4 : 0));
-            sig = Mix(sig, edgeMate.TryGetValue(n, out int em) ? em : -1);
+            sig = Mix(sig, edgeMate.TryGetValue(n, out int em) ? em : -1); foreach (int j in Partners(n)) sig = Mix(sig, edgeMate.TryGetValue(j, out int ej) ? ej : -1);
             foreach (int j in Partners(n)) { sig = Mix(sig, j); sig = Mix(sig, Cm(G(j))); sig = Mix(sig, IsRoad(j) ? 1 : IsPath(j) ? 2 : 0); sig = Mix(sig, Flow(n, j)); sig = Mix(sig, IsRoad(j) ? ArmStyle(n, j) : 0); }
             Piece(key, sig, mb => NodeMesh(mb, n, nbs[n]));
         }
@@ -165,7 +165,7 @@ public static partial class PlanetCity
         var fr = new Frame(n, true).At(NodeDir(n)); var ends = new List<Vector2>();
         foreach (int j in arms)
         {
-            Vector3 d3 = (Planet.Cells[j].dir - NodeDir(n)) * Planet.R; Vector2 q = new Vector2(Vector3.Dot(d3, fr.e), Vector3.Dot(d3, fr.n));
+            Vector3 d3 = (NodeDir(j) - NodeDir(n)) * Planet.R; Vector2 q = new Vector2(Vector3.Dot(d3, fr.e), Vector3.Dot(d3, fr.n));   // naar het hart van de buur (bij een kruispunt op de rand: daar, net als de lijn ertussen)
             ends.Add(q.normalized * NodeTrim(n, j, arms.Count));
         }
         if (IsRot(n)) { RoundaboutMesh(mb, n, arms); return; }

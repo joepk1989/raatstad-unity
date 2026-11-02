@@ -1107,6 +1107,8 @@ public static partial class PlanetCity
             {
                 int c = line[k], p = line[k - 1], q = line[k + 1]; if (!IsRoad(c)) continue;
                 if (DragLevel != 0 && G(c) - ((PadGround(c) ?? G(c)) + DragLevel * StepH) < LevelH - 0.1f) continue;   // de weg die je kruist ligt niet een niveau hoger: geen tunnel, SetLevel maakt er een kruispunt van
+                if (TunnelLinks.Contains(Key(p, q)) && !under.Contains(p)) { under.Add(c); continue; }   // daar gaat deze weg al onderdoor (opnieuw of terug gesleept)
+                if ((Linked(p, c) || !IsRoad(p)) && (Linked(c, q) || !IsRoad(q)) && (Linked(p, c) || Linked(c, q))) continue;   // dit stuk ligt er al precies zo: niets te doen, geen melding
                 if (!Under.ContainsKey(c) && StraightThrough(c) && !Linked(p, c) && !Linked(q, c) && !under.Contains(p) && Adjacent2(p, c) && Adjacent2(c, q) && MidCell(p, q) == c) under.Add(c);
                 else LastNote = "Hier kon de weg niet onderdoor (hij loopt daar langs of over een bestaande weg of brug): het werd een kruispunt";
             }
@@ -1131,7 +1133,9 @@ public static partial class PlanetCity
                     }
                     else   // deze lijn springt zelf over de rand tussen twee wegvakken: door het eerste daarvan (het kruispunt)
                     {
-                        int h = bt[0]; Link(a, h); Link(h, b); if (DragOneWay) { OneWay.Add(DKey(a, h)); OneWay.Add(DKey(h, b)); }
+                        // welk van de twee: het vak waar deze weg al doorheen gaat (opnieuw of terug gesleept), anders vast het kleinste nummer
+                        int h = Linked(a, bt[0]) && Linked(bt[0], b) ? bt[0] : Linked(a, bt[1]) && Linked(bt[1], b) ? bt[1] : Mathf.Min(bt[0], bt[1]);
+                        Link(a, h); Link(h, b); if (DragOneWay) { OneWay.Add(DKey(a, h)); OneWay.Add(DKey(h, b)); }
                         continue;
                     }
                 }
@@ -1141,7 +1145,11 @@ public static partial class PlanetCity
             if (type == "pad" && !DragUnder && DragLevel >= 0 && !IsNeighbour(a, b))
             {
                 var br = Between(a, b);
-                if (br.Count == 2 && IsRoad(br[0]) && IsRoad(br[1]) && Linked(br[0], br[1])) { Link(a, br[0]); Link(b, br[0]); continue; }
+                if (br.Count == 2 && IsRoad(br[0]) && IsRoad(br[1]) && Linked(br[0], br[1]))
+                {
+                    int h = Linked(a, br[0]) && Linked(b, br[0]) ? br[0] : Linked(a, br[1]) && Linked(b, br[1]) ? br[1] : Mathf.Min(br[0], br[1]);   // net als bij een weg: steeds hetzelfde vak
+                    Link(a, h); Link(b, h); continue;
+                }
             }
             // een schuine weg springt over de rand tussen twee verbonden padvakken: gelijkvloers blijft de weg recht en sluit het pad aan
             // beide kanten aan op wegvak a (een oversteek). Met ongelijkvloers, of op een ander niveau, gaat het pad eronderdoor (EdgeCrossings).
@@ -1320,7 +1328,9 @@ public static partial class PlanetCity
             {
                 Vector3 dj = Planet.Cells[j].dir; float prog = Vector3.Dot(dj - dc, fwd); if (prog <= 1e-6f) continue;
                 float off = Mathf.Abs(Vector3.Dot(dj, n)) * Planet.R;   // afstand tot de grootcirkel in meters
-                float sc = -off * 4f + prog * 0.5f; if (sc > bs) { bs = sc; best = j; }   // vooral: op de lijn blijven
+                float sc = -off * 4f + prog * 0.5f;   // vooral: op de lijn blijven
+                if (off < 9f && Linked(cur, j) && IsWalk(cur) && IsWalk(j)) sc += 24f;   // ligt er al een weg of pad langs de lijn: die volgen (terugslepen geeft dezelfde vakken, geen tweede weg ernaast)
+                if (sc > bs) { bs = sc; best = j; }
             }
             if (best < 0) break;
             float along = Mathf.Acos(Mathf.Clamp(Vector3.Dot(da, Planet.Cells[best].dir), -1f, 1f));
@@ -2036,7 +2046,7 @@ public static partial class PlanetCity
     {
         pos = Vector3.zero; if (!IsRoad(i)) return false;
         var fr = new Frame(i).At(NodeDir(i)); float a, s; Dims(ArmStyle(i, p), out a, out s); float old = hwS; hwS = s;
-        Vector3 d3 = Planet.Cells[p].dir * Planet.R - fr.o; Vector2 q = new Vector2(Vector3.Dot(d3, fr.e), Vector3.Dot(d3, fr.n)); q = q.normalized * NodeTrim(i, p, RoadNb(i).Count); Vector2 d = (-q).normalized;   // armen van een kruising lopen naar het hart; de arm begint waar de knoop ophoudt (zoals RoadNode)
+        Vector3 d3 = NodeDir(p) * Planet.R - fr.o; Vector2 q = new Vector2(Vector3.Dot(d3, fr.e), Vector3.Dot(d3, fr.n)); q = q.normalized * NodeTrim(i, p, RoadNb(i).Count); Vector2 d = (-q).normalized;   // armen van een kruising lopen naar het hart; de arm begint waar de knoop ophoudt (zoals RoadNode)
         Vector2 pp = PoleAt(q, d); hwS = old; pos = fr.P(pp.x, 3.75f, pp.y); return true;
     }
 

@@ -50,6 +50,7 @@ public class WegVoorbeeld : MonoBehaviour
         if (mode == "fiets") { yield return Bikes(home); yield break; }
         if (mode == "rotonde") { yield return Roundabouts(home); yield break; }
         if (mode == "schuin") { yield return Diagonals(home); yield break; }
+        if (mode == "sleep") { yield return SleepTest(home); yield break; }
         if (mode == "verkeer") { yield return Verkeer(home); yield break; }
         if (mode == "stad" || mode == "stadmeten") { yield return Teststad(home, mode == "stadmeten"); yield break; }
         if (mode == "start" || mode == "startmeten") { yield return Startstad(); if (mode == "startmeten") { if (pb != null) pb.enabled = false; yield return MeetHier(); } yield break; }
@@ -210,6 +211,109 @@ public class WegVoorbeeld : MonoBehaviour
         if (pb != null) pb.enabled = true;
     }
     // schuine wegen (30°, over halve vakken): kruisen, over een rechte weg, een T op een rechte weg, een bocht, huizen erlangs, naast elkaar
+    // Sleeptest: precies wat de muis doet bij loslaten (PlanetBuilder: LinePlan, PlaceLine, SetLevel, DipUnder), in lastige gevallen:
+    // terug over een bestaande weg, half eroverheen, schuin, op een niveau, eenrichting, paden en fietspaden, over een kruising, een rotonde.
+    // Na elke stap: CheckGraph, of de lijn helemaal weg is en aan elkaar zit, of de rest niet verandert, en of tekenen goed gaat.
+    static System.Text.StringBuilder sl;
+    static int sleepFouten;
+    static int Drag(int a, int b, string t, int lv = 0)
+    {
+        var plan = PlanetCity.LinePlan(a, b); if (plan == null) return -1;
+        bool du = PlanetCity.DragUnder; PlanetCity.DragLevel = lv; int ok = 0;
+        if (t == "weg" && lv != 0) PlanetCity.DragUnder = lv <= -2;
+        ok = PlanetCity.PlaceLine(plan, t); PlanetCity.DragUnder = du;
+        if (ok > 0) PlanetCity.SetLevel(plan, lv, t);
+        if (ok > 0 && lv == 0) PlanetCity.DipUnder(plan);
+        PlanetCity.DragLevel = 0; return ok;
+    }
+    static string Fp() { var l = new List<long>(PlanetCity.Links); l.Sort(); long h = 17; foreach (long k in l) h = h * 31 + k; return PlanetCity.Links.Count + ":" + h; }
+    static void Verwacht(string nm, bool goed, string waarom) { if (!goed) { sleepFouten++; sl.Append("   FOUT ").Append(nm).Append(": ").AppendLine(waarom); } }
+    static List<int> laatste;   // de vakken van de vorige gesleepte lijn
+    static void Terug(string nm, string t, int lv = 0, bool zelfde = true) { if (laatste != null && laatste.Count >= 2) Stap(nm, laatste[laatste.Count - 1], laatste[0], t, lv, zelfde); }   // terug vanaf het eind van de vorige lijn naar het begin
+    static void Stap(string nm, int a, int b, string t, int lv = 0, bool zelfde = false)
+    {
+        string voor = Fp(); var oud = new HashSet<long>(PlanetCity.Links); var oudT = new HashSet<long>(PlanetCity.TunnelLinks); var plan = PlanetCity.LinePlan(a, b); int ok = Drag(a, b, t, lv);
+        sl.Append(nm).Append(": ").Append(ok).Append('/').Append(plan == null ? 0 : plan.Count).Append(" vakken").Append(PlanetCity.LastNote != null ? "  (" + PlanetCity.LastNote + ")" : "").Append("  [").Append(plan == null ? "" : string.Join(",", plan)).Append("]").AppendLine();
+        foreach (string f in PlanetCity.CheckGraph()) Verwacht(nm, false, f);
+        if (plan != null)
+        {
+            System.Func<int, bool> walk = t == "weg" ? (System.Func<int, bool>)PlanetCity.IsRoad : PlanetCity.IsWalk;
+            foreach (int c in plan) Verwacht(nm, walk(c), "vak " + c + " van de lijn is geen " + t);
+            for (int k = 1; k < plan.Count; k++)
+            {
+                int x = plan[k - 1], y = plan[k]; bool con = PlanetCity.Linked(x, y);
+                if (!con) foreach (int h in PlanetCity.Partners(x)) if (PlanetCity.Linked(h, y)) con = true;   // via een kruispunt op de rand of een oversteek
+                Verwacht(nm, con, "lijn onderbroken tussen " + x + " en " + y);
+            }
+        }
+        if (zelfde && Fp() != voor)
+        {
+            var bij = new List<string>(); foreach (long k in PlanetCity.Links) if (!oud.Contains(k)) bij.Add((k >> 20) + "-" + (k & 0xFFFFF) + (PlanetCity.TunnelLinks.Contains(k) ? "t" : ""));
+            var weg = new List<string>(); foreach (long k in oud) if (!PlanetCity.Links.Contains(k)) weg.Add((k >> 20) + "-" + (k & 0xFFFFF) + (oudT.Contains(k) ? "t" : ""));
+            Verwacht(nm, false, "het net veranderde terwijl de lijn er al lag: erbij " + string.Join(" ", bij) + ", weg " + string.Join(" ", weg) + "; lijn " + string.Join(",", plan));
+        }
+        try { PlanetCity.Rebuild(); } catch (System.Exception e) { Verwacht(nm, false, "tekenen: " + e.GetType().Name + " " + e.Message); }
+        laatste = plan;
+    }
+    IEnumerator SleepTest(int home)
+    {
+        sl = new System.Text.StringBuilder(); sleepFouten = 0; float D60 = Mathf.PI / 3f, D30 = Mathf.PI / 6f; Hc = home;
+        var errs = new System.Text.StringBuilder(); Application.LogCallback cb = (msg, st, type) => { if (type == LogType.Exception || type == LogType.Error) errs.Append(type).Append(": ").Append(msg).AppendLine(); };
+        Application.logMessageReceived += cb;
+        int[] c = new int[8]; for (int k = 0; k < 8; k++) c[k] = Go(home, k * Mathf.PI / 4f, k == 0 ? 0f : 170f);
+        // 1. recht: heen, terug, nog eens heen, half terug voorbij het begin
+        int a1 = Go(c[0], 0f, -50f), b1 = Go(c[0], 0f, 50f);
+        Stap("recht heen", a1, b1, "weg"); Terug("recht terug", "weg"); Terug("recht nog eens heen", "weg");
+        Stap("half terug voorbij het begin", Go(c[0], 0f, 10f), Go(c[0], 0f, -80f), "weg");
+        Stap("vanuit het midden naar het eind", Go(c[0], 0f, 0f), b1, "weg", 0, true);
+        // 2. schuin (30°): heen en terug
+        int a2 = Go(c[1], D30, -50f), b2 = Go(c[1], D30, 50f);
+        Stap("schuin heen", a2, b2, "weg"); Terug("schuin terug", "weg"); Stap("schuin half terug", Go(c[1], D30, 20f), Go(c[1], D30, -70f), "weg");
+        // 3. kruising: X, dan beide wegen terug, dan dwars terug
+        int a3 = Go(c[2], 0f, -50f), b3 = Go(c[2], 0f, 50f), e3 = Go(c[2], D60, -50f), f3 = Go(c[2], D60, 50f);
+        Stap("X eerste", a3, b3, "weg"); var x1 = laatste; Stap("X tweede", e3, f3, "weg"); Terug("X tweede terug", "weg"); laatste = x1; Terug("X eerste terug", "weg");
+        // 4. eenrichting: heen, en terug slepen draait de richting om
+        int a4 = Go(c[3], 0f, -40f), b4 = Go(c[3], 0f, 40f);
+        PlanetCity.DragOneWay = true; Stap("eenrichting heen", a4, b4, "weg"); Terug("eenrichting terug", "weg", 0, false); PlanetCity.DragOneWay = false;
+        Stap("tweerichting erover", a4, b4, "weg");
+        // 5. op een niveau (+2) en verdiept (-2): heen en terug
+        int a5 = Go(c[4], 0f, -50f), b5 = Go(c[4], 0f, 50f), a6 = Go(c[4], D60 * 2f, 30f), b6 = Go(Go(c[4], D60 * 2f, 30f), 0f, 100f);
+        Stap("hoog heen", a5, b5, "weg", 2); Terug("hoog terug", "weg", 2); var h1 = laatste; Stap("laag heen", a6, b6, "weg", -2); Terug("laag terug", "weg", -2);
+        laatste = h1; Terug("hoog terug op maaiveld (andere hoogte)", "weg", 0, false);
+        // 6. breed over gewoon terug, laan
+        int a7 = Go(c[5], 0f, -50f), b7 = Go(c[5], 0f, 50f);
+        Stap("gewoon", a7, b7, "weg"); PlanetCity.DragStyle = 1; Terug("breed terug eroverheen", "weg"); PlanetCity.DragStyle = 2; Stap("laan half", Go(c[5], 0f, 0f), a7, "weg"); PlanetCity.DragStyle = 0;
+        // 7. paden en fietspaden heen en terug, pad terug over een weg
+        int a8 = Go(c[6], 0f, -50f), b8 = Go(c[6], 0f, 50f), e8 = Go(c[6], D60, -40f), f8 = Go(c[6], D60, 40f);
+        Stap("pad heen", a8, b8, "pad"); Terug("pad terug", "pad"); PlanetCity.DragBike = true; Terug("fietspad terug eroverheen", "pad"); PlanetCity.DragBike = false;
+        Stap("weg over het pad", e8, f8, "weg"); Terug("pad terug over de weg", "pad", 0, false);
+        // 8. rotonde en terug slepen over een arm
+        int r = c[7]; Leg(r, 0f, 0); Leg(r, Mathf.PI, 0); sl.Append("rotonde: ").AppendLine(PlanetCity.PlaceRoundabout(r) ?? "ok");
+        Stap("arm naar de rotonde terug", Go(r, 0f, 60f), Go(r, 0f, 14f), "weg", 0, true); Stap("arm van de rotonde af", Go(r, Mathf.PI, 14f), Go(r, Mathf.PI, 70f), "weg");
+        Stap("dwars over de rotonde", Go(r, D60, 60f), Go(r, D60 + Mathf.PI, 60f), "weg");
+        // 9. ongelijkvloers (U) terug over de eigen brug
+        int a9 = Go(home, Mathf.PI / 8f, 330f), b9 = Go(a9, 0f, 100f), e9 = Go(Go(a9, 0f, 50f), D60, -40f), f9 = Go(Go(a9, 0f, 50f), D60, 40f);
+        Stap("onder: eerste weg", a9, b9, "weg"); var o1 = laatste; PlanetCity.DragUnder = true; Stap("onder: tweede eronder", e9, f9, "weg"); Terug("onder: tweede terug met U", "weg"); PlanetCity.DragUnder = false;
+        Terug("onder: tweede terug zonder U", "weg"); laatste = o1; Terug("onder: eerste terug", "weg");
+        // 10. twee wegen in naast elkaar liggende rijen en een verticale (schuine) weg erdoorheen, op beide mogelijke plekken
+        int t0 = Go(home, -Mathf.PI / 8f, 330f), t1 = Planet.Cells[t0].nb[0]; int tA = -1;
+        foreach (int j in Planet.Cells[t0].nb) if (Vector3.Dot(Dh(t0, Mathf.PI / 2f), (Planet.Cells[j].dir - Planet.Cells[t0].dir).normalized) > 0.3f) { tA = j; break; }   // het vak in de rij erboven
+        Stap("rijen: onderste", Go(t0, 0f, -70f), Go(t0, 0f, 70f), "weg"); if (tA >= 0) Stap("rijen: bovenste", Go(tA, 0f, -70f), Go(tA, 0f, 70f), "weg");
+        // haaks op de rijen: telkens het across-vak dat het meest haaks op de rij ligt (over de rand tussen twee buren)
+        Vector3 rowDir = (Planet.Cells[Go(t0, 0f, 47f)].dir - Planet.Cells[t0].dir).normalized;
+        System.Func<int, int, int> Haaks = (c0, steps) => { int x = c0; for (int k = 0; k < Mathf.Abs(steps); k++) { int best = x; float bd = -2f; Vector3 u = Planet.Cells[x].dir, want = Vector3.Cross(u, rowDir).normalized * Mathf.Sign(steps); foreach (int j in Planet.Cells[x].across) { if (j < 0) continue; float d = Vector3.Dot((Planet.Cells[j].dir - u).normalized, want); if (d > bd) { bd = d; best = j; } } x = best; } return x; };
+        Stap("rijen: verticaal 1", Haaks(t0, -3), Haaks(t0, 3), "weg"); Terug("rijen: verticaal 1 terug", "weg");
+        int t2 = Go(t0, 0f, 47f); Stap("rijen: verticaal 2", Haaks(t2, -3), Haaks(t2, 3), "weg"); Terug("rijen: verticaal 2 terug", "weg");
+        int t3 = Planet.Cells[t2].nb[0]; foreach (int j in Planet.Cells[t2].nb) if (Mathf.Abs(Vector3.Dot((Planet.Cells[j].dir - Planet.Cells[t2].dir).normalized, rowDir)) > 0.9f) { t3 = j; break; }   // een vak verder in de rij: de andere pariteit
+        Stap("rijen: verticaal 3", Haaks(t3, -3), Haaks(t3, 3), "weg"); Terug("rijen: verticaal 3 terug", "weg");
+        int t4 = Go(t0, 0f, 125f); Stap("rijen: verticaal pad", Haaks(t4, -3), Haaks(t4, 3), "pad"); Terug("rijen: verticaal pad terug", "pad");
+        Application.logMessageReceived -= cb;
+        PlanetCity.Rebuild(); PlanetCity.Rebuild(); yield return null; yield return null;
+        foreach (var (nm, cc) in new[] { ("sleep_recht", c[0]), ("sleep_schuin", c[1]), ("sleep_kruising", c[2]), ("sleep_niveau", c[4]), ("sleep_rotonde", c[7]), ("sleep_onder", Go(a9, 0f, 50f)) }) yield return Shot(nm, cc, Dh(cc, 0.3f), 70f, 70f);
+        yield return Shot("sleep_rijen_1", t0, Dh(t0, 0f), 45f, 89f); yield return Shot("sleep_rijen_2", t2, Dh(t2, 0f), 45f, 89f); yield return Shot("sleep_rijen_3", t3, Dh(t3, 0f), 45f, 89f);
+        File.WriteAllText(Path.Combine(Dir, "sleep.txt"), "fouten: " + sleepFouten + "\n" + (errs.Length > 0 ? "CONSOLE:\n" + errs + "\n" : "") + sl);
+        File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true;
+    }
     IEnumerator Diagonals(int home)
     {
         float D60 = Mathf.PI / 3f, D30 = Mathf.PI / 6f;
