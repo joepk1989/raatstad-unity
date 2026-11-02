@@ -229,7 +229,7 @@ public class PlanetBuilder : MonoBehaviour
         if (Inp.Down(K.M)) { bool open = !menuOpen; helpOpen = scoreOpen = welcome = todOpen = catOpen = false; menuOpen = open; }
         if (Inp.Down(K.Space) && !Modal) { FlyStart(); return; }
         CameraControl();
-        if (Modal) { outline.enabled = false; ShowBrush(-1); ShowGhost(-1); return; }   // een venster staat open: niets in de stad
+        if (Modal) { outline.enabled = false; ShowBrush(-1); ShowGhost(-1); ShowVerts(-1); return; }   // een venster staat open: niets in de stad
 
         // Tab vasthouden: het keuzewiel bij de muis; kant op bewegen en loslaten kiest. Kort tikken: de lade van de categorie open of dicht
         if (Inp.Down(K.Tab)) { wheelOpen = true; wheelAt = Ui.Mouse; wheelT = Time.unscaledTime; }
@@ -241,7 +241,7 @@ public class PlanetBuilder : MonoBehaviour
                 if (c >= 0) { SelectSlot(c); catOpen = false; Say(Tabs[c] + ": " + Cur.name); }
                 else if (Time.unscaledTime - wheelT < 0.35f) catOpen = !catOpen;
             }
-            outline.enabled = false; ShowBrush(-1); ShowGhost(-1); return;   // zolang het wiel open is: niet bouwen
+            outline.enabled = false; ShowBrush(-1); ShowGhost(-1); ShowVerts(-1); return;   // zolang het wiel open is: niet bouwen
         }
         K[] dk = { K.D1, K.D2, K.D3, K.D4, K.D5, K.D6 };
         for (int i = 0; i < dk.Length; i++) if (Inp.Down(dk[i])) { if (i == slot && !eraser) NextInTab(i); else { SelectSlot(i); Say(Tabs[i] + ": " + Cur.name); } }
@@ -300,6 +300,7 @@ public class PlanetBuilder : MonoBehaviour
         }
         if (leftDown && lineStart >= 0 && LevelTool && PlanetCity.DragLevel != 0) StepLevel(0);   // herinnering: dit komt hoger of lager
         if (!hasHover || !TerrTool) ShowBrush(-1);
+        ShowVerts(hasHover && TerrTool && !eraser ? hover : -1);
         if (sculpting) { if (Inp.LeftHeld) SculptUpdate(Time.deltaTime); else SculptEnd(); }
         if (Inp.LeftUp)
         {
@@ -443,6 +444,52 @@ public class PlanetBuilder : MonoBehaviour
             if (planLines[k].positionCount != pc.Length) planLines[k].positionCount = pc.Length;
             for (int q = 0; q < pc.Length; q++) planLines[k].SetPosition(q, pc[q] * (Planet.R + PlanetCity.OwnCorner(ci, q) + (PlanetCity.Plateau(ci) ? PlanetCity.StackHeight(ci) : 0f) + 0.3f));
         }
+    }
+
+    // Terrein: de hoekpunten van het terrein rond de muis als ruitjes (wit; zelf verzet met Rand: oranje) en de middens van de
+    // vakken (blauw), zodat je ziet waar het terrein knikt. Elke 0,2 s opnieuw (het terrein wordt na een wijziging in stappen bijgewerkt).
+    const float VertR = 45f;   // zo ver rond het vak onder de muis
+    GameObject verts; MeshFilter[] vertMf; int vertsAt = -2; float vertsT, vertsSize;
+    void ShowVerts(int c)
+    {
+        if (verts == null)
+        {
+            verts = new GameObject("Hoekpunten"); vertMf = new MeshFilter[3];
+            var cols = new[] { ("wit", new Color(0.97f, 0.97f, 0.92f)), ("oranje", new Color(1f, 0.55f, 0.12f)), ("blauw", new Color(0.30f, 0.62f, 1f)) };
+            for (int q = 0; q < 3; q++)
+            {
+                var g = new GameObject("Hoekpunten " + cols[q].Item1); g.transform.SetParent(verts.transform, false);
+                vertMf[q] = g.AddComponent<MeshFilter>(); var mr = g.AddComponent<MeshRenderer>(); mr.sharedMaterial = Mats.GetUnlit("p_hoekpunt_" + cols[q].Item1, cols[q].Item2);
+                mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; mr.receiveShadows = false;
+            }
+        }
+        verts.SetActive(c >= 0); if (c < 0) { vertsAt = -2; return; }
+        float size = Mathf.Clamp(Vector3.Distance(Cam.transform.position, hoverPoint) * 0.0045f, 0.12f, 1.6f);   // ongeveer even groot op het scherm
+        if (c == vertsAt && Time.time - vertsT < 0.2f && Mathf.Abs(size - vertsSize) < vertsSize * 0.25f) return;
+        vertsAt = c; vertsT = Time.time; vertsSize = size;
+        var mb = new[] { new MeshBuilder(), new MeshBuilder(), new MeshBuilder() };
+        void Dot(MeshBuilder b, Vector3 dir, float h, float s)
+        {
+            Vector3 up = dir, e = Vector3.Cross(up, Mathf.Abs(up.y) < 0.9f ? Vector3.up : Vector3.right).normalized, n = Vector3.Cross(up, e);
+            Vector3 p = dir * (Planet.R + h + s * 0.6f), top = p + up * s * 1.2f, bot = p - up * s * 0.6f;
+            Vector3[] r = { p + e * s, p + n * s, p - e * s, p - n * s };
+            for (int k = 0; k < 4; k++) { Vector3 a = r[k], b2 = r[(k + 1) % 4], m = (a + b2) * 0.5f - p; b.Tri(top, a, b2, m + up * 0.3f); b.Tri(bot, b2, a, m - up * 0.3f); }
+        }
+        var seen = new HashSet<long>(); var q2 = new Queue<int>(); var done = new HashSet<int> { c }; q2.Enqueue(c); Vector3 c0 = Planet.Cells[c].dir;
+        while (q2.Count > 0)
+        {
+            int i = q2.Dequeue(); var cell = Planet.Cells[i];
+            if (Vector3.Angle(cell.dir, c0) * Mathf.Deg2Rad * Planet.R > VertR) continue;
+            Dot(mb[2], cell.dir, PlanetCity.TerrainAt(cell.dir), size * 0.7f);
+            for (int k = 0; k < cell.corners.Length; k++)
+            {
+                if (!seen.Add(PlanetCity.CornerKey(i, k))) continue;   // een hoekpunt delen drie vakken: één ruitje
+                bool moved = Mathf.Abs(PlanetCity.CornerOfs1(i, k)) > 0.005f;
+                Dot(mb[moved ? 1 : 0], cell.corners[k], PlanetCity.Plateau(i) ? PlanetCity.CornerH(i, k) : PlanetCity.OwnCorner(i, k), size);   // een bebouwd vak staat plat op zijn sokkel: dan het maaiveld
+            }
+            foreach (int j in cell.nb) if (done.Add(j)) q2.Enqueue(j);
+        }
+        for (int q = 0; q < 3; q++) { var old = vertMf[q].sharedMesh; vertMf[q].sharedMesh = mb[q].Build(); if (old != null) Destroy(old); }
     }
 
     static readonly string[] StyleNames = { "Gewone weg", "Brede weg", "Laan" };
@@ -715,7 +762,7 @@ public class PlanetBuilder : MonoBehaviour
         walking = !walking; PlanetCity.ShowGrid(PlanetCity.GridOn && !walking); catOpen = todOpen = menuOpen = scoreOpen = helpOpen = welcome = wheelOpen = false;
         if (walking)
         {
-            walkT = Time.time; outline.enabled = false; ShowBrush(-1); ShowPlan(null); ShowGhost(-1);
+            walkT = Time.time; outline.enabled = false; ShowBrush(-1); ShowVerts(-1); ShowPlan(null); ShowGhost(-1);
             int i = Planet.Nearest(focus); float h = PlanetCity.G(i) + PlanetCity.StackHeight(i);
             if (PlanetCity.IsWalk(i)) h = PlanetCity.SurfaceH(i, focus * Planet.R) + 0.26f;
             walker.Enter(focus * (Planet.R + h + 0.3f), fwd);
@@ -737,7 +784,7 @@ public class PlanetBuilder : MonoBehaviour
         flyHead = look - up * Vector3.Dot(look, up); if (flyHead.sqrMagnitude < 1e-6f) flyHead = fwd; flyHead.Normalize();
         flyPitch = Mathf.Asin(Mathf.Clamp(Vector3.Dot(look, up), -1f, 1f)) * Mathf.Rad2Deg; flyVel = Vector3.zero;
         oldFov = Cam.fieldOfView; oldNear = Cam.nearClipPlane; Cam.fieldOfView = 65f; flyFovT = 65f; Cam.nearClipPlane = 0.3f;
-        outline.enabled = false; ShowBrush(-1); ShowPlan(null); ShowGhost(-1); PlanetCity.ShowGrid(false); painting = false; lineStart = -1;
+        outline.enabled = false; ShowBrush(-1); ShowVerts(-1); ShowPlan(null); ShowGhost(-1); PlanetCity.ShowGrid(false); painting = false; lineStart = -1;
         Cursor.lockState = CursorLockMode.Locked; Cursor.visible = false; flyBadgeT = Time.time; flyNote = null;
     }
     void FlyStop()
