@@ -81,6 +81,11 @@ Erbij gekomen op 2 november 2026 (terrein):
 - Een gewone weg op een helling ligt niet meer in een kom: een hoekpunt tussen twee verbonden weg- of padvakken ligt op weghoogte (`RoadCorner` in `CornerBase0`) in plaats van op het laagste van de drie vakken.
 - Gereedschap Terrein toont de hoekpunten rond de muis (`PlanetBuilder.ShowVerts`): wit een hoekpunt, oranje zelf verzet met Rand, blauw het midden van een vak.
 
+Erbij gekomen op 2 november 2026 (lucht, `PlanetSky.cs`, shaders in `Assets/Resources/Lucht`):
+- Skybox `Raatstad/Lucht`: verloop van de kim naar boven rond de plaatselijke 'boven', de kim zakt mee met de hoogte van de camera; zon met gloed, oranje bij zonsopgang en -ondergang, sterren 's nachts. De kimkleur is `cam.backgroundColor` van `DayNight` (die ook de mist kleurt), bewolking maakt hem grijs.
+- Van ver weg (camera hoger dan zo'n 300–1100 m): zwarte ruimte met sterren en zon, een dunne blauwe atmosfeerrand (`Raatstad/Atmosfeer`, bol tot 260 m, schaalhoogte 40 m) en een wolkenlaag op 200 m (`Raatstad/Wolken`, ruis per richting, meer wolken bij slechter weer) die in 25 minuten om `Planet.Axis` draait. Bij inzoomen vervagen wolken en rand en worden ze niet meer getekend; de mist van `Weather` schuift hoger op weg en is in de ruimte uit.
+- Muziek, berekend bij de start op de achtergrond (`RenderedMusic`, geen opnames): op de planeet bouwmuziek (`BuildMusic`, keuze in het menu onder Bouwmuziek, onthouden in PlayerPrefs: Uit, Vrolijk (marimba, 120 bpm), Chill (elektrische piano met swing, 84 bpm), 8-bit (blokgolven, 140 bpm), Folk (gitaar en fluitje, 100 bpm); elk 16 maten met een melodie A A' B A; een andere stijl wordt op de achtergrond uitgerekend en vloeit in; 's nachts zachter), in de ruimte een rustig stuk (`SpaceMusic`: zachte akkoorden met belletjes op een zestonige ladder, galm; 64 s). Ze vloeien in elkaar over met `PlanetSky.Space`; de wind van `Ambience` valt weg in de ruimte. Geluid uit zet ook de muziek uit.
+
 Nog te doen:
 1. Modules als JSON met edge-codes (nu nog in code)
 2. Onderdelen uit `docs/overdracht-webversie.md` bouwen: stadsgenerator, wenteltrap, geluiden

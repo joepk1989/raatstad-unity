@@ -50,7 +50,7 @@ public class Ambience : MonoBehaviour
         float vol = Muted ? 0f : 1f;
         // omgevingsgeluid alleen waar iets staat: vogels bij bomen en parken, stadsruis bij gebouwen; op een leeg veld alleen wind
         if (birds != null) birds.volume = vol * Mathf.Min(1f, green / 6f) * 0.65f * far * (1f - 0.92f * night);
-        if (wind != null) wind.volume = vol * (0.04f + 0.12f * up + 0.15f * Mathf.Clamp01(height / 200f));   // de ruis van de wind: half zo hard als eerst
+        if (wind != null) wind.volume = vol * (0.04f + 0.12f * up + 0.15f * Mathf.Clamp01(height / 200f)) * (1f - PlanetSky.Space);   // de ruis van de wind: half zo hard als eerst, in de ruimte geen wind
         if (city != null) city.volume = vol * Mathf.Min(1f, built / 8f) * 0.09f * far;   // stadsruis bij gebouwen, half zo hard als eerst
     }
 

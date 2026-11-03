@@ -1253,7 +1253,7 @@ public class PlanetBuilder : MonoBehaviour
     void Menu(float W, float H)
     {
         Ui.DimBack(0.25f);
-        float w = 440f, h = 756f; var r = new Rect((W - w) * 0.5f, Mathf.Max(16f, (H - h) * 0.5f), w, h); Ui.Panel(r, true, 16f);
+        float w = 440f, h = 812f; var r = new Rect((W - w) * 0.5f, Mathf.Max(16f, (H - h) * 0.5f), w, h); Ui.Panel(r, true, 16f);
         float x = r.x + 18f, iw = w - 36f, y = r.y + 14f, half = (iw - 8f) * 0.5f;
         Ui.Tex(new Rect(x, y + 3f, 20f, 23f), Ui.Hex(Ui.Signal, Ui.Signal, 0f, true)); Ui.Label(new Rect(x + 30f, y, 200f, 28f), "MENU", Ui.T.Title);
         if (Ui.RoundButton(new Rect(r.xMax - 18f - 30f, y - 1f, 30f, 30f), "sluit")) menuOpen = false; y += 40f;
@@ -1287,7 +1287,9 @@ public class PlanetBuilder : MonoBehaviour
         var sz = new Rect(x + half + 8f, y + 168f, half, 48f); Ui.Label(new Rect(sz.x + 2f, sz.y, sz.width, 16f), "INTERFACEGROOTTE", Ui.T.Tiny);
         float[] sizes = { 0.9f, 1f, 1.15f, 1.3f }; int si = 0; for (int k = 1; k < 4; k++) if (Mathf.Abs(sizes[k] - Ui.Size) < Mathf.Abs(sizes[si] - Ui.Size)) si = k;
         int hs = Ui.Seg(new Rect(sz.x, sz.y + 18f, sz.width, 30f), new[] { "90%", "100%", "115%", "130%" }, si); if (hs >= 0 && hs != si) Ui.Size = sizes[hs];
-        y += 4 * 56f + 4f;
+        Ui.Label(new Rect(x + 2f, y + 224f, iw, 16f), "BOUWMUZIEK", Ui.T.Tiny);   // de ruimte heeft altijd haar eigen muziek
+        int ms = Ui.Seg(new Rect(x, y + 242f, iw, 30f), BuildMusic.StyleNames, BuildMusic.Style); if (ms >= 0 && ms != BuildMusic.Style) { BuildMusic.SetStyle(ms); Say("Bouwmuziek: " + BuildMusic.StyleNames[ms]); }
+        y += 5 * 56f + 4f;
         Ui.Label(new Rect(x, y, iw, 16f), "Ware grootte: een vak is 15,6 m breed, een verdieping 3 m, de planeet 3,8 km rond.", Ui.T.Dim, null, null, 11);
         if (Ui.DimClick()) menuOpen = false;
     }
