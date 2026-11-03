@@ -890,6 +890,7 @@ public partial class PlanetBuilder : MonoBehaviour
         if (LevelTool && !walking && !inSpace) LayerPick(W, H);
         if (Time.time < msgT) Ui.Toast(msg, Mathf.Clamp01((msgT - Time.time) / 0.5f), catOpen ? CatBottom + CatHeight(W) + 12f : walking ? G + 52f : inSpace ? 12f + 56f + 10f : DockTop);
         if (scoreOpen) ScorePanel(W, H);
+        if (modesOpen && !walking) ModesArc(W, H);   // concept: de spelmodi op een boog (PlanetBuilder.Modes.cs)
         if (menuOpen) Menu(W, H);
         if (helpOpen) Help(W, H);
         if (welcome) Welcome(W, H);
