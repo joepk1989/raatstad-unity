@@ -4,11 +4,12 @@ using UnityEngine;
 // Natuur: bomen los op het terrein, zonder grasplaat en zonder sokkel. Een vak met alleen "park" is geen plateau: het terrein loopt
 // er gewoon door (boetseren kan er ook) en elke boom staat op de grond onder zijn eigen stam. Vier soorten, low poly en zeshoekig,
 // op ware grootte: loofboom (8-11 m), den (11-15 m), berk (9-12 m) en struik. De soort hangt af van de hoogte (hoger meer naaldbomen),
-// de helling (steiler dan 35° alleen struiken) en een grove ruis, zodat een bos vooral uit één soort bestaat.
+// de helling (steiler dan 35° alleen struiken), de breedte (naar de polen meer dennen) en een grove ruis, zodat een bos vooral uit
+// één soort bestaat.
 public static partial class PlanetCity
 {
     // geen plateau (geen sokkel): bomen, een meer en een gracht liggen in het terrein
-    static bool OpenGround(List<string> l) => l.Count == 1 && (l[0] == "park" || l[0] == "meer" || l[0] == "water");
+    static bool OpenGround(List<string> l) => l.Count == 1 && (l[0] == "park" || l[0] == "meer" || l[0] == "water" || IsWild(l[0]));
 
     // de bomen van vak i; roof: een daktuin bovenop een gebouw (op hoogte h, kleine boompjes), anders op het terrein
     static void Trees(System.Func<string, MeshBuilder> M, Frame fr, int i, int hash, float h, bool roof)
@@ -39,36 +40,42 @@ public static partial class PlanetCity
             else if (r < 0.12f) kind = 3;
             else
             {
-                float pine = Mathf.Clamp01((H - 6f) / 14f) * 0.8f + (wood > 0.62f ? 0.45f : 0f), birch = wood < 0.38f ? 0.45f : 0.1f, q = (float)rnd.NextDouble();
+                LatLon(c.dir, out float lat, out _); float pine = Mathf.Clamp01((H - 6f) / 14f) * 0.8f + (wood > 0.62f ? 0.45f : 0f) + Mathf.Clamp01((Mathf.Abs(lat) - 45f) / 20f), birch = wood < 0.38f ? 0.45f : 0.1f, q = (float)rnd.NextDouble();
                 kind = q < pine ? 1 : q < pine + birch ? 2 : 0;
             }
             if (!roof && H > TreeLine) continue;   // boven de boomgrens niets
             if (!roof && H > TreeLine - 12f && kind != 3) { kind = 1; sc *= Mathf.Lerp(1f, 0.6f, (H - TreeLine + 12f) / 12f); }   // eronder alleen dennen, steeds kleiner
             float rot = (float)rnd.NextDouble() * Mathf.PI / 3f;
-            switch (kind)
-            {
-                case 0:   // loofboom: rechte stam, een zeshoekige kroon (smal onder, breed in het midden, afgeplat boven)
-                    { string leaf = rnd.Next(3) == 0 ? "loof2" : "blad";
-                    Prism(M("stam"), fr, x, z, rot, 0.28f * sc, 0.2f * sc, th, th + 3.4f * sc, false, false);
-                    Prism(M(leaf), fr, x, z, rot, 1.6f * sc, 3.2f * sc, th + 2.6f * sc, th + 5.4f * sc, false, true);
-                    Prism(M(leaf), fr, x, z, rot, 3.2f * sc, 1.6f * sc, th + 5.4f * sc, th + 8.8f * sc, true, false); }
-                    break;
-                case 1:   // den: korte stam, drie kegels op elkaar
-                    Prism(M("stam"), fr, x, z, rot, 0.3f * sc, 0.22f * sc, th, th + 2.6f * sc, false, false);
-                    Prism(M("naald"), fr, x, z, rot, 3.0f * sc, 0f, th + 1.6f * sc, th + 7.0f * sc, false, true);
-                    Prism(M("naald"), fr, x, z, rot + 0.5f, 2.3f * sc, 0f, th + 5.0f * sc, th + 10.4f * sc, false, true);
-                    Prism(M("naald"), fr, x, z, rot, 1.5f * sc, 0f, th + 8.6f * sc, th + 13.2f * sc, false, true);
-                    break;
-                case 2:   // berk: lange witte stam, een smalle hoge kroon
-                    Prism(M("berk"), fr, x, z, rot, 0.18f * sc, 0.13f * sc, th, th + 6.2f * sc, false, false);
-                    Prism(M("berkblad"), fr, x, z, rot, 0.9f * sc, 1.9f * sc, th + 4.2f * sc, th + 7.6f * sc, false, true);
-                    Prism(M("berkblad"), fr, x, z, rot, 1.9f * sc, 0.6f * sc, th + 7.6f * sc, th + 11.0f * sc, true, false);
-                    break;
-                default:   // struik: een lage zeshoekige bol
-                    Prism(M("struik"), fr, x, z, rot, 0.7f * sc, 1.4f * sc, th, th + 0.7f * sc, false, false);
-                    Prism(M("struik"), fr, x, z, rot, 1.4f * sc, 0.5f * sc, th + 0.7f * sc, th + 1.6f * sc, true, false);
-                    break;
-            }
+            TreeAt(M, fr, kind, x, z, th, sc, rot, rnd);
+        }
+    }
+
+    // één boom van soort kind (0 loofboom, 1 den, 2 berk, 3 struik) op (x, z), stam vanaf hoogte th
+    static void TreeAt(System.Func<string, MeshBuilder> M, Frame fr, int kind, float x, float z, float th, float sc, float rot, System.Random rnd)
+    {
+        switch (kind)
+        {
+            case 0:   // loofboom: rechte stam, een zeshoekige kroon (smal onder, breed in het midden, afgeplat boven)
+                { string leaf = rnd.Next(3) == 0 ? "loof2" : "blad";
+                Prism(M("stam"), fr, x, z, rot, 0.28f * sc, 0.2f * sc, th, th + 3.4f * sc, false, false);
+                Prism(M(leaf), fr, x, z, rot, 1.6f * sc, 3.2f * sc, th + 2.6f * sc, th + 5.4f * sc, false, true);
+                Prism(M(leaf), fr, x, z, rot, 3.2f * sc, 1.6f * sc, th + 5.4f * sc, th + 8.8f * sc, true, false); }
+                break;
+            case 1:   // den: korte stam, drie kegels op elkaar
+                Prism(M("stam"), fr, x, z, rot, 0.3f * sc, 0.22f * sc, th, th + 2.6f * sc, false, false);
+                Prism(M("naald"), fr, x, z, rot, 3.0f * sc, 0f, th + 1.6f * sc, th + 7.0f * sc, false, true);
+                Prism(M("naald"), fr, x, z, rot + 0.5f, 2.3f * sc, 0f, th + 5.0f * sc, th + 10.4f * sc, false, true);
+                Prism(M("naald"), fr, x, z, rot, 1.5f * sc, 0f, th + 8.6f * sc, th + 13.2f * sc, false, true);
+                break;
+            case 2:   // berk: lange witte stam, een smalle hoge kroon
+                Prism(M("berk"), fr, x, z, rot, 0.18f * sc, 0.13f * sc, th, th + 6.2f * sc, false, false);
+                Prism(M("berkblad"), fr, x, z, rot, 0.9f * sc, 1.9f * sc, th + 4.2f * sc, th + 7.6f * sc, false, true);
+                Prism(M("berkblad"), fr, x, z, rot, 1.9f * sc, 0.6f * sc, th + 7.6f * sc, th + 11.0f * sc, true, false);
+                break;
+            default:   // struik: een lage zeshoekige bol
+                Prism(M("struik"), fr, x, z, rot, 0.7f * sc, 1.4f * sc, th, th + 0.7f * sc, false, false);
+                Prism(M("struik"), fr, x, z, rot, 1.4f * sc, 0.5f * sc, th + 0.7f * sc, th + 1.6f * sc, true, false);
+                break;
         }
     }
 
@@ -155,9 +162,11 @@ public static partial class PlanetCity
     static string NatureTag(int i, string tag, float h0, float h1, float h2, float up)
     {
         string sc = ScorchTag(i, tag, h0, h1, h2); if (sc != tag) return SeaTag(i, sc, h0, h1, h2);   // een verse krater (PlanetCity.Scorch.cs), ook op sneeuw; alleen water gaat voor
-        if (tag == null) return null;
+        string wild = WildTag(i);   // ijs, woestijn of heide kleurt de grond van het hele vak (PlanetWild.cs)
+        if (tag == null) return wild == null ? null : SeaTag(i, wild, h0, h1, h2);
         float ha = (h0 + h1 + h2) / 3f;
         if (ha > SnowLine && (up > 0.6f || ha > SnowLine + 18f)) return "sneeuw";
+        if (wild != null && (tag != "aarde" || wild == "ijs")) return SeaTag(i, wild, h0, h1, h2);
         if (tag == "aarde" && ha > 22f) return "rots";
         return SeaTag(i, tag, h0, h1, h2);
     }
@@ -218,6 +227,16 @@ public static partial class PlanetCity
             case "zeebodem": c = new Color(0.47f, 0.45f, 0.36f); return true;
             case "rots": c = new Color(0.50f, 0.48f, 0.46f); return true;
             case "sneeuw": c = new Color(0.94f, 0.95f, 0.97f); return true;
+            case "ijs": c = new Color(0.84f, 0.91f, 0.96f); return true;
+            case "woestijn": c = new Color(0.86f, 0.71f, 0.47f); return true;
+            case "heide": c = new Color(0.47f, 0.39f, 0.40f); return true;
+            case "heideplant": c = new Color(0.60f, 0.36f, 0.58f); return true;
+            case "ijsblok": c = new Color(0.78f, 0.89f, 0.98f); return true;
+            case "cactus": c = new Color(0.30f, 0.50f, 0.30f); return true;
+            case "droog": c = new Color(0.63f, 0.57f, 0.36f); return true;
+            case "kei": c = new Color(0.61f, 0.59f, 0.56f); return true;
+            case "palmstam": c = new Color(0.56f, 0.46f, 0.33f); return true;
+            case "palmblad": c = new Color(0.27f, 0.56f, 0.21f); return true;
             case "loof2": c = new Color(0.36f, 0.56f, 0.22f); return true;
             case "naald": c = new Color(0.13f, 0.34f, 0.21f); return true;
             case "berk": c = new Color(0.88f, 0.86f, 0.80f); return true;

@@ -320,7 +320,7 @@ public static partial class PlanetCity
     public static bool CanRoad(int i, string type)
     {
         if (!Cells.TryGetValue(i, out var l) || l.Count == 0) return true;
-        if (l.Count == 1 && l[0] == "park") return true;   // door een bos: de bomen wijken (Place)
+        if (l.Count == 1 && (l[0] == "park" || IsWild(l[0]))) return true;   // door een bos of ander landschap: de natuur wijkt (Place)
         if (type == "pad") return l.Count == 1 && (l[0] == "pad" || l[0] == "weg" || l[0] == "wegdeel");   // over een weg: onderdoorgang
         return (l.Count == 1 && (l[0] == "weg" || l[0] == "wegdeel" || l[0] == "meer" || l[0] == "water" || l[0] == "kuil" || l[0] == "pad"));   // over een pad: onderdoorgang
     }

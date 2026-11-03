@@ -1085,6 +1085,7 @@ public static partial class PlanetCity
     {
         if (!Cells.TryGetValue(i, out var l)) { l = new List<string>(); Cells[i] = l; }
         if ((type == "weg" || type == "pad") && l.Count == 1 && l[0] == "park") l.Clear();   // een weg of pad kan altijd door een bos: de bomen wijken
+        if (l.Count == 1 && IsWild(l[0]) && type != l[0]) l.Clear();   // ijs, woestijn, heide, palmen en rotsen wijken voor alles (PlanetWild.cs)
         if (type == "weg")
         {
             if (l.Count == 1 && l[0] == "wegdeel") l.Clear();
@@ -2722,6 +2723,9 @@ public static partial class PlanetCity
                         break;
                     case "dak":
                         Cone(M("dak"), fr, 0, 0, fr.rad * 0.95f, h, h1, fr.rad * 0.5f); Top(M("dak"), fr, 0.5f, h1);
+                        break;
+                    case "ijs": case "woestijn": case "heide": case "palmen": case "rotsen":
+                        Wild(M, fr, i, hash, t);   // landschappen van de natuurplaneet (PlanetWild.cs)
                         break;
                     case "park":
                         if (k > 0) Top(M("gras"), fr, 0.98f, h + 0.05f);   // daktuin; op de grond staan de bomen los op het terrein
