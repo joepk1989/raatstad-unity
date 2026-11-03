@@ -177,7 +177,7 @@ public partial class PlanetBuilder : MonoBehaviour
     void FillPlanet() { if (loading == null) StartCoroutine(FillRoutine()); }
     System.Collections.IEnumerator FillRoutine()
     {
-        loading = "Planeet vullen"; loadFrac = 0f; catOpen = wheelOpen = menuOpen = false; PlanetBlueprint.I.Show();
+        loading = "Planeet vullen"; loadFrac = loadShown = 0f; catOpen = wheelOpen = menuOpen = false; PlanetBlueprint.I.Show();
         for (float t = 0f; t < 0.6f; t += Time.deltaTime) yield return null;   // eerst de blauwdruk op en de camera op weg naar buiten
         Push(); var sw = System.Diagnostics.Stopwatch.StartNew();
         yield return PlanetCity.FillSteps((f, what) => { loadFrac = f * 0.4f; loading = what; });
@@ -186,14 +186,26 @@ public partial class PlanetBuilder : MonoBehaviour
         PlanetBlueprint.I.Hide(); loading = null; Sounds.Instead("gen");
         Say("Planeet vol: " + PlanetCity.FillTowns.Count + " stadjes met platteland ertussen (" + (sw.ElapsedMilliseconds / 1000f).ToString("0") + " s; Ctrl+Z haalt alles weg)");
     }
-    // tijdens het opbouwen alleen een smal label onderaan: de stap, het percentage en een dun lijntje (de planeet is het beeld)
+    // tijdens het opbouwen onderaan een paneel (de planeet zelf blijft het beeld): links zes zeshoekjes die om de beurt oplichten,
+    // de stap met eronder wat er gebeurt, rechts het percentage en een ronde voortgangsbalk die zacht meeloopt
+    float loadShown;
     void LoadingGui(float W, float H)
     {
-        string t = "BLAUWDRUK  <color=#EEF1EC>" + loading + "</color>  <color=#A8B2AB>" + Mathf.RoundToInt(loadFrac * 100f) + "%</color>";
-        float w = Mathf.Max(260f, Ui.Width(t, Ui.T.Bold, 12) + 36f); var r = new Rect((W - w) * 0.5f, H - 12f - 44f, w, 40f);
-        Ui.Panel(r, false, 20f); Ui.Label(new Rect(r.x, r.y + 1f, r.width, 30f), t, Ui.T.Bold, new Color(0.55f, 0.8f, 1f), TextAnchor.MiddleCenter, 12);
-        var bar = new Rect(r.x + 18f, r.yMax - 9f, r.width - 36f, 2f); Ui.Tex(bar, Texture2D.whiteTexture, new Color(1f, 1f, 1f, 0.12f));
-        Ui.Tex(new Rect(bar.x, bar.y, bar.width * loadFrac, bar.height), Texture2D.whiteTexture, new Color(0.55f, 0.8f, 1f));
+        loadShown = Mathf.MoveTowards(Mathf.Lerp(loadShown, loadFrac, 1f - Mathf.Exp(-6f * Time.unscaledDeltaTime)), loadFrac, 0.002f);
+        const float w = 420f, h = 70f; var r = new Rect((W - w) * 0.5f, H - 24f - h, w, h); Ui.Panel(r, true, 18f);
+        var c = new Vector2(r.x + 36f, r.y + h * 0.5f); float ph = Time.unscaledTime * 6f;
+        for (int k = 0; k < 6; k++)
+        {
+            float a = (-90f + k * 60f) * Mathf.Deg2Rad, on = Mathf.Repeat(ph - k, 6f) < 1f ? 1f : 0.28f + 0.5f * Mathf.Clamp01(1f - Mathf.Repeat(ph - k, 6f) / 3f);
+            var p = c + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * 13f;
+            Ui.Tex(new Rect(p.x - 5.5f, p.y - 5f, 11f, 10f), Ui.Hex(new Color(Ui.Signal.r, Ui.Signal.g, Ui.Signal.b, on), Color.clear, 0f));
+        }
+        string pct = Mathf.RoundToInt(loadShown * 100f) + "%"; float pw = Ui.Width(pct, Ui.T.Title, 22);
+        Ui.Label(new Rect(r.x + 66f, r.y + 10f, w - 90f - pw, 24f), loading, Ui.T.Bold, null, null, 15);
+        Ui.Label(new Rect(r.x + 66f, r.y + 30f, w - 90f - pw, 18f), loadFrac < 0.4f ? "Dorpen, wegen en landschap uitzetten" : "De planeet tekenen", Ui.T.Dim, null, null, 11);
+        Ui.Label(new Rect(r.xMax - 18f - pw, r.y + 10f, pw, 36f), pct, Ui.T.Title, Ui.Signal, TextAnchor.MiddleRight, 22);
+        var bar = new Rect(r.x + 66f, r.yMax - 15f, w - 66f - 18f, 5f); Ui.Box(bar, new Color(1f, 1f, 1f, 0.1f), Color.clear, 2.5f);
+        if (loadShown > 0.005f) Ui.Box(new Rect(bar.x, bar.y, Mathf.Max(5f, bar.width * loadShown), bar.height), Ui.Signal, Color.clear, 2.5f);
     }
     // de camera tijdens het opbouwen: naar buiten tot de hele bol in beeld is, en langzaam erom heen
     void LoadCam() { focus = (Quaternion.AngleAxis(6f * Time.deltaTime, Planet.Axis) * focus).normalized; distGoal = 1500f; CameraControl(); }
