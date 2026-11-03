@@ -231,6 +231,7 @@ public partial class PlanetBuilder : MonoBehaviour
         CameraControl();
         if (Modal) { outline.enabled = false; ShowBrush(-1); ShowGhost(-1); ShowVerts(-1); return; }   // een venster staat open: niets in de stad
         if (SpaceUpdate()) return;   // in de ruimte: navigeren, niet bouwen (PlanetBuilder.Space.cs)
+        if (CursorUpdate()) return;   // Aanwijzen (V): opties en oproepen in plaats van bouwen (PlanetBuilder.Cursor.cs)
 
         // Tab vasthouden: het keuzewiel bij de muis; kant op bewegen en loslaten kiest. Kort tikken: de lade van de categorie open of dicht
         if (Inp.Down(K.Tab)) { wheelOpen = true; wheelAt = Ui.Mouse; wheelT = Time.unscaledTime; }
@@ -880,16 +881,17 @@ public partial class PlanetBuilder : MonoBehaviour
         if (!walking) ModesGui(W, H);   // concept: de spelmodus links, ook in de ruimte (PlanetBuilder.Modes.cs)
         if (walking) WalkHint(W, H);
         else if (inSpace) SpaceGui(W, H);   // in de ruimte: de planeet als kaart, geen bouwbalk
-        else { Hotbar(W, H); Tools(H); if (!catOpen) Options(W, H); }
+        else { Hotbar(W, H); Tools(H); if (!catOpen && !cursorMode) Options(W, H); }
         if (!inSpace || walking) ModeSwitch(W, H);
         if (todOpen) TodPanel(W);
         if (catOpen && !walking) Catalogue(W, H);
         if (wheelOpen && !walking && !Modal) Wheel();
         if (TerrTool && hasHover && !walking && !Modal) TerrLabel();
         else if (prevOk && hasHover && ShowPreview && !walking && !Modal && !Ui.MouseOverUI) PreviewLabel();
-        if (LevelTool && !walking && !inSpace) LayerPick(W, H);
+        if (LevelTool && !walking && !inSpace && !cursorMode) LayerPick(W, H);
         if (Time.time < msgT) Ui.Toast(msg, Mathf.Clamp01((msgT - Time.time) / 0.5f), catOpen ? CatBottom + CatHeight(W) + 12f : walking ? G + 52f : inSpace ? 12f + 56f + 10f : DockTop);
         if (scoreOpen) ScorePanel(W, H);
+        if (!Modal) CursorGui(W, H);   // Aanwijzen: de knop, wat je aanwijst en de vensters (PlanetBuilder.Cursor.cs)
         if (modesOpen && !walking) ModesArc(W, H);   // concept: de spelmodi op een boog (PlanetBuilder.Modes.cs)
         if (menuOpen) Menu(W, H);
         if (helpOpen) Help(W, H);
@@ -1320,6 +1322,7 @@ public partial class PlanetBuilder : MonoBehaviour
         "Tab vasthouden|keuzewiel bij de muis",
         "Tab tikken|lade met alle blokken",
         "middelste klik|pipet: neem het blok van een vak over",
+        "V|aanwijzen: klik voor opties, rechts klikken: oproepen (meteoor, weer, dorpje)",
         "klik / slepen|bouwen",
         "rechts klik|vak leegmaken",
         "X|bovenste blok weghalen",
