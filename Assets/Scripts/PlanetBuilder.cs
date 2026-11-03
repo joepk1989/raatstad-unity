@@ -6,7 +6,7 @@ using UnityEngine;
 // De bediening volgt de webversie (v100, 15d-bediening.js): linksboven de stad en de schoonheid, rechtsboven tijd en weer,
 // geluid en Menu; onderaan de snelbalk 1–9 met "Alle blokken" (Tab), linksonder gum en ongedaan maken, rechtsonder Bouwen/Lopen (L)
 // met daarboven de knop ? (alle toetsen). Alle toetsen en de muis staan in Help() op een rij: houd dat venster gelijk met de code.
-public class PlanetBuilder : MonoBehaviour
+public partial class PlanetBuilder : MonoBehaviour
 {
     public Camera Cam;
     Vector3 focus = Vector3.up, fwd = Vector3.forward;
@@ -230,6 +230,7 @@ public class PlanetBuilder : MonoBehaviour
         if (Inp.Down(K.Space) && !Modal) { FlyStart(); return; }
         CameraControl();
         if (Modal) { outline.enabled = false; ShowBrush(-1); ShowGhost(-1); ShowVerts(-1); return; }   // een venster staat open: niets in de stad
+        if (SpaceUpdate()) return;   // in de ruimte: navigeren, niet bouwen (PlanetBuilder.Space.cs)
 
         // Tab vasthouden: het keuzewiel bij de muis; kant op bewegen en loslaten kiest. Kort tikken: de lade van de categorie open of dicht
         if (Inp.Down(K.Tab)) { wheelOpen = true; wheelAt = Ui.Mouse; wheelT = Time.unscaledTime; }
@@ -717,6 +718,7 @@ public class PlanetBuilder : MonoBehaviour
         float dt = Time.deltaTime, far = Mathf.InverseLerp(250f, 1400f, dist), ease = Mathf.Lerp(8f, 3f, far), k = 1f - Mathf.Exp(-ease * dt);
         float sp = Mathf.Min((Inp.Held(K.Shift) ? 3f : 1f) * dist, Planet.R * (Inp.Held(K.Shift) ? 1.5f : 0.6f));   // ongeveer een schermbreedte per seconde, zoals de webversie; in de ruimte begrensd
         if (dist != distSeen) distGoal = dist;   // ergens anders verzet (naar het midden, de polen): daar verder
+        FlyStep(dt);   // in de ruimte naar een dorp of stad vliegen
         Vector3 up = focus; fwd = (fwd - up * Vector3.Dot(fwd, up)).normalized; Vector3 right = Vector3.Cross(up, fwd);
         Vector3 move = Vector3.zero; float turn = 0f, zoomIn = 0f;
         if (!Modal)
@@ -873,18 +875,19 @@ public class PlanetBuilder : MonoBehaviour
         fpsN++; if (Time.time - fpsT > 0.5f) { fps = fpsN / (Time.time - fpsT); fpsN = 0; fpsT = Time.time; }
         if (flying) { if (!photoFrame) FlyGui(W, H); Ui.End(); return; }   // cameramodus: geen interface
 
-        CentreArrow(W, H);
+        if (!inSpace) CentreArrow(W, H);   // in de ruimte staat je stad als marker op de bol
         if (!walking) { TopLeft(); Incidents(); } TopRight(W);   // lopen: zo min mogelijk in beeld, de stad zelf is het beeld
-        if (!walking) { Hotbar(W, H); Tools(H); if (!catOpen) Options(W, H); }
-        else WalkHint(W, H);
-        ModeSwitch(W, H);
+        if (walking) WalkHint(W, H);
+        else if (inSpace) SpaceGui(W, H);   // in de ruimte: de planeet als kaart, geen bouwbalk
+        else { Hotbar(W, H); Tools(H); if (!catOpen) Options(W, H); }
+        if (!inSpace || walking) ModeSwitch(W, H);
         if (todOpen) TodPanel(W);
         if (catOpen && !walking) Catalogue(W, H);
         if (wheelOpen && !walking && !Modal) Wheel();
         if (TerrTool && hasHover && !walking && !Modal) TerrLabel();
         else if (prevOk && hasHover && ShowPreview && !walking && !Modal && !Ui.MouseOverUI) PreviewLabel();
-        if (LevelTool && !walking) LayerPick(W, H);
-        if (Time.time < msgT) Ui.Toast(msg, Mathf.Clamp01((msgT - Time.time) / 0.5f), catOpen ? CatBottom + CatHeight(W) + 12f : walking ? G + 52f : DockTop);
+        if (LevelTool && !walking && !inSpace) LayerPick(W, H);
+        if (Time.time < msgT) Ui.Toast(msg, Mathf.Clamp01((msgT - Time.time) / 0.5f), catOpen ? CatBottom + CatHeight(W) + 12f : walking ? G + 52f : inSpace ? 12f + 56f + 10f : DockTop);
         if (scoreOpen) ScorePanel(W, H);
         if (menuOpen) Menu(W, H);
         if (helpOpen) Help(W, H);
