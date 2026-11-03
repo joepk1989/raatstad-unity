@@ -100,6 +100,11 @@ Erbij gekomen op 3 november 2026 (leven rond de kijker, `PlanetLife.Crowd.cs`):
 - Een kleine stad (de startstad, teststad, wegvoorbeeld) werkt zoals vroeger: over de hele stad, hooguit 40 mensen, 40 auto's, 20 fietsers.
 - Gemeten op een volle planeet, grote stad: 115 mensen en 43 auto's, 157 fps (zonder leven 341 fps).
 
+Erbij gekomen op 3 november 2026 (meteoor, `PlanetMeteor.cs`, experimenteel):
+- Menu Gereedschap of spelmodus (ook vanuit de ruimte): een meteoor op het midden van het beeld, klein, middel of groot (`meteorSize` in `PlanetBuilder.Meteor.cs`; kom van 1, 7 of 19 vakken, 6/11/17 m diep, met opgeworpen rand en puin). Rots met vuurstaart en rookspoor, feller in de atmosfeer; bij de inslag flits, zeshoekige schokgolf, een puingordijn en stofzuil omhoog, brokstukken en een schuddende camera. Auto's vliegen weg en mensen gaan neer (`PlanetLife.Blast`).
+- De krater (`PlanetMeteor.Crater`) holt het terrein uit via `SetTerr`; gebouwen, wegen en bomen in kom en rand verdwijnen. Verschroeid (`PlanetCity.Scorch`, in opslag en undo): donkere kom, lichtbruine rand en een zwarte roetdeken die naar buiten rafelt (`ScorchTag` in `NatureTag`). De kom blijft droog, ook onder zeeniveau (`DryPit` in `Wet`); met water vlak naast breekt de wand na een paar seconden door, een inslag in het water is meteen nat. Ctrl+Z zet alles terug.
+- Geluid in stereo, zelf berekend (`PlanetMeteor.Sound.cs`): gebrul en supersone knal tijdens de vlucht; klap, dreun, brokstukken en gerommel met echo's; plons en stromend water. Op afstand later (343 m/s), zachter en dof (laagdoorlaatfilter per laag).
+
 Nog te doen:
 1. Modules als JSON met edge-codes (nu nog in code)
 2. Onderdelen uit `docs/overdracht-webversie.md` bouwen: stadsgenerator, wenteltrap; geluid: crunch/squeal aanroepen in `PlanetLife`, jump in `PlanetWalker`

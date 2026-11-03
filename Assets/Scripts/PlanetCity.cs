@@ -8,7 +8,7 @@ using UnityEngine;
 // assenstelsel van het vak gebouwd, zodat gebouwen overal recht op de bol staan. De bodem is één mesh per
 // deel (128 vakken); blokken en wegen worden per deel opnieuw gemaakt als er iets verandert.
 [Serializable] public class PCellSave { public int i; public string[] items; }
-[Serializable] public class PSaveData { public int m; public float r; public List<PCellSave> cells = new List<PCellSave>(); public List<int> links = new List<int>(); public List<int> style = new List<int>(), under = new List<int>(), oneway = new List<int>(), terr = new List<int>(), low = new List<int>(), tunnel = new List<int>(), lower = new List<int>(), precarve = new List<int>(), prelevel = new List<int>(), corner = new List<int>(), center = new List<int>(), bike = new List<int>(), rot = new List<int>(); public int startVer, startCell = -1; }   // startVer: de versie van de startstad als de stad nog de ongewijzigde startstad is (anders 0)   // corner: per hoekpunt drie vakken en de verschuiving in cm   // paren: vak/stijl, vak/onder (1 meer, 2 water, 3 kuil, 4 pad, 5 weg), van/naar, vak/terreinhoogte in cm
+[Serializable] public class PSaveData { public int m; public float r; public List<PCellSave> cells = new List<PCellSave>(); public List<int> links = new List<int>(); public List<int> style = new List<int>(), under = new List<int>(), oneway = new List<int>(), terr = new List<int>(), low = new List<int>(), tunnel = new List<int>(), lower = new List<int>(), precarve = new List<int>(), prelevel = new List<int>(), corner = new List<int>(), center = new List<int>(), bike = new List<int>(), rot = new List<int>(), scorch = new List<int>(); public int startVer, startCell = -1; }   // startVer: de versie van de startstad als de stad nog de ongewijzigde startstad is (anders 0)   // corner: per hoekpunt drie vakken en de verschuiving in cm   // paren: vak/stijl, vak/onder (1 meer, 2 water, 3 kuil, 4 pad, 5 weg), van/naar, vak/terreinhoogte in cm
 
 public static partial class PlanetCity
 {
@@ -1227,7 +1227,7 @@ public static partial class PlanetCity
     // Alles weg (lege bouwgrond): de gegevens én alle getekende stukken, zodat er nooit iets van de oude stad blijft staan
     public static void ClearAll()
     {
-        Cells = new Dictionary<int, List<string>>(); Terr.Clear(); CornerOfs.Clear(); CenterOfs.Clear(); ClearLinks();
+        Cells = new Dictionary<int, List<string>>(); Terr.Clear(); CornerOfs.Clear(); CenterOfs.Clear(); Scorch.Clear(); ClearLinks();
         if (root != null) foreach (Transform t in root) UnityEngine.Object.Destroy(t.gameObject);
         chunks.Clear();
         if (roadRoot != null) foreach (Transform t in roadRoot) UnityEngine.Object.Destroy(t.gameObject);
@@ -1267,6 +1267,7 @@ public static partial class PlanetCity
             foreach (var kv in Low) { sd.low.Add(kv.Key); sd.low.Add(Mathf.RoundToInt(kv.Value * 100f)); }
             foreach (long k in OneWay) { sd.oneway.Add((int)(k >> 20)); sd.oneway.Add((int)(k & 0xFFFFF)); }
             foreach (var kv in Terr) { sd.terr.Add(kv.Key); sd.terr.Add(Mathf.RoundToInt(kv.Value * 100f)); }
+            foreach (var kv in Scorch) { sd.scorch.Add(kv.Key); sd.scorch.Add(kv.Value); }   // een verse krater (PlanetCity.Scorch.cs)
             foreach (var kv in CornerOfs) { sd.corner.Add((int)(kv.Key >> 40)); sd.corner.Add((int)((kv.Key >> 20) & 0xFFFFF)); sd.corner.Add((int)(kv.Key & 0xFFFFF)); sd.corner.Add(Mathf.RoundToInt(kv.Value * 100f)); }
             foreach (var kv in CenterOfs) { sd.center.Add(kv.Key); sd.center.Add(Mathf.RoundToInt(kv.Value * 100f)); }
             foreach (int b in Bike) if (Cells.ContainsKey(b)) sd.bike.Add(b);
@@ -1308,7 +1309,8 @@ public static partial class PlanetCity
             if (sd.precarve != null) for (int k = 0; k + 1 < sd.precarve.Count; k += 2) preCarve[sd.precarve[k]] = sd.precarve[k + 1] / 100f;
             if (sd.prelevel != null) for (int k = 0; k + 1 < sd.prelevel.Count; k += 2) preLevel[sd.prelevel[k]] = sd.prelevel[k + 1] / 100f;
             if (sd.oneway != null) for (int k = 0; k + 1 < sd.oneway.Count; k += 2) OneWay.Add(DKey(sd.oneway[k], sd.oneway[k + 1]));
-            Terr.Clear(); CornerOfs.Clear(); CenterOfs.Clear();
+            Terr.Clear(); CornerOfs.Clear(); CenterOfs.Clear(); Scorch.Clear();
+            if (sd.scorch != null) for (int k = 0; k + 1 < sd.scorch.Count; k += 2) if (sd.scorch[k] >= 0 && sd.scorch[k] < Planet.Cells.Length) Scorch[sd.scorch[k]] = (byte)sd.scorch[k + 1];
             if (sd.center != null) for (int k = 0; k + 1 < sd.center.Count; k += 2) CenterOfs[sd.center[k]] = sd.center[k + 1] / 100f;
             if (sd.corner != null) for (int k = 0; k + 3 < sd.corner.Count; k += 4) CornerOfs[((long)sd.corner[k] << 40) | ((long)sd.corner[k + 1] << 20) | (uint)sd.corner[k + 2]] = sd.corner[k + 3] / 100f;
             if (sd.terr != null) for (int k = 0; k + 1 < sd.terr.Count; k += 2) if (sd.terr[k] >= 0 && sd.terr[k] < Planet.Cells.Length && sd.terr[k + 1] != 0) Terr[sd.terr[k]] = Mathf.Clamp(sd.terr[k + 1] / 100f, TerrLow, TerrTop);

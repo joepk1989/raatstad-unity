@@ -5,16 +5,17 @@ using UnityEngine;
 // vanaf de camera, en wordt feller in de atmosfeer (onder zo'n 400 m). Bij de inslag: een flits, een zeshoekige schokgolf over
 // het terrein, stof, vuur en brokstukken en de camera schudt. Het geluid staat in PlanetMeteor.Sound.cs. De krater (Crater) maakt
 // PlanetBuilder.Meteor.cs bij de inslag, met undo ervoor.
-// Maat 0, 1, 2: een kom van 1, 7 of 19 vakken (zoals de penselen) met een opgehoogde rand eromheen. Op droog land blijft de kom
-// droog (de bodem net boven het zeeniveau, de rand hoger); ligt er water vlak naast, dan breekt de wand door en stroomt de kom
-// na een paar seconden vol; een inslag in het water zelf is meteen nat.
+// Maat 0, 1, 2: een kom van 1, 7 of 19 vakken (zoals de penselen), 6, 11 of 17 m diep, met een opgehoogde rand eromheen.
+// De kom blijft droog, ook onder het zeeniveau; ligt er water vlak naast, dan breekt de wand door en stroomt de kom na een paar
+// seconden vol; een inslag in het water zelf is meteen nat.
 [DefaultExecutionOrder(-1000)]
 public partial class PlanetMeteor : MonoBehaviour
 {
     static PlanetMeteor I;
     public static readonly string[] SizeNames = { "Klein", "Middel", "Groot" };
     public static int Flying => I == null ? 0 : I.rocks.Count;
-    static readonly float[] RockR = { 2.5f, 4.5f, 7f }, Depth = { 5f, 9f, 14f };
+    static readonly float[] RockR = { 2.5f, 4.5f, 7f }, Depth = { 6f, 11f, 17f };
+    static readonly int[][] Ejecta = { new[] { 80, 40 }, new[] { 90, 65, 35 }, new[] { 95, 80, 55, 30, 12 } };   // per ring buiten de rand: kans op roet in %
     const float CellW = 15.6f;
 
     class Rock
@@ -25,7 +26,7 @@ public partial class PlanetMeteor : MonoBehaviour
     }
     class Flood { public float t; public Vector3 at; public int size; public List<(int c, float dry, float wet)> cells; public System.Action done; }
     readonly List<Flood> floods = new List<Flood>();
-    class Blast { public Vector3 at; public int cell, size; public float t; public LineRenderer ring; public Light flash; public Transform ball; public Material ballMat; public Vector3[] hex; }
+    class Blast { public Vector3 at; public int cell, size; public float t; public LineRenderer ring; public Light flash; public Transform ball; public Material ballMat; public Vector3[] hex; public float acc; }
     readonly List<Rock> rocks = new List<Rock>();
     readonly List<Blast> blasts = new List<Blast>();
     ParticleSystem dustPs, firePs, debrisPs; Mesh ico; Material addMat, alphaMat;
@@ -59,48 +60,60 @@ public partial class PlanetMeteor : MonoBehaviour
     // flooded: als het water er later in stroomt (dan opnieuw tekenen en bewaren)
     public static int Crater(int c0, int size, System.Action flooded = null)
     {
-        int b = Mathf.Clamp(size, 0, 2), rim = b + 1, outer = b + 2; float D = Depth[b], dryFloor = PlanetCity.SeaLevel + 0.4f;
+        int b = Mathf.Clamp(size, 0, 2), rim = b + 1, outer = b + 2; float D = Depth[b];
         var cells = new List<(int c, int d)> { (c0, 0) }; var seen = new HashSet<int> { c0 }; int from = 0;
-        for (int d = 1; d <= outer + 1; d++) { int to = cells.Count; for (int k = from; k < to; k++) foreach (int j in Planet.Cells[cells[k].c].nb) if (seen.Add(j)) cells.Add((j, d)); from = to; }
+        int[] ring = Ejecta[b]; int maxD = Mathf.Max(outer + 1, rim + ring.Length);
+        for (int d = 1; d <= maxD; d++) { int to = cells.Count; for (int k = from; k < to; k++) foreach (int j in Planet.Cells[cells[k].c].nb) if (seen.Add(j)) cells.Add((j, d)); from = to; }
         // water: de inslag in het water zelf, of een zee, meer of gracht vlak naast de krater (vóór het verwoesten: een meer verdwijnt dan)
         bool inWater = PlanetCity.G(c0) < PlanetCity.SeaLevel, nearWater = false;
-        foreach (var x in cells) if (PlanetCity.G(x.c) < PlanetCity.SeaLevel || (PlanetCity.Cells.TryGetValue(x.c, out var wl) && wl.Count > 0 && (wl[0] == "meer" || wl[0] == "water"))) nearWater = true;
+        foreach (var x in cells) if (x.d <= outer + 1 && (PlanetCity.G(x.c) < PlanetCity.SeaLevel || (PlanetCity.Cells.TryGetValue(x.c, out var wl) && wl.Count > 0 && (wl[0] == "meer" || wl[0] == "water")))) nearWater = true;
+        // verschroeid: kale kom, opgeworpen rand, daaromheen een zwarte deken van roet en gruis die naar buiten rafelt; bomen erin verbranden
+        foreach (var x in cells)
+        {
+            byte v = x.d <= b ? PlanetCity.ScorchFloor : x.d == rim ? PlanetCity.ScorchRim : (byte)ring[x.d - rim - 1];
+            if (!PlanetCity.Scorch.TryGetValue(x.c, out byte old) || old < v) PlanetCity.Scorch[x.c] = v;
+            if (x.d > rim && v >= 50 && PlanetCity.Cells.TryGetValue(x.c, out var tl) && tl.Count == 1 && tl[0] == "park") PlanetCity.Clear(x.c);
+            PlanetCity.Touch(x.c);
+        }
         cells.RemoveAll(x => x.d > outer);
         // eerst verwoesten (een weg op een niveau zet zijn terrein terug, een brug geeft zijn water terug: dan nog eens)
         foreach (var x in cells) if (x.d <= rim) for (int n = 0; n < 4 && PlanetCity.Cells.ContainsKey(x.c); n++) if (!PlanetCity.Clear(x.c)) break;
         float baseH = 0f; int nb = 0; foreach (var x in cells) if (x.d <= rim) { baseH += PlanetCity.G(x.c); nb++; } baseH /= nb;
-        // de kom zoals hij nat hoort; droog ligt de bodem net boven het water en gaat het tekort naar de rand, zodat de kom diep blijft
-        var wet = new List<(int c, int d, float h)>(); float deficit = 0f;
+        // de meteoor holt het terrein uit: een diepe kom, ook onder het zeeniveau (droog: PlanetCity.DryPit), met een opgeworpen rand
+        int changed = 0; var bowl = new List<int>();
         foreach (var x in cells)
         {
             if (x.d > rim && PlanetCity.Cells.ContainsKey(x.c) && (PlanetCity.Plateau(x.c) || PlanetCity.IsWalk(x.c))) continue;   // in het puin eromheen blijven gebouwen en wegen staan
             float h = PlanetCity.G(x.c), nh;
-            if (x.d <= b) { float u = (float)x.d / rim; nh = Mathf.Lerp(h, baseH, 0.6f) - D * (1f - u * u); deficit = Mathf.Max(deficit, dryFloor - nh); }   // de kom: in het midden het diepst
-            else if (x.d == rim) nh = Mathf.Max(h, baseH) + D * 0.35f;                                                                                        // de opgeworpen rand
-            else nh = h + D * (b == 0 ? 0.06f : 0.12f);                                                                                                       // het puin eromheen
-            wet.Add((x.c, x.d, nh));
-        }
-        int changed = 0; var later = new List<(int c, float dry, float wet)>();
-        foreach (var x in wet)
-        {
-            float nh = x.h;
-            if (!inWater) { if (x.d <= b) nh = Mathf.Max(nh, dryFloor); else nh += deficit * (x.d == rim ? 0.5f : 0.2f); }
+            if (x.d <= b) { float u = (float)x.d / rim; nh = Mathf.Lerp(h, baseH, 0.6f) - D * (1f - u * u); bowl.Add(x.c); }   // de kom: in het midden het diepst
+            else if (x.d == rim) nh = Mathf.Max(h, baseH) + D * 0.4f;                                                           // de opgeworpen rand
+            else nh = h + D * (b == 0 ? 0.06f : 0.12f);                                                                          // het puin eromheen
             if (PlanetCity.SetTerr(x.c, nh)) changed++;
             PlanetCity.Touch(x.c);
-            if (!inWater && nearWater && x.d <= b && x.h < nh - 0.01f) later.Add((x.c, PlanetCity.G(x.c), x.h));
         }
-        if (later.Count > 0 && I != null) I.floods.Add(new Flood { t = 5f + b, at = Planet.Cells[c0].dir * Planet.R, size = b, cells = later, done = flooded });
+        // water: midden in het water meteen nat; met water vlak naast breekt de wand na een paar seconden door
+        if (inWater) foreach (int c in bowl) PlanetCity.Scorch[c] = PlanetCity.ScorchWet;
+        else if (nearWater && I != null)
+        {
+            var later = new List<(int c, float dry, float wet)>(); foreach (int c in bowl) later.Add((c, PlanetCity.G(c), 0f));
+            I.floods.Add(new Flood { t = 5f + b, at = Planet.Cells[c0].dir * Planet.R, size = b, cells = later, done = flooded });
+        }
         return changed;
     }
-    // de wand breekt door: de kom zakt naar zijn natte diepte en het water stroomt erin (niet als het terrein intussen veranderde, bijvoorbeeld door undo)
+    // de wand breekt door: het water stroomt de kom in (niet als het terrein intussen veranderde, bijvoorbeeld door undo)
     void UpdateFloods(float dt)
     {
         for (int k = floods.Count - 1; k >= 0; k--)
         {
             var f = floods[k]; f.t -= dt; if (f.t > 0f) continue; floods.RemoveAt(k);
-            bool same = true; foreach (var x in f.cells) if (Mathf.Abs(PlanetCity.G(x.c) - x.dry) > 0.02f) { same = false; break; }
-            if (!same) continue;
-            foreach (var x in f.cells) { PlanetCity.SetTerr(x.c, x.wet); PlanetCity.Touch(x.c); }
+            bool same = true, any = false;
+            foreach (var x in f.cells)
+            {
+                if (Mathf.Abs(PlanetCity.G(x.c) - x.dry) > 0.02f || !PlanetCity.Scorch.TryGetValue(x.c, out byte v) || v != PlanetCity.ScorchFloor) { same = false; break; }
+                if (PlanetCity.G(x.c) < PlanetCity.SeaLevel) any = true;
+            }
+            if (!same || !any) continue;
+            foreach (var x in f.cells) { PlanetCity.Scorch[x.c] = PlanetCity.ScorchWet; PlanetCity.Touch(x.c); }
             FloodSound(f.at, f.size);
             f.done?.Invoke();
         }
@@ -209,6 +222,7 @@ public partial class PlanetMeteor : MonoBehaviour
     bool UpdateBlast(Blast bl, float dt)
     {
         bl.t += dt; float rc = (bl.size + 1) * CellW, up01 = Mathf.Clamp01(bl.t / 1.8f);
+        if (bl.t < PlumeT) Plume(bl, dt);
         bl.flash.intensity = 40f * Mathf.Exp(-bl.t * 5f);
         float bt = Mathf.Clamp01(bl.t / 0.7f); bl.ball.localScale = Vector3.one * rc * (0.6f + 2.4f * Mathf.Sqrt(bt)) * 2f;
         bl.ballMat.SetColor("_BaseColor", new Color(1f, 0.75f - 0.35f * bt, 0.4f - 0.3f * bt, (1f - bt) * 0.9f));
@@ -217,6 +231,26 @@ public partial class PlanetMeteor : MonoBehaviour
         bl.ring.widthMultiplier = 1f + rc * 0.3f * (1f - up01); Color rcol = new Color(1f, 0.85f, 0.6f, (1f - up01) * 0.85f); bl.ring.startColor = bl.ring.endColor = rcol;
         if (bl.t < 2f) return true;
         Destroy(bl.flash.gameObject); Destroy(bl.ball.gameObject); Destroy(bl.ballMat); Destroy(bl.ring.gameObject); return false;
+    }
+
+    // de eerste anderhalve seconde: een gordijn van puin en donker stof dat schuin omhoog en naar buiten schiet (een kegel, zoals
+    // bij een echte inslag), en een stofzuil recht omhoog die afremt, blijft hangen en uitwaaiert
+    const float PlumeT = 1.4f;
+    void Plume(Blast bl, float dt)
+    {
+        int b = bl.size; float rc = (b + 1) * CellW, k = 1f - bl.t / PlumeT; var c = Planet.Cells[bl.cell]; Vector3 up = bl.at.normalized;
+        bl.acc += dt * (170f + 150f * b) * k;
+        while (bl.acc >= 1f)
+        {
+            bl.acc -= 1f;
+            float a = Random.value * Mathf.PI * 2f; Vector3 o = c.east * Mathf.Cos(a) + c.north * Mathf.Sin(a);
+            Vector3 v = (o * Random.Range(0.45f, 0.75f) + up).normalized * Random.Range(18f, 40f) * (1f + 0.25f * b) * (0.55f + 0.45f * k);
+            Vector3 at = bl.at + o * rc * Random.Range(0.15f, 0.6f) + up * 2f;
+            if (Random.value < 0.45f) Emit(debrisPs, at, v, Random.Range(0.5f, 2f) * (1f + 0.5f * b), Color.Lerp(new Color(0.12f, 0.1f, 0.09f), new Color(0.38f, 0.32f, 0.26f), Random.value), 14f);
+            else Emit(dustPs, at, v * 1.4f, rc * Random.Range(0.18f, 0.38f), Color.Lerp(new Color(0.16f, 0.14f, 0.13f), new Color(0.46f, 0.4f, 0.34f), Random.value), Random.Range(6f, 11f));
+            if (Random.value < 0.55f)
+                Emit(dustPs, bl.at + o * rc * Random.Range(0f, 0.35f) + up * 3f, up * Random.Range(35f, 90f) * (1f + 0.3f * b) * (0.4f + 0.6f * k) + o * Random.Range(0f, 7f), rc * Random.Range(0.3f, 0.6f), Color.Lerp(new Color(0.2f, 0.19f, 0.18f), new Color(0.52f, 0.47f, 0.41f), Random.value), Random.Range(9f, 16f));
+        }
     }
 
     // brokstukken vallen naar het midden van de bol en blijven niet zweven

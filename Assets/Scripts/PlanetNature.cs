@@ -111,6 +111,7 @@ public static partial class PlanetCity
         if (Quay(i)) return true;
         if (IsWalk(i) || carved.Contains(i) || levelled.Contains(i) || (fieldCells.Contains(i) && NearSeg(Planet.Cells[i].dir, Planet.Cells[i].radius))) return false;
         if (Cells.TryGetValue(i, out var l) && l.Count > 0 && l[0] == "kuil") return false;
+        if (DryPit(i)) return false;   // een droge meteoorkrater (PlanetCity.Scorch.cs)
         if (G(i) + CenterOfs1(i) < SeaLevel) return true;
         for (int k = 0; k < Planet.Cells[i].corners.Length; k++) if (SeaCorner(i, k) < SeaLevel) return true;
         return false;
@@ -153,6 +154,7 @@ public static partial class PlanetCity
     public const float SnowLine = 54f, TreeLine = 48f;
     static string NatureTag(int i, string tag, float h0, float h1, float h2, float up)
     {
+        string sc = ScorchTag(i, tag, h0, h1, h2); if (sc != tag) return SeaTag(i, sc, h0, h1, h2);   // een verse krater (PlanetCity.Scorch.cs), ook op sneeuw; alleen water gaat voor
         if (tag == null) return null;
         float ha = (h0 + h1 + h2) / 3f;
         if (ha > SnowLine && (up > 0.6f || ha > SnowLine + 18f)) return "sneeuw";
@@ -222,6 +224,7 @@ public static partial class PlanetCity
             case "berkblad": c = new Color(0.50f, 0.66f, 0.28f); return true;
             case "struik": c = new Color(0.29f, 0.50f, 0.23f); return true;
             default:
+                if (ScorchColor(k, out c)) return true;
                 if (k.Length > 1 && k[0] == 't' && int.TryParse(k.Substring(1), out int band) && band >= 10) { c = MountainBand((band + 0.5f) * 3f); return true; }
                 c = default; return false;
         }
