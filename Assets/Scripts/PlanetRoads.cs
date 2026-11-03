@@ -290,7 +290,7 @@ public static partial class PlanetCity
         else for (float s = jx0 ? 6f : 3.5f; s < L - (jx1 ? 6f : 2f); s += 7f) { int k = seg(s); Vector3 b = At(s, 0f, 0.2f); Prism3D(M("stam"), b, up[k], 0.2f, 0.15f, 2.1f); Prism3D(M("blad"), b + up[k] * 1.7f, up[k], 1.5f, 0f, 2.9f); }
         // lantaarns aan beide kanten om de 24 m, om en om (elke 12 m een)
         for (int sg = 1; sg >= -1; sg -= 2)
-            for (float s = sg > 0 ? Mathf.Min(6f, L * 0.5f) : 18f; s < L - 2f; s += 24f) { int k = seg(s); Vector3 b = At(s, sg * (hwS - 0.6f), SY); Prism3D(M("paal"), b, up[k], 0.08f, 0.06f, 4.95f); Prism3D(M("lamp"), b + up[k] * 4.65f, up[k], 0.28f, 0.2f, 0.45f); }
+            for (float s = sg > 0 ? Mathf.Min(6f, L * 0.5f) : 18f; s < L - 2f; s += 24f) { int k = seg(s); Vector3 b = At(s, sg * (hwS - 0.6f), SY); if (InBore(b, out _)) continue;   /* geen lantaarns in een tunnel of de inrit ervoor */ Prism3D(M("paal"), b, up[k], 0.08f, 0.06f, 4.95f); Prism3D(M("lamp"), b + up[k] * 4.65f, up[k], 0.28f, 0.2f, 0.45f); }
         // eenrichtingsverkeer: een pijl halverwege elk stuk tussen twee vakmiddens, in de rijrichting
         for (int c = 0; c + 1 < ch.Count; c++)
         {
@@ -339,15 +339,25 @@ public static partial class PlanetCity
     public static Mesh GhostLine(List<int> line, string type, out Vector3 origin)
     {
         origin = Planet.Cells[line[0]].dir * (Planet.R + G(line[0])); var mb = new Dictionary<string, MeshBuilder>();
-        if (type == "pad") { PadGhost(mb, line); return MergeMesh(mb, origin); }
-        styleOverride = DragStyle;
-        try { ChainMesh(mb, line, false, new Dictionary<int, List<int>>(), new HashSet<int>()); } finally { styleOverride = -1; }
+        // waar de lijn een tunnel krijgt (BorePlan) niet over de berg: alleen de stukken ervoor en erna (de koker tekent ShowLevelGhost)
+        var parts = new List<List<int>>(); int from = 0;
+        var cuts2 = new List<(int, int)>(); foreach (var t in BorePlan(line, type)) { int x = line.IndexOf(t.a), y = line.IndexOf(t.b); cuts2.Add((Mathf.Min(x, y), Mathf.Max(x, y))); }
+        cuts2.Sort();
+        foreach (var (i, j) in cuts2) { parts.Add(line.GetRange(from, i - from + 1)); from = j; }
+        parts.Add(line.GetRange(from, line.Count - from));
+        foreach (var part in parts)
+        {
+            if (type == "pad") { PadGhost(mb, part); continue; }
+            if (part.Count < 2 && parts.Count > 1) continue;
+            styleOverride = DragStyle;
+            try { ChainMesh(mb, part, false, new Dictionary<int, List<int>>(), new HashSet<int>()); } finally { styleOverride = -1; }
+        }
         return MergeMesh(mb, origin);
     }
     // een pad als smal lint (2,2 m) door de vakmiddens, met een rondje op elk eind
     static void PadGhost(Dictionary<string, MeshBuilder> mb, List<int> line)
     {
-        var m = new MeshBuilder(); mb["pad"] = m;
+        if (!mb.TryGetValue("pad", out var m)) mb["pad"] = m = new MeshBuilder();   // ook een tweede stuk (na een tunnel) in hetzelfde
         var pts = line.Count > 1 ? SmoothLine(line, false) : new List<RP> { new RP { p = Planet.Cells[line[0]].dir * Planet.R, h = G(line[0]), cell = line[0] } };
         System.Func<Vector3, float, Vector3> up = (p, h) => p.normalized * (Planet.R + h + 0.11f);
         for (int k = 0; k + 1 < pts.Count; k++)
