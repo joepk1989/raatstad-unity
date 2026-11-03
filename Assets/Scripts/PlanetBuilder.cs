@@ -877,6 +877,7 @@ public partial class PlanetBuilder : MonoBehaviour
 
         if (!inSpace) CentreArrow(W, H);   // in de ruimte staat je stad als marker op de bol
         if (!walking) { TopLeft(); Incidents(); } TopRight(W);   // lopen: zo min mogelijk in beeld, de stad zelf is het beeld
+        if (!walking) ModesGui(W, H);   // concept: de spelmodus links, ook in de ruimte (PlanetBuilder.Modes.cs)
         if (walking) WalkHint(W, H);
         else if (inSpace) SpaceGui(W, H);   // in de ruimte: de planeet als kaart, geen bouwbalk
         else { Hotbar(W, H); Tools(H); if (!catOpen) Options(W, H); }
