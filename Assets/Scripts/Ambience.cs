@@ -63,27 +63,41 @@ public class Ambience : MonoBehaviour
     }
 }
 
-// Voetstappen: korte ruisjes, om de zoveel meter, harder bij rennen. Op asfalt klinkt het droger dan op gras.
+// Voetstappen, om de zoveel meter, harder bij rennen. Elke stap is een hak en daarna een bal van de voet. Op asfalt een doffe
+// plof met een droog tikje, op gras en zand een korte ritseling van korreltjes. Zes varianten per ondergrond, nooit twee keer
+// dezelfde achter elkaar. De klanken komen uit Sounds (Tone, Noise).
 public static class Footsteps
 {
-    static AudioClip[] clips; static float dist;
-    public static void Reset() { clips = null; dist = 0f; }
+    static AudioClip[] hardClips, softClips; static float dist; static int lastK = -1;
+    public static void Reset() { hardClips = softClips = null; dist = 0f; lastK = -1; }
     static void Make()
     {
-        clips = new AudioClip[4]; var rnd = new System.Random(3); int sr = 22050;
-        for (int c = 0; c < 4; c++)
+        hardClips = new AudioClip[6]; softClips = new AudioClip[6]; int sr = Sounds.SR;
+        for (int c = 0; c < 6; c++)
         {
-            int n = (int)(sr * 0.09f); var d = new float[n]; float last = 0f, k = 0.15f + c * 0.08f;
-            for (int i = 0; i < n; i++) { float w = (float)rnd.NextDouble() * 2f - 1f; last += k * (w - last); float env = Mathf.Min(1f, i / (sr * 0.004f)) * Mathf.Exp(-i / (sr * 0.03f)); d[i] = last * env * 2.5f; }
-            clips[c] = AudioClip.Create("stap" + c, n, 1, sr, false); clips[c].SetData(d, 0);
+            var r = new System.Random(30 + c); float toe = 0.055f + (float)r.NextDouble() * 0.03f;
+            var d = new float[(int)(sr * 0.2f)];
+            Sounds.Tone(d, 0f, 0.06f, 110f + c * 6f, 70f, 0, 0.5f, 0.002f);                                                       // hak: doffe plof
+            Sounds.Noise(d, r, 0f, 0.025f, 2, 2600f + c * 150f, 1800f, 1.8f, 0.35f, false, 0.001f);                             // droog tikje
+            Sounds.Noise(d, r, toe, 0.05f, 2, 1500f + c * 120f, 1100f, 1.2f, 0.18f, false, 0.002f);                              // bal van de voet
+            Sounds.Tone(d, toe, 0.04f, 95f, 70f, 0, 0.2f, 0.002f);
+            Sounds.Peak(d, 0.7f); hardClips[c] = AudioClip.Create("stap hard" + c, d.Length, 1, sr, false); hardClips[c].SetData(d, 0);
+
+            d = new float[(int)(sr * 0.24f)];
+            Sounds.Tone(d, 0f, 0.07f, 80f, 55f, 0, 0.35f, 0.004f);
+            for (int k = 0; k < 9; k++) Sounds.Noise(d, r, (float)r.NextDouble() * 0.06f, 0.012f, 2, 2500f + (float)r.NextDouble() * 2500f, 2200f, 3f, 0.22f, false, 0.001f);   // korreltjes
+            Sounds.Noise(d, r, 0f, 0.09f, 2, 3200f, 2000f, 0.8f, 0.12f, false, 0.008f);                                         // gras ritselt
+            for (int k = 0; k < 6; k++) Sounds.Noise(d, r, toe + (float)r.NextDouble() * 0.06f, 0.01f, 2, 2800f + (float)r.NextDouble() * 2000f, 2400f, 3f, 0.15f, false, 0.001f);
+            Sounds.Peak(d, 0.7f); softClips[c] = AudioClip.Create("stap zacht" + c, d.Length, 1, sr, false); softClips[c].SetData(d, 0);
         }
     }
     public static void Walked(AudioSource src, float metres, bool running, bool hard)
     {
-        if (src == null || Ambience.Muted) return; if (clips == null) Make();
-        dist += metres; float step = running ? 1.1f : 0.72f;
+        if (src == null || Ambience.Muted) return; if (hardClips == null) Make();
+        dist += metres; float step = running ? 1.25f : 0.75f;
         if (dist < step) return; dist = 0f;
-        src.pitch = (hard ? 1.15f : 0.85f) * (0.95f + Random.value * 0.1f);
-        src.PlayOneShot(clips[Random.Range(0, hard ? 2 : 4)], running ? 0.5f : 0.3f);
+        int k = Random.Range(0, 5); if (k >= lastK) k++; lastK = k;   // niet twee keer dezelfde
+        src.pitch = 0.94f + Random.value * 0.12f;
+        src.PlayOneShot((hard ? hardClips : softClips)[k], (running ? 0.2f : 0.12f) * (hard ? 1f : 0.85f));
     }
 }

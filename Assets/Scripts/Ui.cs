@@ -196,7 +196,7 @@ public static class Ui
         // de positie die bij de klik zelf hoort (de muis van het Input System blijft in de editor op de laatste plek in het
         // spelbeeld staan, ook als je ergens anders klikt, zoals op de Play-knop)
         if (e.type == EventType.MouseDown && r.Contains(e.mousePosition)) { pressed = true; pressRect = r; e.Use(); return false; }
-        if (e.type == EventType.MouseUp && pressed && SameRect(pressRect, r) && r.Contains(e.mousePosition)) { pressed = false; e.Use(); return true; }
+        if (e.type == EventType.MouseUp && pressed && SameRect(pressRect, r) && r.Contains(e.mousePosition)) { pressed = false; e.Use(); Sounds.Click(); return true; }
         return false;
     }
     static bool SameRect(Rect a, Rect b) => Mathf.Abs(a.x - b.x) < 2f && Mathf.Abs(a.y - b.y) < 2f && Mathf.Abs(a.width - b.width) < 2f && Mathf.Abs(a.height - b.height) < 2f;

@@ -136,16 +136,16 @@ public partial class PlanetBuilder : MonoBehaviour
     }
 
     void Say(string s) { msg = s; msgT = Time.time + 4f; if (flying) { flyNote = s; flyBadgeT = Time.time; } }   // in de cameramodus op het label
-    void Push() { undo.Add(PlanetCity.Snapshot()); if (undo.Count > 100) undo.RemoveAt(0); }
+    void Push() { Sounds.Before(); undo.Add(PlanetCity.Snapshot()); if (undo.Count > 100) undo.RemoveAt(0); }
     void Undo()
     {
         if (undo.Count == 0) return;
         var u = undo[undo.Count - 1]; undo.RemoveAt(undo.Count - 1);
-        PlanetCity.Restore(u); PlanetCity.TouchAll(); Changed(); Say("Ongedaan gemaakt");
+        PlanetCity.Restore(u); PlanetCity.TouchAll(); Changed(); Sounds.Instead("undo"); Say("Ongedaan gemaakt");
     }
     // na een wijziging: het deel onder de muis meteen opnieuw tekenen, de rest (buurdelen, raster, opslaan) in de volgende beelden
     bool rebuilding;
-    void Changed() { PlanetCity.UserEdit(); beautyVer++; PlanetCity.Save(); PlanetCity.RebuildSoon(hasHover ? hover : -1); rebuilding = true; RebuildTick(0f); beautyT = -99f; }   // 0: in dit beeld alleen het deel van de klik
+    void Changed() { Sounds.After(hasHover ? hoverPoint : focus * Planet.R); PlanetCity.UserEdit(); beautyVer++; PlanetCity.Save(); PlanetCity.RebuildSoon(hasHover ? hover : -1); rebuilding = true; RebuildTick(0f); beautyT = -99f; }   // 0: in dit beeld alleen het deel van de klik
     void RebuildTick(float budget) { if (PlanetCity.RebuildSome(budget)) { PlanetCity.RebuildGrid(); rebuilding = false; } }
     void ToggleSound() { Babble.Muted = !Babble.Muted; Ambience.Muted = Babble.Muted; Say(Babble.Muted ? "Geluid uit" : "Geluid aan"); }
     void ToggleHelp()
@@ -183,7 +183,7 @@ public partial class PlanetBuilder : MonoBehaviour
         yield return PlanetCity.FillSteps((f, what) => { loadFrac = f * 0.4f; loading = what; });
         loading = "Tekenen"; yield return PlanetCity.RebuildSteps(f => loadFrac = 0.4f + f * 0.6f);
         PlanetCity.RebuildGrid(); PlanetCity.Save(); beautyT = -99f;
-        loader.Hide(); loading = null;
+        loader.Hide(); loading = null; Sounds.Instead("gen");
         Say("Planeet vol: " + PlanetCity.FillTowns.Count + " stadjes met platteland ertussen (" + (sw.ElapsedMilliseconds / 1000f).ToString("0") + " s; Ctrl+Z haalt alles weg)");
     }
     void LoadingGui(float W, float H)
@@ -196,7 +196,7 @@ public partial class PlanetBuilder : MonoBehaviour
     // opnieuw beginnen: de planeet leeg en de startstad op de dichtstbijzijnde startplek (vlag), en de camera erheen
     void StartTown()
     {
-        Push(); PlanetCity.ClearAll(); int st = PlanetCity.FreeStart(focus); PlanetCity.StartTown(st); Changed();   // opnieuw beginnen: alleen de startstad op de planeet
+        Push(); PlanetCity.ClearAll(); int st = PlanetCity.FreeStart(focus); PlanetCity.StartTown(st); Changed(); Sounds.Instead("gen");   // opnieuw beginnen: alleen de startstad op de planeet
         focus = Planet.Cells[st].dir; fwd = Planet.Cells[st].north; dist = 230f; pitch = 48f; Say("Opnieuw begonnen met de startstad rond de vlag (Ctrl+Z zet de vorige planeet terug)");
     }
     void Empty()
@@ -296,7 +296,7 @@ public partial class PlanetBuilder : MonoBehaviour
             {
                 int prev = lastPainted; lastPainted = hover;
                 if (eraser) { if (PlanetCity.ClearFrom(hover, prev)) Changed(); }   // de gum vanaf de weg onder een brug haalt die onderdoorgang weg, niet de brug
-                else { string err = PlanetCity.Place(hover, CurBlock); if (err != null) Say(err); else Changed(); }
+                else { string err = PlanetCity.Place(hover, CurBlock); if (err != null) { Say(err); Sounds.Fx("deny"); } else Changed(); }
             }
         }
         if (leftDown && lineStart >= 0 && LevelTool && PlanetCity.DragLevel != 0) StepLevel(0);   // herinnering: dit komt hoger of lager
@@ -317,7 +317,7 @@ public partial class PlanetBuilder : MonoBehaviour
                 PlanetCity.DragUnder = du;
                 if (ok > 0 && level) PlanetCity.SetLevel(linePlan ?? new List<int> { lineStart }, lv, t);
                 if (ok > 0 && level && lv == 0 && linePlan != null) PlanetCity.DipUnder(linePlan);   // ongelijkvloers op het maaiveld: alleen bij de kruising omlaag
-                if (ok > 0) Changed(); else if (err != null) Say(err);
+                if (ok > 0) Changed(); else if (err != null) { Say(err); Sounds.Fx("deny"); }
                 if (linePlan != null && ok > 0) Say(PlanetCity.LastNote ?? ok + " vakken " + Cur.name.ToLower());   // een melding over de lijn gaat voor
                 lineStart = -1; linePlan = null; ShowPlan(null);
             }
@@ -772,7 +772,7 @@ public partial class PlanetBuilder : MonoBehaviour
 
     void ToggleWalk()
     {
-        walking = !walking; PlanetCity.ShowGrid(PlanetCity.GridOn && !walking); catOpen = todOpen = menuOpen = scoreOpen = helpOpen = welcome = wheelOpen = false;
+        walking = !walking; Sounds.Fx("whoosh"); PlanetCity.ShowGrid(PlanetCity.GridOn && !walking); catOpen = todOpen = menuOpen = scoreOpen = helpOpen = welcome = wheelOpen = false;
         if (walking)
         {
             walkT = Time.time; outline.enabled = false; ShowBrush(-1); ShowVerts(-1); ShowPlan(null); ShowGhost(-1);
@@ -792,7 +792,7 @@ public partial class PlanetBuilder : MonoBehaviour
     bool flying; Vector3 flyPos, flyVel, flyHead; float flyPitch, flyFovT = 65f, oldFov, oldNear, flyBadgeT, flashT = -99f; bool photoFrame; string flyNote;
     void FlyStart()
     {
-        flying = true; catOpen = todOpen = false; eraser = false;
+        flying = true; catOpen = todOpen = false; eraser = false; Sounds.Fx("whoosh");
         flyPos = Cam.transform.position; Vector3 up = flyPos.normalized, look = Cam.transform.forward;
         flyHead = look - up * Vector3.Dot(look, up); if (flyHead.sqrMagnitude < 1e-6f) flyHead = fwd; flyHead.Normalize();
         flyPitch = Mathf.Asin(Mathf.Clamp(Vector3.Dot(look, up), -1f, 1f)) * Mathf.Rad2Deg; flyVel = Vector3.zero;
@@ -802,7 +802,7 @@ public partial class PlanetBuilder : MonoBehaviour
     }
     void FlyStop()
     {
-        flying = false; Cursor.lockState = CursorLockMode.None; Cursor.visible = true;
+        flying = false; Cursor.lockState = CursorLockMode.None; Cursor.visible = true; Sounds.Fx("whoosh");
         Cam.fieldOfView = oldFov; Cam.nearClipPlane = oldNear; PlanetCity.ShowGrid(PlanetCity.GridOn);
         // het draaipunt op wat je aankijkt (of een stuk voor je uit), de camera blijft waar hij is
         Vector3 up = flyPos.normalized, look = Cam.transform.forward, tg;
@@ -871,7 +871,7 @@ public partial class PlanetBuilder : MonoBehaviour
     {
         Ui.Begin(); float W = Ui.W, H = Ui.H;
         if (loading != null) { LoadingGui(W, H); Ui.End(); return; }
-        if (Time.time - beautyT > 3f) { beauty = Beauty.Compute(); beautyT = Time.time; }
+        if (Time.time - beautyT > 3f) { int was = beauty != null ? beauty.score : -1; beauty = Beauty.Compute(); beautyT = Time.time; if (was >= 0 && beauty.score > was) Sounds.Fx("coin"); }   // muntje als de schoonheid stijgt
         fpsN++; if (Time.time - fpsT > 0.5f) { fps = fpsN / (Time.time - fpsT); fpsN = 0; fpsT = Time.time; }
         if (flying) { if (!photoFrame) FlyGui(W, H); Ui.End(); return; }   // cameramodus: geen interface
 

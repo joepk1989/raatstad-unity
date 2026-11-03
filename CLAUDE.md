@@ -86,9 +86,16 @@ Erbij gekomen op 2 november 2026 (lucht, `PlanetSky.cs`, shaders in `Assets/Reso
 - Van ver weg (camera hoger dan zo'n 300–1100 m): zwarte ruimte met sterren en zon, een dunne blauwe atmosfeerrand (`Raatstad/Atmosfeer`, bol tot 260 m, schaalhoogte 40 m) en een wolkenlaag op 200 m (`Raatstad/Wolken`, ruis per richting, meer wolken bij slechter weer) die in 25 minuten om `Planet.Axis` draait. Bij inzoomen vervagen wolken en rand en worden ze niet meer getekend; de mist van `Weather` schuift hoger op weg en is in de ruimte uit.
 - Muziek, berekend bij de start op de achtergrond (`RenderedMusic`, geen opnames): op de planeet bouwmuziek (`BuildMusic`, keuze in het menu onder Bouwmuziek, onthouden in PlayerPrefs: Uit, Vrolijk (marimba, 120 bpm), Chill (elektrische piano met swing, 84 bpm), 8-bit (blokgolven, 140 bpm), Folk (gitaar en fluitje, 100 bpm); elk 16 maten met een melodie A A' B A; een andere stijl wordt op de achtergrond uitgerekend en vloeit in; 's nachts zachter), in de ruimte een rustig stuk (`SpaceMusic`: zachte akkoorden met belletjes op een zestonige ladder, galm; 64 s). Ze vloeien in elkaar over met `PlanetSky.Space`; de wind van `Ambience` valt weg in de ruimte. Geluid uit zet ook de muziek uit.
 
+Erbij gekomen op 3 november 2026 (geluid, `Sounds.cs`, naar `13-camera-modus-geluid.js` van de webversie):
+- Effecten, berekend bij de start: `Sounds.Fx(naam)` in je oor of `Fx(naam, plek, sterkte, ref)` zachter op afstand (inverse afstand vanaf ref m; met ref < 50 m stil in de ruimte), per naam een minimale tussentijd. Namen: place, remove, earth (terrein), deny, click, undo, whoosh (lopen/cameramodus), gen (startstad, planeet vol), coin (schoonheid omhoog), cricket, crunch, squeal, splash, thunder.
+- Bouwen en slopen: `PlanetBuilder.Push` roept `Sounds.Before`, `Changed` roept `Sounds.After` aan; die tellen de inhoud van de stad (meer = place, minder = remove, alleen terrein = earth); undo en gen gaan voor (`Sounds.Instead`). Elke knop in `Ui` klikt.
+- Omgeving die de plek volgt (vakken rond de camera): regen, windvlagen bij storm en regen, donder na de bliksem, golfjes bij water en meren, krekels 's nachts op gras en in parken (stil bij regen). Alles valt weg met de hoogte van de camera en in de ruimte; Geluid uit (`Ambience.Muted`) zet alles uit.
+- Voetstappen (`Footsteps` in `Ambience.cs`): zachter, hak en bal van de voet, asfalt een plof met een tikje, gras en zand korreltjes, zes varianten.
+- Nog niet aangeroepen: crunch (botsen, sterkte = impact/12) en squeal (slippen) in `PlanetLife`; aanroep `Sounds.Fx("crunch", plek, sterkte, 12f)`.
+
 Nog te doen:
 1. Modules als JSON met edge-codes (nu nog in code)
-2. Onderdelen uit `docs/overdracht-webversie.md` bouwen: stadsgenerator, wenteltrap, geluiden
+2. Onderdelen uit `docs/overdracht-webversie.md` bouwen: stadsgenerator, wenteltrap; geluid: crunch/squeal aanroepen in `PlanetLife`, jump in `PlanetWalker`
 3. Laadscherm (`Assets/Scripts/UI/HexLoadingScreen.cs`) in de startscène hangen
 4. Terrein: hoogtelijnen tijdens het boetseren; tunnels door hoog terrein (bestaande koker, portalen en `TunnelLinks` hergebruiken); bruine driehoek naast de stoep bij een schuine onderdoorgang (nog niet teruggevonden)
 5. Ragdolls voor mensen die bij de chaos worden geraakt
