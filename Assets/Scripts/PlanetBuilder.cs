@@ -81,7 +81,7 @@ public partial class PlanetBuilder : MonoBehaviour
 
     // open panelen: catalogus, tijd/weer, schoonheid, menu, bediening, welkom
     bool catOpen, todOpen, scoreOpen, menuOpen, helpOpen, welcome;
-    bool Modal => menuOpen || helpOpen || welcome || scoreOpen;
+    bool Modal => menuOpen || helpOpen || welcome || scoreOpen || loading != null;   // ook tijdens het opbouwen: geen invoer
     bool OverBar => Ui.MouseOverUI || Modal;
 
     void LoadBar()
@@ -171,37 +171,41 @@ public partial class PlanetBuilder : MonoBehaviour
         Changed(); Say("Voorbeeldstad geplaatst (Ctrl+Z haalt hem weg)");
     }
     // de hele bol vol stadjes en platteland (vervangt de stad die open is; Ctrl+Z zet hem terug)
-    // in stappen achter het laadscherm (de gele zeshoeken), met de voortgang erop; de bediening staat zolang stil
-    string loading; float loadFrac; HexLoadingScreen loader;
+    // Geen laadscherm: de camera gaat naar buiten en draait langzaam om de bol, die als blauwdruk volloopt met wat er bedacht
+    // wordt (PlanetBlueprint); bij het tekenen vervaagt de blauwdruk en komt de echte planeet tevoorschijn. De bediening staat zolang stil.
+    string loading; float loadFrac;
     void FillPlanet() { if (loading == null) StartCoroutine(FillRoutine()); }
     System.Collections.IEnumerator FillRoutine()
     {
-        loading = "Planeet vullen"; loadFrac = 0f;
-        if (loader == null) loader = new GameObject("Laadscherm").AddComponent<HexLoadingScreen>(); else loader.Show();
-        yield return null; yield return null;   // eerst het laadscherm in beeld
+        loading = "Planeet vullen"; loadFrac = 0f; catOpen = wheelOpen = menuOpen = false; PlanetBlueprint.I.Show();
+        for (float t = 0f; t < 0.6f; t += Time.deltaTime) yield return null;   // eerst de blauwdruk op en de camera op weg naar buiten
         Push(); var sw = System.Diagnostics.Stopwatch.StartNew();
         yield return PlanetCity.FillSteps((f, what) => { loadFrac = f * 0.4f; loading = what; });
-        loading = "Tekenen"; yield return PlanetCity.RebuildSteps(f => loadFrac = 0.4f + f * 0.6f);
+        loading = "Tekenen"; yield return PlanetCity.RebuildSteps(f => { loadFrac = 0.4f + f * 0.6f; PlanetBlueprint.I.Fade(1f - f); });
         PlanetCity.RebuildGrid(); PlanetCity.Save(); beautyT = -99f;
-        loader.Hide(); loading = null; Sounds.Instead("gen");
+        PlanetBlueprint.I.Hide(); loading = null; Sounds.Instead("gen");
         Say("Planeet vol: " + PlanetCity.FillTowns.Count + " stadjes met platteland ertussen (" + (sw.ElapsedMilliseconds / 1000f).ToString("0") + " s; Ctrl+Z haalt alles weg)");
     }
+    // tijdens het opbouwen alleen een smal label onderaan: de stap, het percentage en een dun lijntje (de planeet is het beeld)
     void LoadingGui(float W, float H)
     {
-        var r = new Rect((W - 420f) * 0.5f, H * 0.5f + 90f, 420f, 74f); Ui.Panel(r, true, 16f);
-        Ui.Label(new Rect(r.x + 18f, r.y + 10f, r.width - 36f, 26f), loading + "…", Ui.T.Bold);
-        Ui.Label(new Rect(r.x + 18f, r.y + 10f, r.width - 36f, 26f), Mathf.RoundToInt(loadFrac * 100f) + "%", Ui.T.Dim, null, TextAnchor.MiddleRight);
-        var bar = new Rect(r.x + 18f, r.y + 46f, r.width - 36f, 10f); Ui.Tex(bar, Texture2D.grayTexture); Ui.Tex(new Rect(bar.x, bar.y, bar.width * loadFrac, bar.height), Texture2D.whiteTexture);
+        string t = "BLAUWDRUK  <color=#EEF1EC>" + loading + "</color>  <color=#A8B2AB>" + Mathf.RoundToInt(loadFrac * 100f) + "%</color>";
+        float w = Mathf.Max(260f, Ui.Width(t, Ui.T.Bold, 12) + 36f); var r = new Rect((W - w) * 0.5f, H - 12f - 44f, w, 40f);
+        Ui.Panel(r, false, 20f); Ui.Label(new Rect(r.x, r.y + 1f, r.width, 30f), t, Ui.T.Bold, new Color(0.55f, 0.8f, 1f), TextAnchor.MiddleCenter, 12);
+        var bar = new Rect(r.x + 18f, r.yMax - 9f, r.width - 36f, 2f); Ui.Tex(bar, Texture2D.whiteTexture, new Color(1f, 1f, 1f, 0.12f));
+        Ui.Tex(new Rect(bar.x, bar.y, bar.width * loadFrac, bar.height), Texture2D.whiteTexture, new Color(0.55f, 0.8f, 1f));
     }
+    // de camera tijdens het opbouwen: naar buiten tot de hele bol in beeld is, en langzaam erom heen
+    void LoadCam() { focus = (Quaternion.AngleAxis(6f * Time.deltaTime, Planet.Axis) * focus).normalized; distGoal = 1500f; CameraControl(); }
     // opnieuw beginnen: de planeet leeg en de startstad op de dichtstbijzijnde startplek (vlag), en de camera erheen
     void StartTown()
     {
-        Push(); PlanetCity.ClearAll(); int st = PlanetCity.FreeStart(focus); PlanetCity.StartTown(st); Changed(); Sounds.Instead("gen");   // opnieuw beginnen: alleen de startstad op de planeet
+        Push(); PlanetCity.ClearAll(); int st = PlanetCity.FreeStart(focus); PlanetCity.StartTown(st); Changed(); Sounds.Instead("gen"); PlanetBlueprint.I.Flash();   // de nieuwe stad even als blauwdruk   // opnieuw beginnen: alleen de startstad op de planeet
         focus = Planet.Cells[st].dir; fwd = Planet.Cells[st].north; dist = 230f; pitch = 48f; Say("Opnieuw begonnen met de startstad rond de vlag (Ctrl+Z zet de vorige planeet terug)");
     }
     void Empty()
     {
-        Push(); PlanetCity.ClearAll(); Changed();
+        Push(); PlanetCity.ClearAll(); Changed(); PlanetBlueprint.I.Flash(1f);
         focus = Planet.Cells[Planet.North].dir; fwd = Planet.Cells[Planet.North].north; dist = 230f; pitch = 48f;   // terug naar het startpunt: de noordpool
         Say("Lege bouwgrond, bij de noordpool (Ctrl+Z haalt je stad terug)");
     }
@@ -216,7 +220,7 @@ public partial class PlanetBuilder : MonoBehaviour
 
     void Update()
     {
-        if (loading != null) return;   // de planeet wordt gevuld: geen bediening
+        if (loading != null) { LoadCam(); return; }   // de planeet wordt gevuld: geen bediening, de camera draait om de bol
         if (rebuilding) RebuildTick(25f);
         // overal, ook tijdens het lopen en in de cameramodus: P zet de tijd stil, O ander weer (Shift+O het vorige)
         if (Inp.Down(K.P)) { DayNight.ToggleFreeze(); Say(DayNight.Speed > 0f ? "De tijd loopt weer (P)" : "Pauze: de tijd staat stil (P)"); }
