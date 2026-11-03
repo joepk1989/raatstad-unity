@@ -662,7 +662,7 @@ public partial class PlanetBuilder : MonoBehaviour
                 Vector3 l0 = Q(a0, -pw, top), l1 = Q(a0, pw, top), l2 = Q(a1, pw, top), l3 = Q(a1, -pw, top); mb.Quad(l0, l1, l2, l3, ad);
             }
         }
-        if (lv == 0) foreach (var t in PlanetCity.BorePlan(cells, type)) TunnelGhost(mb, t.a, t.b, t.ha, t.hb, t.ends, type == "weg" ? Mathf.Max(6f, hw - 1.2f) : PlanetCity.WalkHalfWidth("pad"), origin);   // door een berg: de tunnel
+        if (lv == 0) foreach (var t in PlanetCity.BorePlan(cells, type)) TunnelGhost(mb, t.a, t.b, t.ha, t.hb, type == "weg" ? Mathf.Max(6f, hw - 1.2f) : PlanetCity.WalkHalfWidth("pad"), origin);   // door een berg: de tunnel
         var old = lvlF.sharedMesh; lvlF.sharedMesh = m.v.Count > 0 ? m.Build() : null; if (old != null) Destroy(old);
         var oldb = brgF.sharedMesh; brgF.sharedMesh = mb.v.Count > 0 ? mb.Build() : null; if (oldb != null) Destroy(oldb);
         lvlR.sharedMaterial = TerrMat(lv < 0 ? 1 : 0); lvlF.transform.position = origin; lvlR.enabled = lvlF.sharedMesh != null;
@@ -671,10 +671,10 @@ public partial class PlanetBuilder : MonoBehaviour
     // Het voorbeeld van een tunnel door een berg (PlanetCity.BorePlan): het betonblok om de koker als zeshoekige buis van portaal tot
     // portaal (de maten van BridgeBlock: 3,75 m buiten de koker, 2,17 m onder de vloer en boven het plafond), met de weg als vloer en
     // dichte kopse kanten rond de opening. In de berg verdwijnt het achter het terrein, zoals de tunnel straks.
-    static void TunnelGhost(MeshBuilder mb, int a, int b, float ha, float hb, Vector4 ends, float tw, Vector3 origin)
+    static void TunnelGhost(MeshBuilder mb, int a, int b, float ha, float hb, float tw, Vector3 origin)
     {
         float R = Planet.R; Vector3 da = Planet.Cells[a].dir, db = Planet.Cells[b].dir;
-        float L = Vector3.Angle(da, db) * Mathf.Deg2Rad * R, s0 = ends.y, s1 = ends.z; int n = Mathf.Max(1, Mathf.CeilToInt((s1 - s0) / 6f));   // de portalen zo diep in de berg als BoreEnds ze zet
+        float L = Vector3.Angle(da, db) * Mathf.Deg2Rad * R, s0 = 7.8f, s1 = L - 7.8f; int n = Mathf.Max(1, Mathf.CeilToInt((s1 - s0) / 6f));   // de portalen op de rand van de portaalvakken
         float top = PlanetCity.LevelH - 1.08f, yB = -2.17f, yO = top + 2.17f, co = (yO - yB) * 0.5f * 0.577f, ci = top * 0.5f * 0.577f, wb = tw + 3.75f;
         Vector2[] outer = { new Vector2(-wb, yB), new Vector2(wb, yB), new Vector2(wb + co, (yB + yO) * 0.5f), new Vector2(wb, yO), new Vector2(-wb, yO), new Vector2(-wb - co, (yB + yO) * 0.5f) };
         Vector2[] inner = { new Vector2(-tw, 0f), new Vector2(tw, 0f), new Vector2(tw + ci, top * 0.5f), new Vector2(tw, top), new Vector2(-tw, top), new Vector2(-tw - ci, top * 0.5f) };
@@ -692,24 +692,6 @@ public partial class PlanetBuilder : MonoBehaviour
         }
         foreach (float s in new[] { s0, s1 })   // de portalen: de ring tussen de opening en de buitenkant
             for (int v = 0; v < 6; v++) { int w = (v + 1) % 6; Two(P(s, outer[v]), P(s, outer[w]), P(s, inner[w]), P(s, inner[v]), db - da); }
-        // de inritten: de vloer en twee keermuren tot net boven het maaiveld (PlanetCity.Trough)
-        float wi = tw + 1.5f, wo = wi + 0.6f;
-        foreach (var (r0, r1) in new[] { (ends.x, s0), (s1, ends.w) })
-        {
-            int m = Mathf.Max(1, Mathf.CeilToInt((r1 - r0) / 1.5f)); if (r1 - r0 < 0.5f) continue;
-            float Top(float s, float x) { Vector3 d = P(s, new Vector2(x, 0f)) + origin; return Mathf.Max(PlanetCity.TerrainAt(d.normalized) + 0.15f - (d.magnitude - R), 0.6f); }
-            for (int k = 0; k < m; k++)
-            {
-                float sa = Mathf.Lerp(r0, r1, k / (float)m), sb = Mathf.Lerp(r0, r1, (k + 1) / (float)m); Vector3 up = Vector3.Slerp(da, db, (sa + sb) * 0.5f / L);
-                Two(P(sa, new Vector2(-wi, 0f)), P(sa, new Vector2(wi, 0f)), P(sb, new Vector2(wi, 0f)), P(sb, new Vector2(-wi, 0f)), up);   // de vloer
-                foreach (float sg in new[] { -1f, 1f })
-                {
-                    float ta = Top(sa, sg * wo), tb = Top(sb, sg * wo);
-                    Two(P(sa, new Vector2(sg * wi, 0f)), P(sb, new Vector2(sg * wi, 0f)), P(sb, new Vector2(sg * wi, tb)), P(sa, new Vector2(sg * wi, ta)), up);
-                    Two(P(sa, new Vector2(sg * wi, ta)), P(sb, new Vector2(sg * wi, tb)), P(sb, new Vector2(sg * wo, tb)), P(sa, new Vector2(sg * wo, ta)), up);
-                }
-            }
-        }
     }
     // terrein: per vak onder het penseel een plaatje op de hoogte na één flinke streek (bebouwde vakken blijven liggen)
     Mesh TerrainGhost(int c, out Vector3 origin)

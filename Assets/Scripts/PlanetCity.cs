@@ -469,7 +469,6 @@ public static partial class PlanetCity
         }
         // gewone wegen en paden (niet op een niveau) in de buurt: onder zo'n weg ligt de grond op de hoogte van die weg, wat het talud
         // ernaast ook doet (zoals Cities: Skylines 2), anders loopt een talud bij een kruispunt over de weg heen
-        BoreEnds();   // waar de portalen van een tunnel liggen: diep genoeg in de berg (PlanetTunnels.cs)
         FillFieldCells();
         flats.Clear();
         if (HasField)
@@ -2201,28 +2200,19 @@ public static partial class PlanetCity
         // op de bol (zoals de wegen): het platte vlak van de tekening raakt de bol alleen in het midden; 13 m opzij ligt het maaiveld al
         // zo'n 15 cm lager, en dan staat de rand van het blok erboven uit
         float r0 = (flat.o).magnitude;
-        System.Func<Vector2, Vector2, Vector3> At = (pos, q) => { Vector2 x = pos + tg * q.x + dd * (q.x * k); return flat.P(x.x, q.y, x.y).normalized * (r0 + q.y + flat.H(x.x, x.y)); };   // H: de helling van een tunnel
+        System.Func<Vector2, Vector2, Vector3> At = (pos, q) => { Vector2 x = pos + tg * q.x + dd * (q.x * k); return flat.P(x.x, q.y, x.y).normalized * (r0 + q.y); };
         Vector2 pm = (p0 + p1) * 0.5f; Vector3 axis = flat.P(pm.x, ym, pm.y);
         // de bovenkant gesnapt op het terrein: op een raster neemt elk punt de hoogte van het maaiveld daar (TerrainAt), nooit lager dan
         // het dek; zo sluit de rand precies aan, ook als het terrein glooit. De zijkanten eronder volgen dezelfde bovenrand.
-        int nA = Mathf.Max(8, Mathf.CeilToInt((p1 - p0).magnitude / 3f)); const int nX = 12;   // een lange tunnel: om de 3 m, zodat de bovenkant de berg volgt
+        const int nA = 8, nX = 12;
         System.Func<float, float, Vector3> Top = (fa, fx) =>
         {
             Vector2 pos = Vector2.Lerp(p0, p1, fa); float xx = Mathf.Lerp(-wt, wt, fx); Vector2 x = pos + tg * xx + dd * (xx * k);
-            Vector3 d = flat.P(x.x, 0f, x.y).normalized; return d * Mathf.Max(r0 + yt + flat.H(x.x, x.y), Planet.R + TerrainAt(d) - 0.05f);
+            Vector3 d = flat.P(x.x, 0f, x.y).normalized; return d * Mathf.Max(r0 + yt, Planet.R + TerrainAt(d) - 0.05f);
         };
-        // waar het terrein op alle vier de hoeken boven het blok ligt, is het maaiveld er al (een tunnel diep in een berg): daar geen
-        // bovenkant, anders steekt het raster in de kuilen tussen de punten van de berg erdoorheen
-        var buried = new bool[nA + 1, nX + 1];
-        for (int a = 0; a <= nA; a++)
-            for (int b = 0; b <= nX; b++)
-            {
-                Vector2 pos = Vector2.Lerp(p0, p1, a / (float)nA); float xx = Mathf.Lerp(-wt, wt, b / (float)nX); Vector2 x = pos + tg * xx + dd * (xx * k);
-                Vector3 d = flat.P(x.x, 0f, x.y).normalized; buried[a, b] = TerrainAt(d) > r0 - Planet.R + yt + flat.H(x.x, x.y) + 0.3f;
-            }
         for (int a = 0; a < nA; a++)
             for (int b = 0; b < nX; b++)
-                if (!(buried[a, b] && buried[a + 1, b] && buried[a, b + 1] && buried[a + 1, b + 1])) M("bodem0").Quad(Top(a / (float)nA, b / (float)nX), Top((a + 1) / (float)nA, b / (float)nX), Top((a + 1) / (float)nA, (b + 1) / (float)nX), Top(a / (float)nA, (b + 1) / (float)nX), flat.u);   // dezelfde kleur als het terrein
+                M("bodem0").Quad(Top(a / (float)nA, b / (float)nX), Top((a + 1) / (float)nA, b / (float)nX), Top((a + 1) / (float)nA, (b + 1) / (float)nX), Top(a / (float)nA, (b + 1) / (float)nX), flat.u);   // dezelfde kleur als het terrein
         for (int v = 0; v < 5; v++)   // de buitenkant: twee schuine zijden per kant (de bovenste tot de gesnapte rand)
         {
             if (v == 2) continue;
