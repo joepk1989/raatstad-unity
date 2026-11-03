@@ -580,6 +580,10 @@ public static partial class PlanetCity
         capsNear.Clear(); foreach (var q in caps) if ((w - q.c).magnitude < q.hw * 1.2f + FieldReach + r) capsNear.Add(q);
         segsUse = segsNear; flatsUse = flatsNear; capsUse = capsNear;
     }
+    // Hoe ver een punt voorbij het eind van een stuk nog bij dat stuk hoort. Op de bol liggen twee stukken van een rechte weg nooit
+    // precies op één lijn: aan de buitenkant van een hart viel een punt op de rand van de weg net buiten beide stukken (een paar cm),
+    // daar gaf het veld het gewone terrein en stak een bruine driehoek boven een verdiepte weg uit.
+    const float EndSlack = 0.25f;
     static void UseAll() { segsUse = segs; flatsUse = flats; capsUse = caps; }
     static float GroundField(Vector3 dir, float base_, out bool slope, List<Seg> segs, List<Cap> caps)   // slope: het punt ligt op de schuine kant van een weg
     {
@@ -590,8 +594,8 @@ public static partial class PlanetCity
             {
                 Vector3 ab = q.b - q.a; float l2 = ab.sqrMagnitude; if (l2 < 1e-4f) continue; float len = Mathf.Sqrt(l2), u = Vector3.Dot(w - q.a, ab) / l2;
                 Vector3 dv = w - (q.a + ab * u); dv -= dir * Vector3.Dot(dv, dir); float lat = dv.magnitude, over = Mathf.Max(0f, Mathf.Max(-u, u - 1f) * len);   // naast het stuk, en voorbij een eind
-                if (lat > q.hw + FieldReach || u < -1e-4f || u > 1f + 1e-4f) continue;   // (met wat speling: op het hart zelf valt een punt door afronding anders net buiten beide stukken) alleen naast het stuk: voorbij het eind doet de kop het, of het volgende stuk (een rechte kop gaf daar een trapje)
-                float hr = Mathf.Lerp(q.ha, q.hb, Mathf.Clamp01(u)), rise = Mathf.Max(Mathf.Max(0f, lat - q.hw), over) * FieldK;   // de kant, of de kop
+                if (lat > q.hw + FieldReach || over > EndSlack) continue;   // (met wat speling: op het hart zelf valt een punt door afronding anders net buiten beide stukken) alleen naast het stuk: voorbij het eind doet de kop het, of het volgende stuk (een rechte kop gaf daar een trapje)
+                float hr = Mathf.Lerp(q.ha, q.hb, Mathf.Clamp01(u)), rise = Mathf.Max(0f, lat - q.hw) * FieldK;   // de kant
                 if (lat <= q.hw) onLevelH = Mathf.Min(onLevelH, hr);
                 if (pass == 0 && hr > base_ + 0.01f) { float v = hr - rise - 0.05f; if (v > h) { h = v; slope = rise > 0f; } }        // talud (5 cm onder het wegdek: geen streepje gras op de weg)
                 else if (pass == 1 && hr - 0.05f < base_) { float v = hr + rise - 0.05f; lowRoad = Mathf.Min(lowRoad, hr); if (v < h) { h = v; slope = rise > 0f; } }   // uitgraving: pas als het wegdek (5 cm onder de weg) onder het terrein ligt, dan loopt het veld zonder sprong door

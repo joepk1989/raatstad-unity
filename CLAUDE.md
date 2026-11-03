@@ -80,6 +80,7 @@ Erbij gekomen op 2 november 2026 (terrein):
 - Geen sprongetje van 5 cm meer waar een verdiepte weg het terrein raakt (zoals de webversie): een weg graaft pas in als zijn wegdek (5 cm onder de weg) onder het terrein ligt, een kop ligt ook 5 cm onder het wegdek; `LineGround` snijdt op de voet van het talud met het terrein als vlak over de driehoek.
 - Een gewone weg op een helling ligt niet meer in een kom: een hoekpunt tussen twee verbonden weg- of padvakken ligt op weghoogte (`RoadCorner` in `CornerBase0`) in plaats van op het laagste van de drie vakken.
 - Gereedschap Terrein toont de hoekpunten rond de muis (`PlanetBuilder.ShowVerts`): wit een hoekpunt, oranje zelf verzet met Rand, blauw het midden van een vak.
+- Geen bruine driehoek meer naast de stoep bij een schuine onderdoorgang: op de bol liggen twee stukken van een rechte weg nooit precies op één lijn, een punt op de wegrand naast een hart viel net buiten beide; een punt hoort nu tot 25 cm voorbij het eind nog bij een stuk (`EndSlack` in `GroundField`).
 
 Erbij gekomen op 2 november 2026 (lucht, `PlanetSky.cs`, shaders in `Assets/Resources/Lucht`):
 - Skybox `Raatstad/Lucht`: verloop van de kim naar boven rond de plaatselijke 'boven', de kim zakt mee met de hoogte van de camera; zon met gloed, oranje bij zonsopgang en -ondergang, sterren 's nachts. De kimkleur is `cam.backgroundColor` van `DayNight` (die ook de mist kleurt), bewolking maakt hem grijs.
@@ -97,5 +98,5 @@ Nog te doen:
 1. Modules als JSON met edge-codes (nu nog in code)
 2. Onderdelen uit `docs/overdracht-webversie.md` bouwen: stadsgenerator, wenteltrap; geluid: crunch/squeal aanroepen in `PlanetLife`, jump in `PlanetWalker`
 3. Laadscherm (`Assets/Scripts/UI/HexLoadingScreen.cs`) in de startscène hangen
-4. Terrein: hoogtelijnen tijdens het boetseren; tunnels door hoog terrein (bestaande koker, portalen en `TunnelLinks` hergebruiken); bruine driehoek naast de stoep bij een schuine onderdoorgang (nog niet teruggevonden)
+4. Terrein: hoogtelijnen tijdens het boetseren; tunnels door hoog terrein (bestaande koker, portalen en `TunnelLinks` hergebruiken)
 5. Ragdolls voor mensen die bij de chaos worden geraakt
