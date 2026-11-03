@@ -77,6 +77,7 @@ public partial class PlanetBuilder
         // het midden: waar je naar kijkt
         PlanetCity.LatLon(focus, out float lat, out float lon);
         Ui.Tex(new Rect(W * 0.5f - 7f, H * 0.5f - 6f, 14f, 12.6f), Ui.Hex(Color.clear, new Color(1f, 1f, 1f, 0.6f), 1.5f));
+        ModesArc(W, H, false);   // links de spelmodi, meteen in beeld (zonder het beeld te dimmen)
         // onderaan: de navigatie
         string[] lab = { "Naar je stad", "Polen", "Andere kant", "Landen" }; string[] key = { "H", "N", "K", "" };
         float bw = 0f; foreach (var t in lab) bw += BtnW(t) + 6f; float lw = Mathf.Max(80f, Ui.Width("88° N  188° O", Ui.T.Dim, 11));   // vaste breedte: het paneel verspringt niet als de graden veranderen
