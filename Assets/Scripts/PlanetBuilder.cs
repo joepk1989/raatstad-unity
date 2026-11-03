@@ -709,9 +709,14 @@ public class PlanetBuilder : MonoBehaviour
     // een blok), rechts slepen of Shift+slepen schuift, de middelste knop of Alt+slepen draait en kantelt. Schuiven pakt de grond
     // vast: die volgt de muis. Een klik met rechts zonder te slepen maakt een vak leeg. Links slepen bouwt (de webversie draait dan).
     void Pan(Vector3 metres) { focus = (focus + metres / Planet.R).normalized; fwd = (fwd - focus * Vector3.Dot(fwd, focus)).normalized; }
+    // Naijlen: schuiven, draaien en zoomen bouwen hun vaart op en lopen uit, en slepen glijdt na het loslaten nog even door.
+    // Hoe verder weg (in de ruimte), hoe zachter en hoe trager over de bol (hooguit 0,6 rad/s, met Shift 1,5).
+    Vector3 camVel; float turnVel, distGoal = -1f, distSeen = -1f, pitchVel;
     void CameraControl()
     {
-        float dt = Time.deltaTime, sp = (Inp.Held(K.Shift) ? 3f : 1f) * dist;   // ongeveer een schermbreedte per seconde, zoals de webversie
+        float dt = Time.deltaTime, far = Mathf.InverseLerp(250f, 1400f, dist), ease = Mathf.Lerp(8f, 3f, far), k = 1f - Mathf.Exp(-ease * dt);
+        float sp = Mathf.Min((Inp.Held(K.Shift) ? 3f : 1f) * dist, Planet.R * (Inp.Held(K.Shift) ? 1.5f : 0.6f));   // ongeveer een schermbreedte per seconde, zoals de webversie; in de ruimte begrensd
+        if (dist != distSeen) distGoal = dist;   // ergens anders verzet (naar het midden, de polen): daar verder
         Vector3 up = focus; fwd = (fwd - up * Vector3.Dot(fwd, up)).normalized; Vector3 right = Vector3.Cross(up, fwd);
         Vector3 move = Vector3.zero; float turn = 0f, zoomIn = 0f;
         if (!Modal)
@@ -721,11 +726,15 @@ public class PlanetBuilder : MonoBehaviour
             turn = (Inp.Held(K.Q) ? 1f : 0f) - (Inp.Held(K.E) ? 1f : 0f);
             if (!PathDrag) zoomIn = (Inp.Held(K.Plus) ? 1f : 0f) - (Inp.Held(K.Minus) ? 1f : 0f);   // een pad slepen: + en - kiezen het niveau
         }
-        if (move != Vector3.zero) Pan(move.normalized * sp * dt);
-        if (turn != 0f) fwd = Quaternion.AngleAxis(turn * 92f * dt, focus) * fwd;   // 1,6 rad/s
-        if (!Ui.MouseOverUI && !Modal && !Inp.Held(K.Shift) && !PathDrag) dist *= 1f - Inp.Scroll * 0.1f;   // scrollen in de catalogus zoomt niet
-        if (zoomIn != 0f) dist *= Mathf.Pow(2f, -zoomIn * 1.5f * dt);
-        dist = Mathf.Clamp(dist, 12f, 2600f);
+        camVel = Vector3.Lerp(camVel, move == Vector3.zero ? Vector3.zero : move.normalized * sp, camDrag == 1 ? 0f : k);   // tijdens slepen houdt camVel de sleepvaart vast
+        if (camVel.sqrMagnitude > 1e-4f && camDrag != 1) Pan(camVel * dt);
+        turnVel = Mathf.Lerp(turnVel, turn * 92f * Mathf.Lerp(1f, 0.6f, far), camDrag == 2 ? 0f : k);   // 1,6 rad/s, in de ruimte rustiger
+        if (Mathf.Abs(turnVel) > 0.01f && camDrag != 2) fwd = Quaternion.AngleAxis(turnVel * dt, focus) * fwd;
+        if (camDrag != 2 && Mathf.Abs(pitchVel) > 0.01f) { pitch = Mathf.Clamp(pitch + pitchVel * dt, 15f, 89f); pitchVel = Mathf.Lerp(pitchVel, 0f, k); }
+        if (!Ui.MouseOverUI && !Modal && !Inp.Held(K.Shift) && !PathDrag) distGoal *= 1f - Inp.Scroll * 0.1f;   // scrollen in de catalogus zoomt niet
+        if (zoomIn != 0f) distGoal *= Mathf.Pow(2f, -zoomIn * 1.5f * dt);
+        distGoal = Mathf.Clamp(distGoal, 12f, 2600f);
+        dist = Mathf.Exp(Mathf.Lerp(Mathf.Log(dist), Mathf.Log(distGoal), 1f - Mathf.Exp(-Mathf.Lerp(12f, 5f, far) * dt)));   // zoomen loopt uit (in verhouding, dus ver weg even rustig als dichtbij)
         // slepen met de muis: schuiven of draaien
         if (camDrag == 0 && !Modal && !Ui.MouseOverUI)
         {
@@ -744,8 +753,9 @@ public class PlanetBuilder : MonoBehaviour
             {
                 if (!camMoved && Vector2.Distance(Inp.Pos, camFrom) > 6f) { camMoved = true; rightCell = -1; }   // gesleept: geen klik met rechts
                 Vector2 d = Inp.Delta;
-                if (camMoved && camDrag == 1) { right = Vector3.Cross(focus, fwd); Pan(-(right * d.x + fwd * d.y) * dist * 0.0019f); }
-                else if (camDrag == 2) { fwd = Quaternion.AngleAxis(d.x * 0.4f, focus) * fwd; pitch = Mathf.Clamp(pitch - d.y * 0.34f, 15f, 89f); }
+                float idt = 1f / Mathf.Max(dt, 1e-4f), kd = 1f - Mathf.Exp(-20f * dt);   // de sleepvaart (gemiddeld over een paar beelden) voor het uitglijden
+                if (camMoved && camDrag == 1) { right = Vector3.Cross(focus, fwd); Vector3 m = -(right * d.x + fwd * d.y) * dist * 0.0019f; Pan(m); camVel = Vector3.Lerp(camVel, m * idt, kd); }
+                else if (camDrag == 2) { fwd = Quaternion.AngleAxis(d.x * 0.4f, focus) * fwd; pitch = Mathf.Clamp(pitch - d.y * 0.34f, 15f, 89f); turnVel = Mathf.Lerp(turnVel, d.x * 0.4f * idt, kd); pitchVel = Mathf.Lerp(pitchVel, -d.y * 0.34f * idt, kd); }
             }
         }
         up = focus; fwd = (fwd - up * Vector3.Dot(fwd, up)).normalized;
@@ -755,6 +765,7 @@ public class PlanetBuilder : MonoBehaviour
         Vector3 pos = target + (-fwd * Mathf.Cos(pitch * Mathf.Deg2Rad) + up * Mathf.Sin(pitch * Mathf.Deg2Rad)) * dist;
         { float gp = PlanetCity.TerrainAt(pos.normalized) + 2f; if (pos.magnitude < Planet.R + gp) pos = pos.normalized * (Planet.R + gp); }   // niet door een bergflank
         Cam.transform.position = pos; Cam.transform.rotation = Geo.Look(target - pos, up);
+        distSeen = dist;
     }
 
     void ToggleWalk()
