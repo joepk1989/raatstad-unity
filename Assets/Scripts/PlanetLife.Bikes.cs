@@ -58,10 +58,10 @@ public partial class PlanetLife
         wheelMesh = w.Build();
     }
 
-    Rider SpawnRider()
+    Rider SpawnRider(int cell)
     {
         BikeMeshes();
-        var r = new Rider { a = bikeCells[Random.Range(0, bikeCells.Count)], prev = -1, t = Random.value, speed = 4f + Random.value * 2f, pedal = Random.value * 6.28f };
+        var r = new Rider { a = cell, prev = -1, t = Random.value, speed = 4f + Random.value * 2f, pedal = Random.value * 6.28f };
         r.b = NextBike(r.a, -1);
         r.root = new GameObject("Fietser").transform; r.root.SetParent(transform, false); r.root.gameObject.layer = Layers.Mens;
         int k = Random.Range(0, FrameColors.Length);
@@ -130,11 +130,11 @@ public partial class PlanetLife
         e.rotation = keep;
     }
 
-    void UpdateBikes(float dt)
+    void UpdateBikes(float dt, int target)
     {
-        int target = PeopleOn ? Mathf.Clamp(bikeCells.Count / 3, 0, 20) : 0;
-        if (riders.Count < target && bikeCells.Count > 0 && Random.value < dt * 2f) riders.Add(SpawnRider());
-        while (riders.Count > target) { Destroy(riders[riders.Count - 1].root.gameObject); riders.RemoveAt(riders.Count - 1); }
+        bool fill = Big && riders.Count < target / 3;
+        if (riders.Count < target && (fill || Random.value < dt * (Big ? 4f : 2f)) && SpawnBike(fill, out int bc)) riders.Add(SpawnRider(bc));
+        while (riders.Count > target && (!Big || viewK <= 0f || !PeopleOn)) { Destroy(riders[riders.Count - 1].root.gameObject); riders.RemoveAt(riders.Count - 1); }
         for (int i = riders.Count - 1; i >= 0; i--)
         {
             var r = riders[i];

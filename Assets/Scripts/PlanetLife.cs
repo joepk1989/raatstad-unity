@@ -32,7 +32,7 @@ public partial class PlanetLife : MonoBehaviour
 
     void RefreshRoads()
     {
-        roads.Clear(); walks.Clear(); foreach (var kv in PlanetCity.Cells) { if (kv.Value.Count > 0 && kv.Value[0] == "weg") { roads.Add(kv.Key); if (!PlanetCity.IsRot(kv.Key)) walks.Add(kv.Key); } else if (kv.Value.Count == 1 && kv.Value[0] == "pad") walks.Add(kv.Key); }
+        roads.Clear(); walks.Clear(); busy.Clear(); hasNear = false; foreach (var kv in PlanetCity.Cells) { if (kv.Value.Count > 0 && kv.Value[0] == "weg") { roads.Add(kv.Key); if (!PlanetCity.IsRot(kv.Key)) walks.Add(kv.Key); } else if (kv.Value.Count == 1 && kv.Value[0] == "pad") walks.Add(kv.Key); }
     }
 
     // volgend wegvak vanaf a, liefst niet terug naar prev
@@ -67,10 +67,10 @@ public partial class PlanetLife : MonoBehaviour
         pos = up * (Planet.R + h) + right * side;
     }
 
-    Person SpawnPerson()
+    Person SpawnPerson(int cell)
     {
         var a = global::People.MakePerson(transform);
-        a.cellA = walks[Random.Range(0, walks.Count)]; a.prevCell = -1; a.cellB = NextRoad(a.cellA, -1, true); a.ct = Random.value;
+        a.cellA = cell; a.prevCell = -1; a.cellB = NextRoad(a.cellA, -1, true); a.ct = Random.value;
         PlacePerson(a, 0f); return a;
     }
 
@@ -109,9 +109,9 @@ public partial class PlanetLife : MonoBehaviour
         a.root.rotation = dt <= 0f ? target : Quaternion.Slerp(a.root.rotation, target, Mathf.Min(1f, dt * 6f));
     }
 
-    Car SpawnCar()
+    Car SpawnCar(int cell)
     {
-        var c = new Car { b = roads[Random.Range(0, roads.Count)], speed = 7f + Random.value * 4f, s = Random.value, lane = Random.Range(0, 2) };
+        var c = new Car { b = cell, speed = 7f + Random.value * 4f, s = Random.value, lane = Random.Range(0, 2) };
         c.a = PrevRoad(c.b); c.c = NextRoad(c.b, c.a); c.n = NextRoad(c.c, c.b); c.v = c.speed;
         var root = new GameObject("Auto").transform; root.SetParent(transform, false); c.root = root; root.gameObject.layer = Layers.Mens;
         c.type = LowPolyCar.Build(root);   // een van de zeven low-poly modellen van de webversie
@@ -241,18 +241,21 @@ public partial class PlanetLife : MonoBehaviour
         float dt = Mathf.Min(Time.deltaTime, 0.05f);
         if (walker == null) walker = FindAnyObjectByType<PlanetWalker>(FindObjectsInactive.Include);
         roadsT -= dt; if (roadsT <= 0f) { roadsT = 2f; RefreshRoads(); RefreshBikes(); }
-        int targetP = PeopleOn ? Mathf.Clamp(walks.Count / 2, 0, 40) : 0, targetC = CarsOn ? Mathf.Clamp(roads.Count / 3 + CarBoost, 0, 40 + CarBoost) : 0;   // een auto per drie wegvakken, hooguit 40
+        UpdateView(); if (Big) UpdateNear(dt);   // groot: alleen rond de kijker (PlanetLife.Crowd)
+        int targetP = TargetPeople(), targetC = TargetCars(), targetR = TargetRiders();
+        Recycle(targetP, targetC, targetR);
         spawnT -= dt; carSpawnT -= dt;   // mensen en auto's elk met hun eigen tempo, zodat er meteen verkeer is
-        if (spawnT <= 0f && walks.Count > 0 && People.Count < targetP) { People.Add(SpawnPerson()); spawnT = 0.4f; }
-        if (carSpawnT <= 0f && roads.Count > 0 && cars.Count < targetC) { var nc = SpawnCar(); if (Crowded(nc)) Destroy(nc.root.gameObject); else cars.Add(nc); carSpawnT = 0.35f; }   // niet op een andere auto verschijnen
-        while (People.Count > targetP) { Destroy(People[People.Count - 1].root.gameObject); People.RemoveAt(People.Count - 1); }
-        while (cars.Count > targetC) { Destroy(cars[cars.Count - 1].root.gameObject); cars.RemoveAt(cars.Count - 1); }
+        bool fillP = Big && People.Count < targetP / 3, fillC = Big && cars.Count < targetC / 3;   // bijna niemand (net aangekomen): ook in beeld, en sneller
+        if (spawnT <= 0f && People.Count < targetP && SpawnWalk(fillP, out int pc)) { People.Add(SpawnPerson(pc)); spawnT = !Big ? 0.4f : fillP ? 0f : 0.1f; }
+        if (carSpawnT <= 0f && cars.Count < targetC && SpawnRoad(fillC, out int rc)) { var nc = SpawnCar(rc); if (Crowded(nc)) Destroy(nc.root.gameObject); else cars.Add(nc); carSpawnT = !Big ? 0.35f : fillC ? 0f : 0.15f; }   // niet op een andere auto verschijnen
+        while (People.Count > targetP && (!Big || viewK <= 0f || !PeopleOn)) RemovePerson(People.Count - 1);
+        while (cars.Count > targetC && (!Big || viewK <= 0f || !CarsOn)) { Destroy(cars[cars.Count - 1].root.gameObject); cars.RemoveAt(cars.Count - 1); }
 
         for (int i = People.Count - 1; i >= 0; i--)
         {
             var a = People[i];
             if (a.greetCool > 0) a.greetCool -= dt; if (a.waveT > 0) a.waveT -= dt;
-            if (!PlanetCity.IsWalk(a.cellA)) { Destroy(a.root.gameObject); People.RemoveAt(i); continue; }   // de weg is weg
+            if (!PlanetCity.IsWalk(a.cellA)) { RemovePerson(i); continue; }   // de weg is weg
             if (a.downT > 0f) { a.downT -= dt; PlacePerson(a, 0f); a.root.rotation = Quaternion.AngleAxis(-88f, a.root.right) * a.root.rotation; continue; }   // omvergereden: even liggen
             if (a.paused)
             {
@@ -285,7 +288,7 @@ public partial class PlanetLife : MonoBehaviour
         }
         Collide();   // altijd: auto's zijn vaste lichamen, ook netjes verkeer kan elkaar een duw geven
 
-        UpdateBikes(dt);
+        UpdateBikes(dt, targetR);
 
         // af en toe een opmerking van iemand dichtbij de camera
         idleT -= dt;

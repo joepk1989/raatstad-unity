@@ -94,6 +94,12 @@ Erbij gekomen op 3 november 2026 (geluid, `Sounds.cs`, naar `13-camera-modus-gel
 - Voetstappen (`Footsteps` in `Ambience.cs`): zachter, hak en bal van de voet, asfalt een plof met een tikje, gras en zand korreltjes, zes varianten.
 - Nog niet aangeroepen: crunch (botsen, sterkte = impact/12) en squeal (slippen) in `PlanetLife`; aanroep `Sounds.Fx("crunch", plek, sterkte, 12f)`.
 
+Erbij gekomen op 3 november 2026 (leven rond de kijker, `PlanetLife.Crowd.cs`):
+- Op een grote planeet (vanaf 400 weg- en padvakken) lopen mensen, auto's en fietsers alleen binnen 140–320 m van waar de camera naar kijkt (straal groeit met de hoogte; lopend met L 170 m rond de wandelaar). Wie te ver weg en buiten beeld is, komt elders in de buurt terug, ook buiten beeld; alleen bij het vullen (bijna niemand in de buurt) verschijnen ze ook in beeld.
+- Dichtheid per vak met het kwadraat van de bebouwing eromheen (`Busy`: winkel en plein 5, kantoor 2, toren 1,5, woning 1 per laag; buren en vakken op afstand 2 half): druk in steden, rustig in dorpen, een enkeling op het platteland. Hooguit 150 mensen, 70 auto's, 30 fietsers. Boven zo'n 380–700 m hoogte (en in de ruimte) niemand.
+- Een kleine stad (de startstad, teststad, wegvoorbeeld) werkt zoals vroeger: over de hele stad, hooguit 40 mensen, 40 auto's, 20 fietsers.
+- Gemeten op een volle planeet, grote stad: 115 mensen en 43 auto's, 157 fps (zonder leven 341 fps).
+
 Nog te doen:
 1. Modules als JSON met edge-codes (nu nog in code)
 2. Onderdelen uit `docs/overdracht-webversie.md` bouwen: stadsgenerator, wenteltrap; geluid: crunch/squeal aanroepen in `PlanetLife`, jump in `PlanetWalker`
