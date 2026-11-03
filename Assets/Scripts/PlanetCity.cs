@@ -1084,7 +1084,7 @@ public static partial class PlanetCity
     public static string Place(int i, string type, bool autoLink = true)
     {
         if (!Cells.TryGetValue(i, out var l)) { l = new List<string>(); Cells[i] = l; }
-        if ((type == "weg" || type == "pad") && l.Count == 1 && l[0] == "park") l.Clear();   // een weg of pad kan altijd door een bos: de bomen wijken
+        if (TreesYield(l, type)) l.Clear();   // bomen op het terrein wijken voor alles wat je bouwt (een weg of pad door een bos, een huis in een bos)
         if (l.Count == 1 && IsWild(l[0]) && type != l[0]) l.Clear();   // ijs, woestijn, heide, palmen en rotsen wijken voor alles (PlanetWild.cs)
         if (type == "weg")
         {
@@ -2639,7 +2639,7 @@ public static partial class PlanetCity
     {
         if (type == "rotonde") return RotOf(i) >= 0 ? null : RotFree(i) ? null : "Hier staat iets in de weg";
         if (RotOf(i) >= 0 && !IsRot(i)) return "Hier ligt een rotonde: op de ring kun je niet bouwen";
-        if (!Cells.TryGetValue(i, out var l) || l.Count == 0) return null;
+        if (!Cells.TryGetValue(i, out var l) || l.Count == 0 || TreesYield(l, type)) return null;
         if (type == "pad" && l.Count == 1 && l[0] == "pad") return null;
         if (l[0] == "weg") return "Op een weg kun je niet bouwen; haal de weg eerst weg (rechtermuisknop)";
         if (l[0] == "wegdeel" && !Buildable(type)) return "Hier loopt een weg overheen: op de vrije helft passen alleen gebouwen en parken";
@@ -2649,6 +2649,8 @@ public static partial class PlanetCity
         if (l[l.Count - 1] == "toren" || l[l.Count - 1] == "molen") return "Op een " + l[l.Count - 1] + " kun je niets meer zetten";
         return NoStackOn(l[l.Count - 1]);
     }
+    // alleen bomen op het terrein (een vak met alleen "park"): die maken plaats; een daktuin bovenop een gebouw niet
+    static bool TreesYield(List<string> l, string type) => l.Count == 1 && l[0] == "park" && type != "park";
     // op wegen, paden, bomen (park) en daken kun je niets stapelen; null = wel
     static string NoStackOn(string top) => top == "park" ? "Op bomen kun je niets zetten" : top == "dak" ? "Op een dak kun je niets zetten" : top == "pad" ? "Op een pad kun je niet bouwen" : null;
     // De vorm van wat Place(i, type) zou toevoegen, of bij de gum de hele stapel, als één mesh rond het hart van het vak (origin).
@@ -2663,6 +2665,7 @@ public static partial class PlanetCity
         {
             if (list.Count > 0 && list[0] == "weg") return null;
             if (type == "water" || type == "meer" || (list.Count > 0 && (list[list.Count - 1] == "water" || list[list.Count - 1] == "meer"))) { bool half = list.Count > 0 && list[0] == "wegdeel"; list.Clear(); if (half) list.Add("wegdeel"); }
+            if (TreesYield(list, type)) list.Clear();
             from = list.Count; list.Add(type);
         }
         var mb = new Dictionary<string, MeshBuilder>(); BuildCell(mb, i, list, new List<(Vector3, Quaternion, int)>(), from);

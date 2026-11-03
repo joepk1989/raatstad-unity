@@ -61,7 +61,7 @@ Erbij gekomen op 31 oktober 2026:
 - Interface: zes vaste bouwcategorieën (1–6) met een lade, Tab vasthouden voor een zeshoekig keuzewiel, middelste klik als pipet, vooraf het effect op de schoonheid bij de muis en een TIP voor het zwakste onderdeel; blokpatronen, laagkiezer, uitleg bij aanwijzen (`Ui.Tip`), interfacegrootte in het menu, ongelukjesteller.
 
 Erbij gekomen op 1 november 2026 (natuur, `PlanetNature.cs`):
-- Bomen los op het terrein, zonder grasplaat of sokkel (park, meer en gracht zijn geen plateau: `OpenGround`): loofboom, den, berk en struik op ware grootte, soort naar hoogte, helling en een bosruis; boomgrens 48 m.
+- Bomen los op het terrein, zonder grasplaat of sokkel (park, meer en gracht zijn geen plateau: `OpenGround`): loofboom, den, berk en struik op ware grootte, soort naar hoogte, helling en een bosruis; boomgrens 48 m. Op bomen kun je bouwen: een vak met alleen bomen maakt plaats voor wat je neerzet (`TreesYield`), een daktuin niet.
 - Zeeniveau (`SeaLevel` = −1 m): waar het maaiveld lager ligt staat water (`SeaChunk`), met zand en riet langs de waterlijn; wegen tellen niet mee. Meer: het vak ligt vanzelf op `LakeBed` (via `G`), een weg erover is een dam (`DamSkip`). Gracht: bodem en bakstenen kademuren (`Canal`, `Quay`), de buren houden hun hoogte.
 - Bergen tot 90 m (`TerrTop`): rots op steile flanken, sneeuw boven 54 m. Hele planeet vol maakt berggebieden zonder stadjes (`MountainMask`). De camera volgt het maaiveld vloeiend (`camH`) en blijft boven een bergflank.
 
