@@ -22,6 +22,7 @@ public partial class PlanetBuilder
                 new Sub { name = "Startstad", sub = "Opnieuw beginnen rond een vlag", act = () => StartTown() },
                 new Sub { name = "Lege planeet", sub = "Alleen terrein, niets gebouwd", act = () => Empty() },
                 new Sub { name = "Hele planeet vol", sub = "Dorpen en steden over de hele bol", act = () => FillPlanet() },
+                new Sub { name = "Meteoor", sub = MeteorSub, act = () => Meteor() },
                 new Sub { name = "Totale chaos", sub = PlanetLife.Chaos ? "Aan: racers, ontwijkers en jagers" : "Uit: netjes verkeer", on = PlanetLife.Chaos,
                           act = () => { PlanetLife.Chaos = !PlanetLife.Chaos; Say(PlanetLife.Chaos ? "Totale chaos: racers, ontwijkers en jagers" : "Netjes verkeer"); } } };
             case 1: return new[] {

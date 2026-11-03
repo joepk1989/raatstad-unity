@@ -1258,7 +1258,7 @@ public partial class PlanetBuilder : MonoBehaviour
     void Menu(float W, float H)
     {
         Ui.DimBack(0.25f);
-        float w = 440f, h = 812f; var r = new Rect((W - w) * 0.5f, Mathf.Max(16f, (H - h) * 0.5f), w, h); Ui.Panel(r, true, 16f);
+        float w = 440f, h = 868f; var r = new Rect((W - w) * 0.5f, Mathf.Max(16f, (H - h) * 0.5f), w, h); Ui.Panel(r, true, 16f);
         float x = r.x + 18f, iw = w - 36f, y = r.y + 14f, half = (iw - 8f) * 0.5f;
         Ui.Tex(new Rect(x, y + 3f, 20f, 23f), Ui.Hex(Ui.Signal, Ui.Signal, 0f, true)); Ui.Label(new Rect(x + 30f, y, 200f, 28f), "MENU", Ui.T.Title);
         if (Ui.RoundButton(new Rect(r.xMax - 18f - 30f, y - 1f, 30f, 30f), "sluit")) menuOpen = false; y += 40f;
@@ -1279,8 +1279,11 @@ public partial class PlanetBuilder : MonoBehaviour
         if (Ui.CardButton(new Rect(x + half + 8f, y, half, 48f), "Naar het midden", "Camera terug naar je stad (H)", false, "kompas")) { GoCentre(); menuOpen = false; }
         if (Ui.CardButton(new Rect(x, y + 56f, half, 48f), "Naar de polen", "Noord- en zuidpool (N)", false, "kompas")) { GoPole(); menuOpen = false; }
         if (Ui.CardButton(new Rect(x + half + 8f, y + 56f, half, 48f), "Startstad", "Opnieuw beginnen rond een vlag", false, "stad")) { StartTown(); menuOpen = false; }
-        if (Ui.CardButton(new Rect(x, y + 112f, iw, 48f), "Hele planeet vol", "Stadjes overal, platteland ertussen (Ctrl+Z terug)", false, "stad")) { FillPlanet(); menuOpen = false; }
-        y += 3 * 56f + 8f;
+        if (Ui.CardButton(new Rect(x, y + 112f, half, 48f), "Hele planeet vol", "Stadjes overal, platteland ertussen (Ctrl+Z terug)", false, "stad")) { FillPlanet(); menuOpen = false; }
+        if (Ui.CardButton(new Rect(x + half + 8f, y + 112f, half, 48f), "Meteoor", "Inslag op het midden van het beeld", false, "onweer")) { Meteor(); menuOpen = false; }
+        Ui.Label(new Rect(x + 2f, y + 168f, iw, 16f), "METEOOR", Ui.T.Tiny);
+        int mz = Ui.Seg(new Rect(x, y + 186f, iw, 30f), new[] { "Klein · 1 vak", "Middel · 7", "Groot · 19" }, meteorSize); if (mz >= 0) meteorSize = mz;
+        y += 4 * 56f + 8f;
         section("LEVEN EN INSTELLINGEN");
         if (Ui.CardButton(new Rect(x, y, half, 48f), "Mensen", PlanetLife.PeopleOn ? "aan" : "uit", PlanetLife.PeopleOn, "mensen")) PlanetLife.PeopleOn = !PlanetLife.PeopleOn;
         if (Ui.CardButton(new Rect(x + half + 8f, y, half, 48f), "Auto's", PlanetLife.CarsOn ? "aan" : "uit", PlanetLife.CarsOn, "auto")) PlanetLife.CarsOn = !PlanetLife.CarsOn;
