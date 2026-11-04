@@ -28,6 +28,7 @@ public partial class PlanetBuilder
                 new MItem { name = "Voorbeeldstad hier", sub = "Ringweg, huizen en een meer (midden van het beeld)", act = () => { menuOpen = false; Sample(); } },
                 new MItem { name = "Meteoor", sub = "Inslag op het midden van het beeld", danger = true, act = () => { menuOpen = false; Meteor(); } },
                 new MItem { name = "Maat van de meteoor", value = PlanetMeteor.SizeNames[meteorSize] + " · " + MeteorCells[meteorSize], act = () => meteorSize = (meteorSize + 1) % 3 },
+                new MItem { name = "Meteorenregen", sub = "Een halve minuut lang, van alle kanten (Ctrl+Z haalt alles weg)", danger = true, act = () => { menuOpen = false; MeteorShower(); } },
                 new MItem { name = aiOn ? (aiPaused ? "AI-bouwer verder" : "AI-bouwer pauzeren") : "AI-bouwer", sub = AiCardSub, on = aiOn && !aiPaused, act = () => { menuOpen = false; AiButton(); } } };
             if (aiOn) g.Add(new MItem { name = "AI-bouwer stoppen", sub = PlanetAI.Moves + " zetten gedaan", danger = true, act = () => { menuOpen = false; AiStop(); } });
             else g.Add(new MItem { name = "Tempo AI-bouwer", value = AiTempoNames[aiTempo], act = () => aiTempo = (aiTempo + 1) % AiTempoNames.Length });

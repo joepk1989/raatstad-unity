@@ -1333,7 +1333,8 @@ public partial class PlanetBuilder : MonoBehaviour
         if (Ui.CardButton(new Rect(x + half + 8f, y + 112f, half, 48f), "Meteoor", "Inslag op het midden van het beeld", false, "onweer")) { Meteor(); menuOpen = false; }
         AiMenuCards(x, y + 168f, half);   // AI-bouwer: starten, pauzeren, stoppen en het tempo (PlanetBuilder.AI.cs)
         Ui.Label(new Rect(x + 2f, y + 224f, iw, 16f), "METEOOR", Ui.T.Tiny);
-        int mz = Ui.Seg(new Rect(x, y + 242f, iw, 30f), new[] { "Klein · 1 vak", "Middel · 7", "Groot · 19" }, meteorSize); if (mz >= 0) meteorSize = mz;
+        int mz = Ui.Seg(new Rect(x, y + 242f, iw - 128f, 30f), new[] { "Klein · 1", "Middel · 7", "Groot · 19" }, meteorSize); if (mz >= 0) meteorSize = mz;
+        if (Ui.Button(new Rect(x + iw - 120f, y + 242f, 120f, 30f), "Meteorenregen")) { MeteorShower(); menuOpen = false; }   // een halve minuut (PlanetBuilder.Meteor.cs)
         y += 5 * 56f + 8f;
         section("LEVEN EN INSTELLINGEN");
         if (Ui.CardButton(new Rect(x, y, half, 48f), "Mensen", PlanetLife.PeopleOn ? "aan" : "uit", PlanetLife.PeopleOn, "mensen")) PlanetLife.PeopleOn = !PlanetLife.PeopleOn;

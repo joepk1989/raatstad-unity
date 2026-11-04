@@ -1,0 +1,15 @@
+Geluid van de meteoor in Raatstad
+
+Twee opnames van Pixabay (https://pixabay.com/sound-effects/), gedownload op 3 november 2026, gebruikt door PlanetMeteor.Sound.cs:
+- aanloop.mp3: "Impact Transition / Impact Dramatic Boom" van alexis_gaming_cam
+  (oorspronkelijke bestandsnaam alexis_gaming_cam-impact-transition-impact-dramatic-boom-346103.mp3)
+  Tijdens de vlucht, zo gestart dat de klap erin precies op de inslag valt.
+- inslag.mp3: "Cinematic Impact Boom 04" van Universfield
+  (oorspronkelijke bestandsnaam universfield-cinematic-impact-boom-04-326123.mp3)
+  De dreun bij de inslag.
+
+Pixabay Content License (https://pixabay.com/service/license-summary/): gebruik in een spel mag, zonder naamsvermelding en
+zonder kosten; de opnames los doorverkopen of verspreiden mag niet.
+
+Afgespeeld met een laagdoorlaatfilter naar de afstand, en lager naarmate de meteoor groter is. Daaronder klinken de
+zelf berekende lagen (klap, brokstukken, gerommel met echo's).

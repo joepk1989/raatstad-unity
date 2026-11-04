@@ -1,19 +1,42 @@
 using UnityEngine;
 
-// Het geluid van een meteoor, bij de eerste meteoor berekend (geen opnames), in stereo. Lagen zoals een echte inslag:
+// Het geluid van een meteoor, bij de eerste meteoor berekend (geen opnames, op de achtergrond: MakeClips), in stereo. Lagen zoals een echte inslag:
 // - vlucht: een brullend, knetterend gesis dat aanzwelt in de atmosfeer en hoger wordt als hij nadert; daar een dubbele
 //   supersone knal (N-golf) als hij de atmosfeer in duikt;
 // - inslag: de klap (N-golf met een knal van ruis en de weerkaatsing op de grond), de dreun (zakkende lage toon met
 //   verzadiging), brokstukken die neerkletteren (honderden tikjes en plofjes, verspreid over links en rechts) en gerommel
 //   met echo's van ver weg;
 // - water: een plons bij een inslag in het water, een aanzwellend geruis met geborrel als een krater volloopt.
-// Afstand: alles komt later (343 m/s), zachter, en dof: hoge tonen verdwijnen eerst (een laagdoorlaatfilter per laag).
+// Afstand: zachter en dof: hoge tonen verdwijnen eerst (een laagdoorlaatfilter per laag). Geen vertraging: de klap klinkt
+// tegelijk met de inslag.
 // Dichtbij overheerst de klap, ver weg alleen het rommelen. Geluid uit (Ambience.Muted) zet alles uit.
+// Twee opnames (Assets/Resources/Meteoor, LICENTIE.txt) gaan erbovenop: de aanloop klinkt tijdens de vlucht en is zo gestart dat
+// zijn klap precies op de inslag valt (RisePeak zoekt die klap in de opname); de dreun is de hoofdklap bij de inslag, in plaats
+// van de berekende dreun. Beide lager naarmate de meteoor groter is en dof op afstand. Zonder opnames: alleen de berekende lagen.
 public partial class PlanetMeteor
 {
     const int SR = Sounds.SR;
     static AudioClip crackClip, boomClip, rumbleClip, debrisClip, roarClip, floodClip, splashClip;
-    static void ResetClips() { crackClip = boomClip = rumbleClip = debrisClip = roarClip = floodClip = splashClip = null; }
+    static void ResetClips() { crackClip = boomClip = rumbleClip = debrisClip = roarClip = floodClip = splashClip = null; baking = null; riseRec = boomRec = null; risePeak = -1f; }
+    static AudioClip riseRec, boomRec; static float risePeak = -1f;
+    static void LoadRecordings()
+    {
+        if (riseRec == null) riseRec = Resources.Load<AudioClip>("Meteoor/aanloop");
+        if (boomRec == null) boomRec = Resources.Load<AudioClip>("Meteoor/inslag");
+        foreach (var c in new[] { riseRec, boomRec }) if (c != null && c.loadState == AudioDataLoadState.Unloaded) c.LoadAudioData();   // niet vooraf geladen (preloadAudioData uit)
+    }
+    // waar in de aanloop de klap zit: het eerste stukje van 20 ms dat 60% van het hardste haalt
+    static float RisePeak()
+    {
+        if (risePeak >= 0f) return risePeak;
+        var c = riseRec; risePeak = c.length * 0.6f;
+        if (c.loadState != AudioDataLoadState.Loaded) c.LoadAudioData();
+        var d = new float[c.samples * c.channels]; if (!c.GetData(d, 0)) return risePeak;
+        int win = Mathf.Max(1, c.frequency / 50) * c.channels, nw = d.Length / win; var e = new float[nw]; float mx = 0f;
+        for (int w = 0; w < nw; w++) { float s2 = 0f; for (int i = w * win; i < (w + 1) * win; i++) s2 += d[i] * d[i]; e[w] = s2; mx = Mathf.Max(mx, s2); }
+        for (int w = 0; w < nw; w++) if (e[w] >= 0.6f * mx) { risePeak = (float)w * win / c.channels / c.frequency; break; }
+        return risePeak;
+    }
 
     // ---------- afspelen ----------
     // een laag: eigen bron met laagdoorlaatfilter; weg na afloop
@@ -35,13 +58,15 @@ public partial class PlanetMeteor
     }
     static float Quiet => 1f - 0.75f * PlanetSky.Space;   // in de ruimte hoor je bijna niets
 
-    void ImpactSound(Vector3 at, int b, float dist, bool splash)
+    void ImpactSound(Vector3 at, int b, float dist, bool splash, float gain = 1f)
     {
         if (Ambience.Muted) return;
         var go = new GameObject("Inslaggeluid"); go.transform.SetParent(transform, false); Destroy(go, 16f);
-        float delay = Mathf.Min(3f, dist / 343f), far = Far(dist), pan = Pan(at), q = Quiet, big = 1f + 0.5f * b;
-        Layer(go, crackClip, Fall(dist, 45f * big, 1.6f) * q, 1.12f - 0.1f * b, Mathf.Lerp(20000f, 700f, far), delay, pan);
-        Layer(go, boomClip, Fall(dist, 140f * big) * (0.8f + 0.1f * b) * q, 1.08f - 0.13f * b, Mathf.Lerp(9000f, 380f, far), delay + 0.01f, pan * 0.6f);
+        float delay = 0f, far = Far(dist), pan = Pan(at), q = Quiet * gain, big = 1f + 0.5f * b;
+        if (boomRec != null) Layer(go, boomRec, Fall(dist, 180f * big) * (0.85f + 0.075f * b) * q, 1.1f - 0.12f * b, Mathf.Lerp(22000f, 650f, far), delay, pan * 0.6f);   // de opgenomen dreun
+        if (!Baked()) return;
+        Layer(go, crackClip, Fall(dist, 45f * big, 1.6f) * q * (boomRec != null ? 0.6f : 1f), 1.12f - 0.1f * b, Mathf.Lerp(20000f, 700f, far), delay, pan);
+        if (boomRec == null) Layer(go, boomClip, Fall(dist, 140f * big) * (0.8f + 0.1f * b) * q, 1.08f - 0.13f * b, Mathf.Lerp(9000f, 380f, far), delay + 0.01f, pan * 0.6f);
         Layer(go, rumbleClip, Fall(dist, 420f * big) * (0.55f + 0.15f * b) * q, 1f - 0.08f * b, Mathf.Lerp(3000f, 600f, far), delay + 0.25f, 0f);
         if (!splash) Layer(go, debrisClip, Fall(dist, 40f * big, 1.5f) * (0.75f + 0.1f * b) * q, 1.06f - 0.06f * b, Mathf.Lerp(16000f, 900f, far), delay + 0.2f, pan * 0.4f);
         else Layer(go, splashClip, Fall(dist, 60f * big, 1.3f) * q, 1.05f - 0.1f * b, Mathf.Lerp(16000f, 900f, far), delay + 0.05f, pan * 0.5f);
@@ -49,9 +74,10 @@ public partial class PlanetMeteor
     void FloodSound(Vector3 at, int b)
     {
         if (Ambience.Muted) return;
+        if (!Baked()) return;
         var cam = Cam(); float dist = cam != null ? Vector3.Distance(cam.transform.position, at) : 400f;
         var go = new GameObject("Waterstroom"); go.transform.SetParent(transform, false); Destroy(go, 10f);
-        Layer(go, floodClip, Fall(dist, 70f * (1f + 0.5f * b), 1.3f) * Quiet, 1.05f - 0.08f * b, Mathf.Lerp(16000f, 900f, Far(dist)), dist / 343f, Pan(at));
+        Layer(go, floodClip, Fall(dist, 70f * (1f + 0.5f * b), 1.3f) * Quiet, 1.05f - 0.08f * b, Mathf.Lerp(16000f, 900f, Far(dist)), 0f, Pan(at));
     }
 
     // vlucht: een lus die meeloopt met de rots
@@ -62,21 +88,33 @@ public partial class PlanetMeteor
         r.roar.time = Random.Range(0f, roarClip.length * 0.9f);
         r.roarLp = go.AddComponent<AudioLowPassFilter>(); r.roarLp.cutoffFrequency = 800f;
         r.roar.Play();
+        // de aanloop: zo gestart dat zijn klap op de inslag valt; is de vlucht korter, dan begint hij halverwege
+        if (riseRec == null || Ambience.Muted || r.shower) return;   // in een regen niet: twintig aanlopen door elkaar
+        float pitch = 1.06f - 0.08f * r.size, lead = r.dur - RisePeak() / pitch;
+        var rg = new GameObject("Aanloop"); rg.transform.SetParent(transform, false); Destroy(rg, Mathf.Max(0f, lead) + riseRec.length / pitch + 0.5f);
+        r.rise = Layer(rg, riseRec, 0f, pitch, 8000f, Mathf.Max(0f, lead), 0f);
+        if (lead < 0f) { r.rise.Stop(); r.rise.time = Mathf.Min(-lead * pitch, riseRec.length - 0.05f); r.rise.Play(); }
     }
     void RoarUpdate(Rock r, Vector3 p, float atmo)
     {
         if (r.roar == null) return;
         var cam = Cam(); float dist = cam != null ? Vector3.Distance(cam.transform.position, p) : 800f;
         float fade = Mathf.Clamp01(r.t / 0.15f), big = 1f + 0.5f * r.size;
-        r.roar.volume = Ambience.Muted ? 0f : Mathf.Clamp01((0.12f + 0.88f * atmo * atmo) * Fall(dist, 140f * big) * (0.55f + 0.2f * r.size) * fade * Quiet);
+        r.roar.volume = Ambience.Muted ? 0f : Mathf.Clamp01((0.12f + 0.88f * atmo * atmo) * Fall(dist, 140f * big) * (0.55f + 0.2f * r.size) * fade * Quiet * (r.rise != null ? 0.55f : 1f) * (r.shower ? 0.6f : 1f));
+        if (r.rise != null)   // de aanloop klinkt vanaf de plek van de inslag (daar valt zijn klap)
+        {
+            float dt0 = cam != null ? Vector3.Distance(cam.transform.position, r.to) : 800f;
+            r.rise.volume = Ambience.Muted ? 0f : Mathf.Clamp01(Fall(dt0, 220f * big) * (0.75f + 0.1f * r.size) * Quiet);
+            r.rise.panStereo = Pan(r.to) * 0.6f; var lp = r.rise.GetComponent<AudioLowPassFilter>(); if (lp != null) lp.cutoffFrequency = Mathf.Lerp(22000f, 700f, Far(dt0));
+        }
         r.roar.pitch = (0.95f - 0.12f * r.size) * (0.75f + 0.55f * r.t * r.t);   // hoger als hij nadert
         r.roar.panStereo = Pan(p);
         r.roarLp.cutoffFrequency = Mathf.Lerp(1200f, 14000f, atmo) * Mathf.Lerp(1f, 0.25f, Far(dist));
         // de supersone knal: één keer, als hij de atmosfeer in duikt (twee klappen kort na elkaar: kop en staart van de schokgolf)
-        if (!r.sonic && atmo > 0.4f && !Ambience.Muted)
+        if (!r.sonic && r.rise == null && !r.shower && atmo > 0.4f && !Ambience.Muted && Baked())   // met de aanloop niet: die heeft zijn eigen opbouw
         {
             r.sonic = true; var go = new GameObject("Supersoon"); go.transform.SetParent(transform, false); Destroy(go, 6f);
-            float v = Fall(dist, 250f * big) * 0.6f * Quiet, d = Mathf.Min(2.5f, dist / 343f), cut = Mathf.Lerp(9000f, 1200f, Far(dist));
+            float v = Fall(dist, 250f * big) * 0.6f * Quiet, d = 0f, cut = Mathf.Lerp(9000f, 1200f, Far(dist));
             Layer(go, crackClip, v, 0.8f - 0.06f * r.size, cut, d, Pan(p));
             Layer(go, crackClip, v * 0.75f, 0.84f - 0.06f * r.size, cut, d + 0.13f + 0.03f * r.size, Pan(p));
         }
@@ -84,11 +122,26 @@ public partial class PlanetMeteor
     void StopRoar(Rock r) { if (r.roar != null) Destroy(r.roar.gameObject); r.roar = null; }
 
     // ---------- berekenen ----------
+    // het gebrul meteen (dat klinkt vanaf de start van de vlucht), de rest op een achtergrondthread tijdens de vlucht: geen hapering
+    class Raw { public string name; public float[] d; }   // stereo om en om, al op sterkte gebracht
+    static System.Threading.Tasks.Task<Raw[]> baking;
     static void MakeClips()
     {
-        if (crackClip != null) return;
-        crackClip = Crack(); boomClip = Boom(); rumbleClip = Rumble(); debrisClip = DebrisClip(); roarClip = Roar(); floodClip = FloodClip(); splashClip = Splash();
+        if (roarClip == null) roarClip = ToClip(Roar());
+        LoadRecordings();
+        if (crackClip == null && baking == null) baking = System.Threading.Tasks.Task.Run(() => new[] { Crack(), Boom(), Rumble(), DebrisClip(), FloodClip(), Splash() });
     }
+    // klaar met rekenen? dan de clips maken (dat moet op de hoofdthread)
+    static bool Baked()
+    {
+        if (crackClip != null) return true;
+        if (baking == null || !baking.IsCompleted) return false;
+        if (baking.IsFaulted) { Debug.LogWarning("Meteoorgeluid berekenen mislukt: " + baking.Exception?.GetBaseException().Message); baking = null; return false; }
+        var r = baking.Result; baking = null;
+        crackClip = ToClip(r[0]); boomClip = ToClip(r[1]); rumbleClip = ToClip(r[2]); debrisClip = ToClip(r[3]); floodClip = ToClip(r[4]); splashClip = ToClip(r[5]);
+        return true;
+    }
+    static AudioClip ToClip(Raw r) { var c = AudioClip.Create(r.name, r.d.Length / 2, 2, SR, false); c.SetData(r.d, 0); return c; }
 
     // eenvoudige filters
     struct LP { float y; public float Run(float x, float fc) { y += (1f - Mathf.Exp(-2f * Mathf.PI * fc / SR)) * (x - y); return y; } }
@@ -103,7 +156,7 @@ public partial class PlanetMeteor
     static float NWave(float t, float len) => t < 0f || t > len ? 0f : 1f - 2f * t / len;
 
     // de klap: N-golf, een knal van ruis en de weerkaatsing op de grond
-    static AudioClip Crack()
+    static Raw Crack()
     {
         int n = (int)(SR * 1.2f); var L = new float[n]; var R = new float[n];
         for (int ch = 0; ch < 2; ch++)
@@ -122,7 +175,7 @@ public partial class PlanetMeteor
         return Stereo("klap", L, R, 0.95f);
     }
     // de dreun: zakkende lage toon met boventoon, ruis die van helder naar dof gaat, verzadigd
-    static AudioClip Boom()
+    static Raw Boom()
     {
         int n = SR * 5; var L = new float[n]; var R = new float[n];
         for (int ch = 0; ch < 2; ch++)
@@ -140,7 +193,7 @@ public partial class PlanetMeteor
         return Stereo("dreun", L, R, 0.95f);
     }
     // het gerommel: bruine ruis die golft, en echo's van ver weg (om en om links en rechts)
-    static AudioClip Rumble()
+    static Raw Rumble()
     {
         int n = SR * 11; var L = new float[n]; var R = new float[n];
         // eerst één doffe dreun als echo-kern
@@ -165,7 +218,7 @@ public partial class PlanetMeteor
         return Stereo("gerommel", L, R, 0.9f);
     }
     // brokstukken: honderden tikjes (steen op steen) en plofjes (aarde), vooral als het puin neerkomt
-    static AudioClip DebrisClip()
+    static Raw DebrisClip()
     {
         int n = (int)(SR * 5.5f); var L = new float[n]; var R = new float[n]; var rnd = new System.Random(23);
         for (int e = 0; e < 320; e++)
@@ -187,7 +240,7 @@ public partial class PlanetMeteor
         return Stereo("brokstukken", L, R, 0.9f);
     }
     // vlucht: brullend gesis met geknetter, een naadloze lus van 4 s
-    static AudioClip Roar()
+    static Raw Roar()
     {
         int n = SR * 4, x = SR / 2; var L = new float[n]; var R = new float[n];
         for (int ch = 0; ch < 2; ch++)
@@ -206,7 +259,7 @@ public partial class PlanetMeteor
         return Stereo("gebrul", L, R, 0.8f);
     }
     // de wand breekt door: aanzwellend geruis van stromend water met geborrel
-    static AudioClip FloodClip()
+    static Raw FloodClip()
     {
         int n = SR * 6; var L = new float[n]; var R = new float[n];
         for (int ch = 0; ch < 2; ch++)
@@ -222,7 +275,7 @@ public partial class PlanetMeteor
         return Stereo("waterstroom", L, R, 0.85f);
     }
     // plons: de klap op het water, opspattend water dat terugvalt
-    static AudioClip Splash()
+    static Raw Splash()
     {
         int n = SR * 4; var L = new float[n]; var R = new float[n];
         for (int ch = 0; ch < 2; ch++)
@@ -238,10 +291,10 @@ public partial class PlanetMeteor
         return Stereo("plons", L, R, 0.9f);
     }
 
-    static AudioClip Stereo(string name, float[] L, float[] R, float peak)
+    static Raw Stereo(string name, float[] L, float[] R, float peak)
     {
         float mx = 1e-6f; for (int i = 0; i < L.Length; i++) mx = Mathf.Max(mx, Mathf.Abs(L[i]), Mathf.Abs(R[i]));
         var d = new float[L.Length * 2]; float k = peak / mx; for (int i = 0; i < L.Length; i++) { d[2 * i] = L[i] * k; d[2 * i + 1] = R[i] * k; }
-        var c = AudioClip.Create(name, L.Length, 2, SR, false); c.SetData(d, 0); return c;
+        return new Raw { name = name, d = d };
     }
 }

@@ -24,6 +24,7 @@ public partial class PlanetBuilder
                 new Sub { name = "Hele planeet vol", sub = "Dorpen en steden over de hele bol", act = () => FillPlanet() },
                 new Sub { name = "Natuurplaneet", sub = "Alleen natuur: zeeën, bergen, rivieren, ijs en woestijn", act = () => WildPlanet() },
                 new Sub { name = "Meteoor", sub = MeteorSub, act = () => Meteor() },
+                new Sub { name = "Meteorenregen", sub = "Een halve minuut lang, van alle kanten", act = () => MeteorShower() },
                 new Sub { name = "Totale chaos", sub = PlanetLife.Chaos ? "Aan: racers, ontwijkers en jagers" : "Uit: netjes verkeer", on = PlanetLife.Chaos,
                           act = () => { PlanetLife.Chaos = !PlanetLife.Chaos; Say(PlanetLife.Chaos ? "Totale chaos: racers, ontwijkers en jagers" : "Netjes verkeer"); } } };
             case 1: return new[] {

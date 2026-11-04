@@ -115,16 +115,10 @@ public partial class PlanetBuilder
         SmallPanel(W, H, "Oproepen", "Op " + CellName(c).ToLower() + " · " + CellInfo(c), o, () => callCell = -1);
     }
     void SetWeather(Weather.Kind k) { if (Weather.I == null) return; Weather.I.Set(k, true); Say("Weer: " + Weather.Names[(int)k]); }
-    // een meteoor op dit vak (net als Meteor in PlanetBuilder.Meteor.cs, dat op het midden van het beeld mikt)
+    // een meteoor op dit vak (Meteor in PlanetBuilder.Meteor.cs mikt hiermee op het midden van het beeld)
     void MeteorAt(int c)
     {
-        PlanetMeteor.Launch(c, meteorSize, Cam, (cell, size) =>
-        {
-            Push();
-            PlanetMeteor.Crater(cell, size, () => { PlanetCity.RebuildGrid(); Changed(); Sounds.Instead("meteoor"); Say("De wand is doorgebroken: het water stroomt de krater in"); });
-            PlanetCity.RebuildGrid(); Changed(); Sounds.Instead("meteoor");   // geen bouwgeluid: de inslag klinkt al (PlanetMeteor.Sound.cs)
-            Say("Inslag! Een krater van " + MeteorCells[size] + " vak" + (size > 0 ? "ken" : "") + " (Ctrl+Z zet alles terug)");
-        });
+        PlanetMeteor.Launch(c, meteorSize, Cam, MeteorHit);   // de krater in stappen (PlanetBuilder.Meteor.cs)
         Say("Meteoor " + PlanetMeteor.SizeNames[meteorSize].ToLower() + " op weg…");
     }
     void VillageAt(int c)

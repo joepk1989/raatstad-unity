@@ -22,7 +22,7 @@ public partial class PlanetMeteor : MonoBehaviour
     {
         public Vector3 from, to; public float t, dur; public int cell, size; public System.Action<int, int> hit;
         public GameObject go; public Transform halo; public Material rockMat, haloMat; public TrailRenderer fire, smoke; public Light glow;
-        public AudioSource roar; public AudioLowPassFilter roarLp; public bool sonic;
+        public AudioSource roar, rise; public AudioLowPassFilter roarLp; public bool sonic, shower;
     }
     class Flood { public float t; public Vector3 at; public int size; public List<(int c, float dry, float wet)> cells; public System.Action done; }
     readonly List<Flood> floods = new List<Flood>();
@@ -40,8 +40,9 @@ public partial class PlanetMeteor : MonoBehaviour
         return I;
     }
 
-    // een meteoor op vak cell; hit(cell, size) bij de inslag (daar komt de krater)
-    public static void Launch(int cell, int size, Camera cam, System.Action<int, int> hit)
+    // een meteoor op vak cell; hit(cell, size) bij de inslag (daar komt de krater). shower: een van een meteorenregen (van een
+    // willekeurige kant, verschillend ver weg zodat ze niet tegelijk vallen, en wat zachter)
+    public static void Launch(int cell, int size, Camera cam, System.Action<int, int> hit, bool shower = false)
     {
         var M = Get(); size = Mathf.Clamp(size, 0, 2); var c = Planet.Cells[cell]; Vector3 up = c.dir;
         Vector3 to = up * (Planet.R + PlanetCity.TerrainAt(up));
@@ -50,9 +51,14 @@ public partial class PlanetMeteor : MonoBehaviour
         if (side.sqrMagnitude < 0.5f) side = c.east; if (back.sqrMagnitude < 0.5f) back = c.north;
         float L = Mathf.Clamp(Vector3.Distance(cp, to) * 1.6f, 900f, 2600f), s = Random.value < 0.5f ? -1f : 1f;
         Vector3 from = to + (up * 0.72f + side * s * 0.6f + back * 0.25f).normalized * L;   // schuin, van opzij en iets van de camera af: je ziet hem het beeld in vliegen
-        var r = new Rock { from = from, to = to, dur = Mathf.Clamp(L / 520f, 2.2f, 4.5f), cell = cell, size = size, hit = hit };
+        if (shower)   // van alle kanten
+        {
+            float a = Random.value * Mathf.PI * 2f; L = Random.Range(900f, 1700f);
+            from = to + (up * Random.Range(0.55f, 0.95f) + (c.east * Mathf.Cos(a) + c.north * Mathf.Sin(a)) * 0.65f).normalized * L;
+        }
+        var r = new Rock { from = from, to = to, dur = Mathf.Clamp(L / 520f, 2.2f, 4.5f), cell = cell, size = size, hit = hit, shower = shower };
         M.MakeRock(r); M.rocks.Add(r); M.StartRoar(r);
-        Sounds.Fx("whoosh", 0.8f);
+        if (!shower) Sounds.Fx("whoosh", 0.8f);
     }
 
     // ---------- de krater: een zeshoekige kom met een opgehoogde rand, op hexvakken ----------
@@ -75,7 +81,9 @@ public partial class PlanetMeteor : MonoBehaviour
             if (x.d > rim && v >= 50 && PlanetCity.Cells.TryGetValue(x.c, out var tl) && tl.Count == 1 && tl[0] == "park") PlanetCity.Clear(x.c);
             PlanetCity.Touch(x.c);
         }
+        var zone = new List<int>(); foreach (var x in cells) if (x.d <= outer + 1) zone.Add(x.c);   // voor het wegzakken: een ring buiten het puin blijft staan
         cells.RemoveAll(x => x.d > outer);
+        var before = new Dictionary<int, float>(); foreach (var x in cells) before[x.c] = PlanetCity.G(x.c);   // zoals het eruitzag: de kom zakt daarvandaan weg (PlanetMeteor.Morph.cs)
         // eerst verwoesten (een weg op een niveau zet zijn terrein terug, een brug geeft zijn water terug: dan nog eens)
         foreach (var x in cells) if (x.d <= rim) for (int n = 0; n < 4 && PlanetCity.Cells.ContainsKey(x.c); n++) if (!PlanetCity.Clear(x.c)) break;
         float baseH = 0f; int nb = 0; foreach (var x in cells) if (x.d <= rim) { baseH += PlanetCity.G(x.c); nb++; } baseH /= nb;
@@ -91,6 +99,8 @@ public partial class PlanetMeteor : MonoBehaviour
             if (PlanetCity.SetTerr(x.c, nh)) changed++;
             PlanetCity.Touch(x.c);
         }
+        var delta = new Dictionary<int, float>(); foreach (int c in zone) delta[c] = before.TryGetValue(c, out var h0) ? PlanetCity.G(c) - h0 : 0f;
+        if (I != null) I.BeginMorph(c0, b, delta, (outer + 1) * CellW);
         // water: midden in het water meteen nat; met water vlak naast breekt de wand na een paar seconden door
         if (inWater) foreach (int c in bowl) PlanetCity.Scorch[c] = PlanetCity.ScorchWet;
         else if (nearWater && I != null)
@@ -169,6 +179,7 @@ public partial class PlanetMeteor : MonoBehaviour
 
     void LateUpdate()
     {
+        UpdateMorph();
         var cam = Cam(); if (cam == null || shake <= 0.001f) return;
         shakeT += Time.deltaTime; float a = shake * Mathf.Exp(-shakeT * 2.2f); if (a < 0.01f) { shake = 0f; return; }
         float t = Time.time * 31f; shakeOfs = (cam.transform.right * (Mathf.PerlinNoise(t, 0.3f) - 0.5f) + cam.transform.up * (Mathf.PerlinNoise(0.7f, t) - 0.5f)) * 2f * a;
@@ -216,7 +227,7 @@ public partial class PlanetMeteor : MonoBehaviour
         bool splash = PlanetCity.G(r.cell) < PlanetCity.SeaLevel;   // midden in het water
         PlanetLife.Blast(at, rc + CellW);
         r.hit?.Invoke(r.cell, b);
-        ImpactSound(at, b, dist, splash);
+        ImpactSound(at, b, dist, splash, r.shower ? 0.7f : 1f);
     }
 
     bool UpdateBlast(Blast bl, float dt)
@@ -261,7 +272,7 @@ public partial class PlanetMeteor : MonoBehaviour
         for (int k = 0; k < n; k++)
         {
             Vector3 p = parts[k].position, up = p.normalized; parts[k].velocity -= up * 9.81f * dt;
-            if (Vector3.Dot(parts[k].velocity, up) < 0f && p.magnitude < Planet.R + PlanetCity.TerrainAt(up) + 0.2f) parts[k].remainingLifetime = 0f;
+            float pr = p.magnitude; if (pr < Planet.R + PlanetCity.TerrTop + 1f && Vector3.Dot(parts[k].velocity, up) < 0f && pr < Planet.R + PlanetCity.TerrainAt(up) + 0.2f) parts[k].remainingLifetime = 0f;
         }
         debrisPs.SetParticles(parts, n);
     }
