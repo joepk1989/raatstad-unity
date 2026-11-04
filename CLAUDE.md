@@ -126,6 +126,11 @@ Erbij gekomen op 3 november 2026 (meteoor, `PlanetMeteor.cs`, experimenteel):
 - De krater (`PlanetMeteor.Crater`) holt het terrein uit via `SetTerr`; gebouwen, wegen en bomen in kom en rand verdwijnen. Verschroeid (`PlanetCity.Scorch`, in opslag en undo): donkere kom, lichtbruine rand en een zwarte roetdeken die naar buiten rafelt (`ScorchTag` in `NatureTag`). De kom blijft droog, ook onder zeeniveau (`DryPit` in `Wet`); met water vlak naast breekt de wand na een paar seconden door, een inslag in het water is meteen nat. Ctrl+Z zet alles terug.
 - Geluid in stereo, zelf berekend (`PlanetMeteor.Sound.cs`): gebrul en supersone knal tijdens de vlucht; klap, dreun, brokstukken en gerommel met echo's; plons en stromend water. Op afstand later (343 m/s), zachter en dof (laagdoorlaatfilter per laag).
 
+Erbij gekomen op 4 november 2026 (bodem met textures, `PlanetSoil.cs`, shaders en textures in `Assets/Resources/Terrein`):
+- Het terrein van een deel is één mesh met de shader `Raatstad/Bodem`: gras, rots, sneeuw, aarde, zand en zeebodem rekent hij per pixel uit (hoogte, helling, waterlijn), met triplanaire textures (`BodemA`/`BodemB`, gemaakt met `Tools/terreintextures.py`, import via `Assets/Editor/TerreinImport.cs`). Wat bij een vak hoort (ijs, woestijn, heide, water, een verschroeide krater, de helling van het vak) komt mee per hoekpunt, gemiddeld over de vakken eromheen (`SoilColor`): overgangen liggen op de rand tussen vakken en rafelen met het reliëf. Driehoeken houden hun eigen normaal (low poly). Sokkels houden een effen materiaal.
+- Groen en hout (`MatOf`) krijgen `Raatstad/Natuur`: hun eigen kleur met wat variatie per boom en per bos en een fijn reliëf.
+- In de editor compileren shaders eerst op de achtergrond (cyaan): een test wacht op `ShaderUtil.anythingCompiling`.
+
 Nog te doen:
 1. Modules als JSON met edge-codes (nu nog in code)
 2. Onderdelen uit `docs/overdracht-webversie.md` bouwen: stadsgenerator, wenteltrap; geluid: crunch/squeal aanroepen in `PlanetLife`, jump in `PlanetWalker`

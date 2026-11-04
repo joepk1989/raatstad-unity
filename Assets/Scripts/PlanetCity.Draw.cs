@@ -269,7 +269,8 @@ public static partial class PlanetCity
             var child = new GameObject(kv.Key); child.transform.SetParent(go.transform, false);
             child.layer = (kv.Key == "asfalt" || kv.Key == "stoep" || kv.Key == "rand" || kv.Key == "lijn" || kv.Key == "paal" || kv.Key == "lamp" || kv.Key == "pad") ? Layers.Weg : Layers.Gebouw;
             bool wet = kv.Key == "water" || kv.Key == "zand"; if (wet) child.layer = Layers.Water;   // een meer heeft geen bodem: het water en de oever zijn om aan te wijzen (weghalen), niet om op te lopen
-            var mesh = kv.Value.Build(); child.AddComponent<MeshFilter>().sharedMesh = mesh; child.AddComponent<MeshRenderer>().sharedMaterial = kv.Key == "lamp" || kv.Key == "etalage" ? Mats.GetUnlit("p_" + kv.Key, ColorOf(kv.Key)) : Mats.Get("p_" + kv.Key, ColorOf(kv.Key));
+            var mesh = kv.Value.Build(); child.AddComponent<MeshFilter>().sharedMesh = mesh; child.AddComponent<MeshRenderer>().sharedMaterial = kv.Key == "lamp" || kv.Key == "etalage" ? Mats.GetUnlit("p_" + kv.Key, ColorOf(kv.Key)) : MatOf(kv.Key, ColorOf(kv.Key));
+            if (kv.Key == "bodem0" && SoilMat() != null) { PlainSoil(mesh); child.GetComponent<MeshRenderer>().sharedMaterial = SoilMat(); }   // de grasbovenkant van een brugblok: zoals het terrein ernaast (PlanetSoil.cs)
             if (wet || kv.Key != "lijn" && kv.Key != "lamp" && kv.Key != "riet" && kv.Key != "doek" && !kv.Key.StartsWith("luifel")) child.AddComponent<MeshCollider>().sharedMesh = mesh;
         }
         foreach (var ml in mills) MakeWieken(go.transform, ml.pos, ml.rot, ml.hash);

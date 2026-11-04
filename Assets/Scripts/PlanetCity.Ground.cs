@@ -133,6 +133,7 @@ public static partial class PlanetCity
             System.Func<string, MeshBuilder> PM = k => { if (!polar.TryGetValue(k, out var x)) { x = new MeshBuilder(); polar[k] = x; } return x; };
             var terrB = new Dictionary<string, MeshBuilder>();   // verhoogd terrein per hoogteband, aarde op steile flanken, sokkels
             System.Func<string, MeshBuilder> TB = k => { if (!terrB.TryGetValue(k, out var x)) { x = new MeshBuilder(); terrB[k] = x; } return x; };
+            var soil = SoilMat() != null ? new MeshBuilder() : null; var soilCell = new List<int>();   // de bodem met textures, als één mesh (PlanetSoil.cs)
             Topo();
             for (int i = c0; i < Mathf.Min(n, c0 + ChunkN); i++)
             {
@@ -155,6 +156,11 @@ public static partial class PlanetCity
                     Vector3 mid = c.dir * (Planet.R + hc);
                     void Emit(Vector3 P0, Vector3 P1, Vector3 P2, float h0, float h1, float h2) => Emit2(P0, P1, P2, h0, h1, h2, false);
                     List<GTri> rec = null;   // de driehoekjes van een vak langs een weg op een niveau, om te onthouden (groundCache)
+                    void Put(string tag, Vector3 P0, Vector3 P1, Vector3 P2)   // naar de bodemmesh (met het vak bij elk hoekpunt) of naar het materiaal van de soort
+                    {
+                        if (soil != null && SoilTag(tag) && (tag != null || mb0 == ms[0])) { int v0 = soil.v.Count; BoreTri(soil, P0, P1, P2, c.dir, bn); for (int q = v0; q < soil.v.Count; q++) soilCell.Add(i); }
+                        else BoreTri(tag == null ? mb0 : TB(tag), P0, P1, P2, c.dir, bn);
+                    }
                     void Emit2(Vector3 P0, Vector3 P1, Vector3 P2, float h0, float h1, float h2, bool steep)   // steep: op de schuine kant van een weg (gras, of aarde als het steiler is dan 40°)
                     {
                         string tag = null; float up = Mathf.Abs(Vector3.Dot(Vector3.Cross(P1 - P0, P2 - P0).normalized, c.dir));
@@ -162,7 +168,7 @@ public static partial class PlanetCity
                         else if (!special && (Mathf.Max(h0, Mathf.Max(h1, h2)) > 0.03f || Mathf.Min(h0, Mathf.Min(h1, h2)) < -0.03f))   // verhoogd: kleur naar de hoogte, aarde waar het steiler is dan zo'n 45°
                             tag = up < 0.72f ? "aarde" : "t" + Mathf.Clamp(Mathf.FloorToInt((h0 + h1 + h2) / 9f), 0, 29);
                         if (!steep) tag = NatureTag(i, tag, h0, h1, h2, up);   // rots, sneeuw, strand en zeebodem (PlanetNature.cs)
-                        BoreTri(tag == null ? mb0 : TB(tag), P0, P1, P2, c.dir, bn); rec?.Add(new GTri { tag = tag, a = P0, b = P1, c = P2 });
+                        Put(tag, P0, P1, P2); rec?.Add(new GTri { tag = tag, a = P0, b = P1, c = P2 });
                     }
                     // bij een geul of dijk: het maaiveld zonder geul als vlak, de geul of dijk komt er precies in (ExactGround)
                     if (fieldCells.Contains(i) && !plat && NearSeg(c.dir, c.radius))   // ook als een weg alleen de rand van het vak raakt (een schuine onderdoorgang)
@@ -170,7 +176,7 @@ public static partial class PlanetCity
                         var hb0 = new float[m]; float hcb0 = 0f; for (int k = 0; k < m; k++) { hb0[k] = CornerBase(i, k); hcb0 += hb0[k]; } hcb0 = (levelled.Contains(i) ? hcb0 / m : g) + CenterOfs1(i);   // het gewone terrein, zonder de weg
                         // hetzelfde als de vorige keer (zelfde hoogtes en dezelfde wegen in de buurt): de onthouden driehoekjes, niet opnieuw snijden
                         long key = FieldKey(i, hcb0, hb0, special);
-                        if (groundCache.TryGetValue(i, out var gc) && gc.key == key) { foreach (var t in gc.tris) BoreTri(t.tag == null ? mb0 : TB(t.tag), t.a, t.b, t.c, c.dir, bn); continue; }
+                        if (groundCache.TryGetValue(i, out var gc) && gc.key == key) { foreach (var t in gc.tris) Put(t.tag, t.a, t.b, t.c); continue; }
                         rec = new List<GTri>();
                         for (int k = 0; k < m; k++) LineGround(c, k, hcb0, hb0[k], hb0[(k + 1) % m], Emit2);
                         groundCache[i] = (key, rec); rec = null;
@@ -267,6 +273,7 @@ public static partial class PlanetCity
                 var tmesh = kv.Value.Build(); tg.AddComponent<MeshFilter>().sharedMesh = tmesh; tg.AddComponent<MeshRenderer>().sharedMaterial = Mats.Get("p_terr_" + kv.Key, TerrColor(kv.Key));
                 tg.AddComponent<MeshCollider>().sharedMesh = tmesh;
             }
+            if (soil != null) SoilMesh(soil, soilCell, c0 / ChunkN, made);
             SeaChunk(c0, Mathf.Min(n, c0 + ChunkN), groundRoot, made);   // water op het zeeniveau (PlanetNature.cs)
             if (pm.v.Count > 0)
             {

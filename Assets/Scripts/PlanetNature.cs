@@ -201,7 +201,7 @@ public static partial class PlanetCity
         for (int i = c0; i < c1; i++) if (Wet(i) && !Quay(i)) Reeds(reeds, i);
         if (reeds.v.Count == 0) return;
         var rg = new GameObject("Riet " + (c0 / ChunkN)); rg.transform.SetParent(parent, false); made.Add(rg);
-        rg.AddComponent<MeshFilter>().sharedMesh = reeds.Build(); rg.AddComponent<MeshRenderer>().sharedMaterial = Mats.Get("p_riet", ColorOf("riet"));
+        rg.AddComponent<MeshFilter>().sharedMesh = reeds.Build(); rg.AddComponent<MeshRenderer>().sharedMaterial = MatOf("riet", ColorOf("riet"));
     }
     // riet langs de waterlijn: pollen op de plekken van het vak waar de grond net onder of boven het water ligt
     static void Reeds(MeshBuilder m, int i)
