@@ -29,7 +29,10 @@ public abstract class RenderedMusic : MonoBehaviour
         }
         if (pending != null && (src == null || vol <= 0f))
         {
-            var clip = AudioClip.Create(Name, pending.Length / 2, 2, SR, false); clip.SetData(pending, 0); pending = null;
+            AudioClip clip;
+            try { clip = AudioClip.Create(Name, pending.Length / 2, 2, SR, false); }
+            catch (System.Exception e) { Debug.LogWarning(Name + ": geen clip van " + pending.Length + " samples (" + e.Message + ")"); pending = null; return; }   // één keer melden, niet elk beeld
+            clip.SetData(pending, 0); pending = null;
             if (src == null) { src = gameObject.AddComponent<AudioSource>(); src.loop = true; src.volume = 0f; src.spatialBlend = 0f; src.playOnAwake = false; }
             else { src.Stop(); if (src.clip != null) Destroy(src.clip); }
             src.clip = clip;
