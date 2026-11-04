@@ -48,7 +48,7 @@ public partial class PlanetBuilder
         float a = Mathf.Clamp01((Time.unscaledTime - spaceT) / 0.4f); var old = GUI.color; GUI.color = new Color(1f, 1f, 1f, a);
         // markers: je stad, de polen, de dorpen en steden van Hele planeet vol
         marks.Clear();
-        CityCentre(); if (hasCentre) marks.Add(new Mark { dir = centre, name = "Je stad", sub = "Stad " + PlanetCity.Slot, big = true, home = true });
+        CityCentre(); if (hasCentre) marks.Add(new Mark { dir = centre, name = "Je stad", sub = CityName, big = true, home = true });
         marks.Add(new Mark { dir = Planet.Cells[Planet.North].dir, name = "Noordpool", sub = "startplek", big = true });
         marks.Add(new Mark { dir = Planet.Cells[Planet.South].dir, name = "Zuidpool", sub = "startplek", big = true });
         var towns = PlanetCity.FillTowns; var kinds = PlanetCity.FillKinds;
@@ -77,7 +77,8 @@ public partial class PlanetBuilder
         // het midden: waar je naar kijkt
         PlanetCity.LatLon(focus, out float lat, out float lon);
         Ui.Tex(new Rect(W * 0.5f - 7f, H * 0.5f - 6f, 14f, 12.6f), Ui.Hex(Color.clear, new Color(1f, 1f, 1f, 0.6f), 1.5f));
-        ModesArc(W, H, false);   // links de spelmodi, meteen in beeld (zonder het beeld te dimmen)
+        if (menuOpen) { menuOpen = false; spaceMenuOff = !spaceMenuOff; }   // M in de ruimte: het menu in of uit beeld
+        if (!spaceMenuOff) HexMenu(W, H, false); else HexMenuClosed();   // links het raatmenu, meteen in beeld (zonder het beeld te dimmen)
         // onderaan: de navigatie
         string[] lab = { "Naar je stad", "Polen", "Andere kant", "Landen" }; string[] key = { "H", "N", "K", "" };
         float bw = 0f; foreach (var t in lab) bw += BtnW(t) + 6f; float lw = Mathf.Max(80f, Ui.Width("88° N  188° O", Ui.T.Dim, 11));   // vaste breedte: het paneel verspringt niet als de graden veranderen

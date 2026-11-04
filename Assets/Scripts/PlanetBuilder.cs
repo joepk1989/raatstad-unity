@@ -81,7 +81,7 @@ public partial class PlanetBuilder : MonoBehaviour
 
     // open panelen: catalogus, tijd/weer, schoonheid, menu, bediening, welkom
     bool catOpen, todOpen, scoreOpen, menuOpen, helpOpen, welcome;
-    bool Modal => menuOpen || helpOpen || welcome || scoreOpen || loading != null;   // ook tijdens het opbouwen: geen invoer
+    bool Modal => menuOpen || helpOpen || welcome || scoreOpen || loading != null || HomeModal;   // ook tijdens het opbouwen: geen invoer
     bool OverBar => Ui.MouseOverUI || Modal;
 
     void LoadBar()
@@ -128,11 +128,12 @@ public partial class PlanetBuilder : MonoBehaviour
     void Start()
     {
         int s0 = Planet.North; focus = Planet.Cells[s0].dir; fwd = Planet.Cells[s0].north; dist = 230f; pitch = 48f;   // je begint altijd op de noordpool (een startplek)
-        if (PlanetCity.Cells.Count == 0) { PlanetCity.StartTown(s0); PlanetCity.Rebuild(); PlanetCity.Save(); }   // lege stad: de standaardstad rond de noordpool
+        if (PlanetCity.Cells.Count == 0 && !home) { PlanetCity.StartTown(s0); PlanetCity.Rebuild(); PlanetCity.Save(); }   // lege stad: de standaardstad rond de noordpool
         outline = new GameObject("Hover").AddComponent<LineRenderer>(); outline.loop = true; outline.positionCount = 6; outline.widthMultiplier = 0.35f; outline.material = Raatstad.MatOutline; outline.useWorldSpace = true;
         walker = new GameObject("Wandelaar").AddComponent<PlanetWalker>(); walker.Cam = Cam; walker.gameObject.SetActive(false);
         LoadBar(); ApplyItem();
         welcome = PlayerPrefs.GetInt("raatstad-welkom-uit", 0) == 0;
+        HomeBoot();   // eerst het startscherm (StartScreen.cs), vanuit de ruimte
     }
 
     void Say(string s) { msg = s; msgT = Time.time + 4f; if (flying) { flyNote = s; flyBadgeT = Time.time; } }   // in de cameramodus op het label
@@ -233,6 +234,7 @@ public partial class PlanetBuilder : MonoBehaviour
     void Update()
     {
         if (loading != null) { LoadCam(); return; }   // de planeet wordt gevuld: geen bediening, de camera draait om de bol
+        if (HomeUpdate()) return;   // het startscherm of een venster van het opslaan (StartScreen.cs); ook vanzelf opslaan
         if (rebuilding) RebuildTick(25f);
         AiTick();   // de AI-bouwer doet zijn zetten (PlanetBuilder.AI.cs)
         // overal, ook tijdens het lopen en in de cameramodus: P zet de tijd stil, O ander weer (Shift+O het vorige)
@@ -917,13 +919,13 @@ public partial class PlanetBuilder : MonoBehaviour
     {
         Ui.Begin(); float W = Ui.W, H = Ui.H;
         if (loading != null) { LoadingGui(W, H); Ui.End(); return; }
+        if (home) { HomeGui(W, H); Ui.End(); return; }   // het startscherm (StartScreen.cs)
         if (Time.time - beautyT > 3f) { int was = beauty != null ? beauty.score : -1; beauty = Beauty.Compute(); beautyT = Time.time; if (was >= 0 && beauty.score > was) Sounds.Fx("coin"); }   // muntje als de schoonheid stijgt
         fpsN++; if (Time.time - fpsT > 0.5f) { fps = fpsN / (Time.time - fpsT); fpsN = 0; fpsT = Time.time; }
         if (flying) { if (!photoFrame) FlyGui(W, H); Ui.End(); return; }   // cameramodus: geen interface
 
         if (!inSpace) CentreArrow(W, H);   // in de ruimte staat je stad als marker op de bol
         if (!walking) { TopLeft(); Incidents(); } TopRight(W);   // lopen: zo min mogelijk in beeld, de stad zelf is het beeld
-        if (!walking) ModesGui(W, H);   // concept: de spelmodus links, ook in de ruimte (PlanetBuilder.Modes.cs)
         if (walking) WalkHint(W, H);
         else if (inSpace) SpaceGui(W, H);   // in de ruimte: de planeet als kaart, geen bouwbalk
         else { Hotbar(W, H); Tools(H); if (!catOpen && !cursorMode) Options(W, H); }
@@ -933,15 +935,16 @@ public partial class PlanetBuilder : MonoBehaviour
         if (wheelOpen && !walking && !Modal) Wheel();
         if (TerrTool && hasHover && !walking && !Modal) TerrLabel();
         else if (prevOk && hasHover && ShowPreview && !walking && !Modal && !Ui.MouseOverUI) PreviewLabel();
-        if (LevelTool && !walking && !inSpace && !cursorMode) LayerPick(W, H);
+        if (LevelTool && !walking && !inSpace && !cursorMode && !menuOpen) LayerPick(W, H);   // met het menu open (rechts) geen laagkiezer
         if (Time.time < msgT) Ui.Toast(msg, Mathf.Clamp01((msgT - Time.time) / 0.5f), catOpen ? CatBottom + CatHeight(W) + 12f : walking ? G + 52f : inSpace ? 12f + 56f + 10f : DockTop);
         if (scoreOpen) ScorePanel(W, H);
         if (!Modal) CursorGui(W, H);   // Aanwijzen: de knop, wat je aanwijst en de vensters (PlanetBuilder.Cursor.cs)
         if (!walking) AiGui(W, H);   // AI-bouwer: het paneel bovenin en de markering (PlanetBuilder.AI.cs)
-        if (modesOpen && !walking) ModesArc(W, H);   // concept: de spelmodi op een boog (PlanetBuilder.Modes.cs)
-        if (menuOpen) Menu(W, H);
+        if (menuOpen && !inSpace) HexMenu(W, H, true);   // het raatmenu (PlanetBuilder.HexMenu.cs); in de ruimte staat het altijd in beeld
+        if (!menuOpen && !(inSpace && !walking)) HexMenuClosed();
         if (helpOpen) Help(W, H);
         if (welcome) Welcome(W, H);
+        HomeDialogs(W, H);   // opslaan als, eerst opslaan? (StartScreen.cs)
         Ui.End();
     }
 
@@ -958,9 +961,13 @@ public partial class PlanetBuilder : MonoBehaviour
     void TopLeft()
     {
         PlanetCity.LatLon(walking ? walker.transform.position : focus, out float lat, out float lon);   // waar je bent: breedte en lengte (evenaar rood-wit op de grond)
-        string sub = "Stad " + PlanetCity.Slot + (beauty != null ? " · " + beauty.blocks + " blokken" : "") + " · " + Mathf.Abs(lat).ToString("0") + "° " + (lat >= 0f ? "N" : "Z") + " " + Mathf.Abs(lon).ToString("0") + "° " + (lon >= 0f ? "O" : "W");
+        string sub = CityName + (beauty != null ? " · " + beauty.blocks + " blokken" : "") + " · " + Mathf.Abs(lat).ToString("0") + "° " + (lat >= 0f ? "N" : "Z") + " " + Mathf.Abs(lon).ToString("0") + "° " + (lon >= 0f ? "O" : "W");
         float tw = Mathf.Max(Ui.Width("RAATSTAD", Ui.T.Title), Ui.Width(sub, Ui.T.Dim, 11)), w = 40f + tw + 16f + 62f;
-        var r = new Rect(G, 12f, w, 48f); Ui.Panel(r, false, 12f);
+        // links ervan het menu (hamburger): op de planeet opent het raatmenu, in de ruimte gaat het in en uit beeld
+        var mb = new Rect(G, 12f, 48f, 48f); bool mOn = inSpace ? !spaceMenuOff : menuOpen;
+        if (Ui.Button(mb, null, mOn, "menu", false, 12f)) { if (inSpace) spaceMenuOff = !spaceMenuOff; else { menuOpen = !menuOpen; todOpen = false; } }
+        Ui.Tip(mb, "Menu", "Opslaan, gereedschap en instellingen", "M");
+        var r = new Rect(G + 56f, 12f, w, 48f); Ui.Panel(r, false, 12f);
         Ui.Tex(new Rect(r.x + 11f, r.y + 11.5f, 22f, 25f), Ui.Hex(Ui.Signal, Ui.Signal, 0f, true));
         Ui.Label(new Rect(r.x + 41f, r.y + 4f, tw, 24f), "RAATSTAD", Ui.T.Title);
         Ui.Label(new Rect(r.x + 41f, r.y + 27f, tw + 4f, 15f), sub, Ui.T.Dim, null, null, 11);
@@ -985,8 +992,7 @@ public partial class PlanetBuilder : MonoBehaviour
     void TopRight(float W)
     {
         float x = W - G, y = 12f, h = 36f;
-        float mw = Ui.Width("Menu", Ui.T.Bold) + 28f; if (Ui.Button(new Rect(x - mw, y, mw, h), "Menu", menuOpen)) { menuOpen = !menuOpen; todOpen = false; }
-        Ui.Tip(new Rect(x - mw, y, mw, h), "Menu", "Steden, gereedschap en instellingen", "M"); x -= mw + 8f;
+        // het menu zit linksboven (hamburger naast de stadsnaam, TopLeft)
         if (Ui.Button(new Rect(x - h, y, h, h), null, false, Babble.Muted ? "stil" : "geluid")) ToggleSound();
         Ui.Tip(new Rect(x - h, y, h, h), Babble.Muted ? "Geluid aan" : "Geluid uit"); x -= h + 8f;
         string clock = DayNight.Clock; float cw = Ui.Width(clock, Ui.T.Bold) + 18f + 7f + 26f;
@@ -1311,15 +1317,11 @@ public partial class PlanetBuilder : MonoBehaviour
         Ui.Tex(new Rect(x, y + 3f, 20f, 23f), Ui.Hex(Ui.Signal, Ui.Signal, 0f, true)); Ui.Label(new Rect(x + 30f, y, 200f, 28f), "MENU", Ui.T.Title);
         if (Ui.RoundButton(new Rect(r.xMax - 18f - 30f, y - 1f, 30f, 30f), "sluit")) menuOpen = false; y += 40f;
         int blocks = beauty != null ? beauty.blocks : PlanetCity.Cells.Count;
-        Ui.CardButton(new Rect(x, y, iw, 50f), "Stad " + PlanetCity.Slot, blocks + " blokken · stad nu open", true, "stad"); y += 56f;
-        Ui.Label(new Rect(x, y, iw, 18f), "Je stad wordt vanzelf bewaard. Een andere stad openen verandert er niets aan.", Ui.T.Dim, null, null, 11); y += 28f;
+        Ui.CardButton(new Rect(x, y, iw, 50f), CityName, blocks + " blokken · stad nu open", true, "stad"); y += 56f;
+        Ui.Label(new Rect(x, y, iw, 18f), "Je stad wordt elke 3 minuten vanzelf bewaard, en als je het spel sluit.", Ui.T.Dim, null, null, 11); y += 28f;
         System.Action<string> section = s => { Ui.Label(new Rect(x, y, iw, 16f), s, Ui.T.Tiny); y += 20f; };
         section("STEDEN");
-        for (int k = 1; k <= 3; k++)
-        {
-            var c = new Rect(x + ((k - 1) % 2) * (half + 8f), y + ((k - 1) / 2) * 56f, half, 48f);
-            if (Ui.CardButton(c, "Stad " + k, k == PlanetCity.Slot ? "nu open" : PlanetCity.SlotExists(k) ? "bewaard" : "nog leeg", false, "stad") && k != PlanetCity.Slot) { SwitchSlot(k); menuOpen = false; }
-        }
+        HomeMenuCards(x, y, iw, half);   // opslaan, opslaan als, naar het startscherm (StartScreen.cs)
         if (Ui.CardButton(new Rect(x + half + 8f, y + 56f, half, 48f), "Lege bouwgrond", "Zelf vanaf nul (Ctrl+Z terug)", false, "leeg")) { Empty(); menuOpen = false; }
         y += 2 * 56f + 8f;
         section("GEREEDSCHAP");
@@ -1462,7 +1464,7 @@ public partial class PlanetBuilder : MonoBehaviour
             "•  <b>Lopen</b>: knop rechtsonder (L): loop door je eigen straten.\n" +
             "•  <b>Leven</b>: auto's rijden, mensen wandelen en praten over je stad.", Ui.T.Help); y += 118f;
         int blocks = beauty != null ? beauty.blocks : PlanetCity.Cells.Count;
-        if (Ui.CardButton(new Rect(x, y, iw, 54f), "Verder bouwen", "Stad " + PlanetCity.Slot + " · " + blocks + " blokken", true, "huis")) welcome = false; y += 62f;
+        if (Ui.CardButton(new Rect(x, y, iw, 54f), "Verder bouwen", CityName + " · " + blocks + " blokken", true, "huis")) welcome = false; y += 62f;
         float half = (iw - 8f) * 0.5f;
         if (Ui.CardButton(new Rect(x, y, half, 48f), "Startstad", null, false, "stad")) { StartTown(); welcome = false; }
         if (Ui.CardButton(new Rect(x + half + 8f, y, half, 48f), "Lege bouwgrond", null, false, "leeg")) { Empty(); welcome = false; }

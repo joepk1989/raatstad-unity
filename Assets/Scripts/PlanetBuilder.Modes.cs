@@ -18,7 +18,7 @@ public partial class PlanetBuilder
         switch (k)
         {
             case 0: return new[] {
-                new Sub { name = "Verder bouwen", sub = "Stad " + PlanetCity.Slot + " · " + (beauty != null ? beauty.blocks : PlanetCity.Cells.Count) + " blokken", act = () => { if (inSpace) distGoal = LandDist; Say("Verder bouwen"); } },
+                new Sub { name = "Verder bouwen", sub = CityName + " · " + (beauty != null ? beauty.blocks : PlanetCity.Cells.Count) + " blokken", act = () => { if (inSpace) distGoal = LandDist; Say("Verder bouwen"); } },
                 new Sub { name = "Startstad", sub = "Opnieuw beginnen rond een vlag", act = () => StartTown() },
                 new Sub { name = "Lege planeet", sub = "Alleen terrein, niets gebouwd", act = () => Empty() },
                 new Sub { name = "Hele planeet vol", sub = "Dorpen en steden over de hele bol", act = () => FillPlanet() },
