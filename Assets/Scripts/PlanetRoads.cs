@@ -124,7 +124,7 @@ public static partial class PlanetCity
         {
             var ch = chains[c]; string key = (closed[c] ? "r:" : "c:") + string.Join(",", ch); want.Add(key);
             long sig = 1469598103934665603L;
-            foreach (int i in ch) { sig = Mix(sig, i); sig = Mix(sig, Cm(G(i))); sig = Mix(sig, StyleOf(i)); sig = Mix(sig, Cm(MinCorner(i))); sig = Mix(sig, Under.ContainsKey(i) ? 1 : 0); sig = Mix(sig, nbs[i].Count); sig = Mix(sig, crossEnds.Contains(i) ? 1 : 0); }
+            foreach (int i in ch) { sig = Mix(sig, i); sig = Mix(sig, Cm(G(i))); sig = Mix(sig, StyleOf(i)); sig = Mix(sig, Cm(MinCorner(i))); sig = Mix(sig, Under.ContainsKey(i) ? 1 : 0); sig = Mix(sig, nbs[i].Count); sig = Mix(sig, crossEnds.Contains(i) ? 1 : 0); sig = Mix(sig, Rot.Contains(i) ? 1 : 0); }   // ook als een kruispunt later een rotonde wordt: dan de armen opnieuw (ze houden op bij de buitenrand)
             for (int k = 0; k + 1 < ch.Count; k++) sig = Mix(sig, Flow(ch[k], ch[k + 1]));
             sig = Mix(sig, edgeMate.TryGetValue(ch[0], out int m0) ? m0 : -1); sig = Mix(sig, edgeMate.TryGetValue(ch[ch.Count - 1], out int m1) ? m1 : -1);
             sig = Mix(sig, Lights ? 1 : 0); if (ch.Count >= 2) { sig = Mix(sig, RoadPrio(ch[0], ch[1])); sig = Mix(sig, RoadPrio(ch[ch.Count - 1], ch[ch.Count - 2])); foreach (int j in nbs[ch[0]]) sig = Mix(sig, RoadPrio(ch[0], j)); foreach (int j in nbs[ch[ch.Count - 1]]) sig = Mix(sig, RoadPrio(ch[ch.Count - 1], j)); }
