@@ -31,7 +31,7 @@ public static partial class PlanetCity
     public static readonly Dictionary<int, float> Terr = new Dictionary<int, float>();
     public const float TerrTop = 90f, TerrLow = -12f;   // bergen tot 90 m (rots en sneeuw, PlanetNature.cs); afgraven kan tot 12 m onder het gewone maaiveld
     public static float G(int i) => LakeG(i, Terr.TryGetValue(i, out var h) ? h : 0f);   // een meer ligt vanzelf onder het zeeniveau (PlanetNature.cs)
-    public static bool Plateau(int i) => Cells.TryGetValue(i, out var l) && l.Count > 0 && !IsWalk(i) && !OpenGround(l);   // bomen, meren en grachten liggen in het terrein (PlanetNature.cs)
+    public static bool Plateau(int i) => Cells.TryGetValue(i, out var l) && l.Count > 0 && !IsWalk(i) && !OpenGround(l) && !PathHalf(i);   // bomen, meren en grachten liggen in het terrein (PlanetNature.cs)
     public static bool SetTerr(int i, float h)   // geeft true als de hoogte echt veranderde
     {
         h = Mathf.Clamp(Mathf.Round(h * 100f) / 100f, TerrLow, TerrTop); if (Mathf.Abs(h - G(i)) < 0.005f) return false;
@@ -129,11 +129,34 @@ public static partial class PlanetCity
     // in een kom. Wegen op een niveau, bruggen en geulen regelen hun hoekpunten zelf (GroundField, Carve).
     static bool RoadCorner(int i, int a, int b, out float h)
     {
+        if (SkewPathCorner(i, a, b, out h) || SkewPathCorner(a, i, b, out h) || SkewPathCorner(b, i, a, out h)) return true;
         h = 0f; bool wi = PlainWalk(i), wa = PlainWalk(a), wb = PlainWalk(b); if ((wi ? 1 : 0) + (wa ? 1 : 0) + (wb ? 1 : 0) < 2) return false;
         bool ia = wi && wa && Partners(i).Contains(a), ib = wi && wb && Partners(i).Contains(b), ab = wa && wb && Partners(a).Contains(b);
         float s = 0f; int n = 0;
         if (ia || ib) { s += G(i); n++; } if (ia || ab) { s += G(a); n++; } if (ib || ab) { s += G(b); n++; }
-        if (n < 2) return false; h = s / n; return true;
+        if (n < 2) return false; h = s / n;
+        // alleen paden: het terrein ernaast blijft liggen. Langs een helling gaf de weghoogte een vlakke berm tot op het hoekpunt (9 m
+        // opzij) en daarna een steile wand; nu het gewone vlak door de drie vakken, nooit hoger dan het pad (anders zakt het erin)
+        if (!IsRoad(i) && !IsRoad(a) && !IsRoad(b)) h = Mathf.Min(h, (G(i) + G(a) + G(b)) / 3f);
+        return true;
+    }
+    // Een leeg half vak naast een schuin pad (alleen paden eroverheen, niets op de vrije helft) is geen plaat: het terrein loopt er
+    // gewoon door. Als plateau werd een helling onder een schuin pad een rij vlakke platen.
+    static bool PathHalf(int h)
+    {
+        if (!Cells.TryGetValue(h, out var l) || l.Count != 1 || l[0] != "wegdeel") return false; bool any = false;
+        foreach (int a in Planet.Cells[h].nb) foreach (int b in Partners(a))
+            if (Linked(a, b) && !IsNeighbour(a, b) && Between(a, b).Contains(h)) { if (!IsPath(a) || !IsPath(b)) return false; any = true; }
+        return any;
+    }
+    // Het hoekpunt van padvak x tussen de twee halve vakken van een schuin pad (x naar y, twee stappen) ligt op de lijn van het pad,
+    // een derde van x naar y: daar op padhoogte, anders zweeft het pad of zakt het weg tussen de vakken
+    static bool SkewPathCorner(int x, int p, int q, out float h)
+    {
+        h = 0f; if (!IsPath(x) || !PlainWalk(x) || !PathHalf(p) || !PathHalf(q)) return false;
+        foreach (int y in Partners(x))
+            if (!IsNeighbour(x, y) && IsPath(y) && PlainWalk(y)) { var bt = Between(x, y); if (bt.Contains(p) && bt.Contains(q)) { h = G(x) + (G(y) - G(x)) / 3f; return true; } }
+        return false;
     }
     static bool PlainWalk(int x) => IsWalk(x) && !Underpass(x) && !levelled.Contains(x) && !carved.Contains(x) && !preCarve.ContainsKey(x) && !Quay(x);
     public static float OwnCorner(int i, int k) => FlatGround(i) ? G(i) : fieldCells.Contains(i) && NearSeg(Planet.Cells[i].corners[k]) ? GroundField(Planet.Cells[i].corners[k], CornerBase(i, k)) : CornerH(i, k);   // zoals het vak zelf getekend wordt: een bebouwd vak plat (met een sokkel tot op het talud)

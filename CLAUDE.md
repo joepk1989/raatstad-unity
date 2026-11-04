@@ -78,7 +78,7 @@ Erbij gekomen op 1 november 2026 (dorpen, `PlanetVillages.cs`):
 
 Erbij gekomen op 2 november 2026 (terrein):
 - Geen sprongetje van 5 cm meer waar een verdiepte weg het terrein raakt (zoals de webversie): een weg graaft pas in als zijn wegdek (5 cm onder de weg) onder het terrein ligt, een kop ligt ook 5 cm onder het wegdek; `LineGround` snijdt op de voet van het talud met het terrein als vlak over de driehoek.
-- Een gewone weg op een helling ligt niet meer in een kom: een hoekpunt tussen twee verbonden weg- of padvakken ligt op weghoogte (`RoadCorner` in `CornerBase0`) in plaats van op het laagste van de drie vakken.
+- Een gewone weg op een helling ligt niet meer in een kom: een hoekpunt tussen twee verbonden weg- of padvakken ligt op weghoogte (`RoadCorner` in `CornerBase0`) in plaats van op het laagste van de drie vakken. Een pad (geen weg) laat de helling ernaast liggen: zo'n hoekpunt ligt op het vlak door de drie vakken, nooit hoger dan het pad. Langs een schuin pad (90°) zijn de lege halve vakken geen plaat meer (`PathHalf`) en liggen de twee hoekpunten op de lijn van het pad op padhoogte (`SkewPathCorner`).
 - Gereedschap Terrein toont de hoekpunten rond de muis (`PlanetBuilder.ShowVerts`): wit een hoekpunt, oranje zelf verzet met Rand, blauw het midden van een vak.
 - Geen bruine driehoek meer naast de stoep bij een schuine onderdoorgang: op de bol liggen twee stukken van een rechte weg nooit precies op één lijn, een punt op de wegrand naast een hart viel net buiten beide; een punt hoort nu tot 25 cm voorbij het eind nog bij een stuk (`EndSlack` in `GroundField`).
 
