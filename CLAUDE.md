@@ -32,6 +32,22 @@ De wereld is een bol (planeet). Alles is gebaseerd op hexagons en driehoeken.
 - Commit na elke werkende stap met een duidelijke commitboodschap.
 - Geen code in `Library/`, `Temp/`, `Logs/` of `UserSettings/`.
 
+## Waar staat wat in PlanetCity
+`PlanetCity` is één statische partial-klasse, verdeeld over bestanden per onderwerp. Werk liefst in het bestand van je onderwerp, dan botsen sessies minder.
+- `PlanetCity.cs`: de kern: `Cells`, `ResetAll`, `Place`, `PlaceLine`, `Clear`/`ClearFrom`, `Touch`, `ClearAll`, `Slot`, `StartTownVersion`, `CanPlace`, de klasse `Wieken`.
+- `PlanetCity.Terrain.cs`: `Terr`, `G`, `SetTerr`, hoekpunten (`CornerH`, `CornerBase0`, `CornerOfs`, `NudgeEdge`), `LineGround`, `fieldCells`, de hoogtefunctie (`Seg`, `Cap`, `FieldK`, `GroundField`, `UseNear`).
+- `PlanetCity.Cuts.cs`: geulen en dijken (`Cut`, `Carve`, `Fill`, `preCarve`, `preLevel`), de precieze bodem erlangs (`ExactGround`, `CutsNear`) en `CollectCuts`.
+- `PlanetCity.Levels.cs`: niveaus (`WalkLevel`, `LevelTarget`, `SetLevel`, `DipUnder`, `CrossingPreview`), `CarvePaths`, `UpdateCuts`, `FloorH`, `SurfaceH`.
+- `PlanetCity.Graph.cs`: de wegengraaf (`Links`, `Partners`, `Under`, `Low`, `Style`, `OneWay`, `Bike`, `TunnelLinks`, `Drag*`), halve vakken (`wegdeel`), `LinePlan`.
+- `PlanetCity.Save.cs`: `Save`, `Load`, `Snapshot`, `Restore` (ook voor undo), `PSaveData`.
+- `PlanetCity.Sample.cs`: het voorbeeldstadje `Sample`.
+- `PlanetCity.Ground.cs`: `Init`, raster, evenaar, `LatLon`, `BuildGround` (met `groundCache`), `TerrColor`, de poolpaal.
+- `PlanetCity.Shapes.cs`: `Frame` en de bouwstenen voor meshes (muren, daken, kegels, molenwieken, stroken).
+- `PlanetCity.RoadDraw.cs`: wegen tekenen (`Dims`, stoeprand, stoep, middenberm, palen, `RoadNode`).
+- `PlanetCity.Bridges.cs`: koker (`TubeSeg`), `TerrainAt`, `BridgeBlock`, `Portal`, schuine kruisingen (`Crossing`), `UnderMesh`.
+- `PlanetCity.Draw.cs`: `Lake`, `ColorOf`, `Rebuild`/`RebuildSome`/`RebuildSteps`, `GhostMesh`, `BuildCell`, `BuildChunk`.
+- Verder: `PlanetCity.Scorch.cs`, `PlanetTunnels.cs`, `PlanetRoads.cs`, `PlanetPaths.cs`, `PlanetNature.cs`, `PlanetRoundabout.cs` en andere `Planet*.cs` met `partial class PlanetCity`.
+
 ## Stand van zaken (25 oktober 2026)
 Al aanwezig in `Assets/Scripts/`: de planeet (`Planet`, `PlanetBuilder`, `PlanetCity`, `PlanetLife`, `PlanetWalker`), het platte raster (`Hex`, `City`, `Builder`), wegen (`RoadMesher`, `RoadRules`), verkeer (`Cars`, `Traffic`), mensen (`People`, `Chatter`, `Babble`), weer en dag/nacht, geluid (`Ambience`) en interface (`Ui`, `Beauty`).
 
