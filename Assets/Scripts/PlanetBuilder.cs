@@ -234,6 +234,7 @@ public partial class PlanetBuilder : MonoBehaviour
     {
         if (loading != null) { LoadCam(); return; }   // de planeet wordt gevuld: geen bediening, de camera draait om de bol
         if (rebuilding) RebuildTick(25f);
+        AiTick();   // de AI-bouwer doet zijn zetten (PlanetBuilder.AI.cs)
         // overal, ook tijdens het lopen en in de cameramodus: P zet de tijd stil, O ander weer (Shift+O het vorige)
         if (Inp.Down(K.P)) { DayNight.ToggleFreeze(); Say(DayNight.Speed > 0f ? "De tijd loopt weer (P)" : "Pauze: de tijd staat stil (P)"); }
         if (Inp.Down(K.O) && Weather.I != null) Say("Weer: " + Weather.I.Cycle(Inp.Held(K.Shift) ? -1 : 1) + " (O, Shift+O terug)");
@@ -248,6 +249,7 @@ public partial class PlanetBuilder : MonoBehaviour
         if (Modal) { outline.enabled = false; ShowBrush(-1); ShowGhost(-1); ShowVerts(-1); return; }   // een venster staat open: niets in de stad
         if (SpaceUpdate()) return;   // in de ruimte: navigeren, niet bouwen (PlanetBuilder.Space.cs)
         if (CursorUpdate()) return;   // Aanwijzen (V): opties en oproepen in plaats van bouwen (PlanetBuilder.Cursor.cs)
+        if (AiUpdate()) return;   // AI-bouwer: het startvak kiezen (PlanetBuilder.AI.cs)
 
         // Tab vasthouden: het keuzewiel bij de muis; kant op bewegen en loslaten kiest. Kort tikken: de lade van de categorie open of dicht
         if (Inp.Down(K.Tab)) { wheelOpen = true; wheelAt = Ui.Mouse; wheelT = Time.unscaledTime; }
@@ -935,6 +937,7 @@ public partial class PlanetBuilder : MonoBehaviour
         if (Time.time < msgT) Ui.Toast(msg, Mathf.Clamp01((msgT - Time.time) / 0.5f), catOpen ? CatBottom + CatHeight(W) + 12f : walking ? G + 52f : inSpace ? 12f + 56f + 10f : DockTop);
         if (scoreOpen) ScorePanel(W, H);
         if (!Modal) CursorGui(W, H);   // Aanwijzen: de knop, wat je aanwijst en de vensters (PlanetBuilder.Cursor.cs)
+        if (!walking) AiGui(W, H);   // AI-bouwer: het paneel bovenin en de markering (PlanetBuilder.AI.cs)
         if (modesOpen && !walking) ModesArc(W, H);   // concept: de spelmodi op een boog (PlanetBuilder.Modes.cs)
         if (menuOpen) Menu(W, H);
         if (helpOpen) Help(W, H);
@@ -1303,7 +1306,7 @@ public partial class PlanetBuilder : MonoBehaviour
     void Menu(float W, float H)
     {
         Ui.DimBack(0.25f);
-        float w = 440f, h = 868f; var r = new Rect((W - w) * 0.5f, Mathf.Max(16f, (H - h) * 0.5f), w, h); Ui.Panel(r, true, 16f);
+        float w = 440f, h = 924f; var r = new Rect((W - w) * 0.5f, Mathf.Max(16f, (H - h) * 0.5f), w, h); Ui.Panel(r, true, 16f);
         float x = r.x + 18f, iw = w - 36f, y = r.y + 14f, half = (iw - 8f) * 0.5f;
         Ui.Tex(new Rect(x, y + 3f, 20f, 23f), Ui.Hex(Ui.Signal, Ui.Signal, 0f, true)); Ui.Label(new Rect(x + 30f, y, 200f, 28f), "MENU", Ui.T.Title);
         if (Ui.RoundButton(new Rect(r.xMax - 18f - 30f, y - 1f, 30f, 30f), "sluit")) menuOpen = false; y += 40f;
@@ -1326,9 +1329,10 @@ public partial class PlanetBuilder : MonoBehaviour
         if (Ui.CardButton(new Rect(x + half + 8f, y + 56f, half, 48f), "Startstad", "Opnieuw beginnen rond een vlag", false, "stad")) { StartTown(); menuOpen = false; }
         if (Ui.CardButton(new Rect(x, y + 112f, half, 48f), "Hele planeet vol", "Stadjes overal, platteland ertussen (Ctrl+Z terug)", false, "stad")) { FillPlanet(); menuOpen = false; }
         if (Ui.CardButton(new Rect(x + half + 8f, y + 112f, half, 48f), "Meteoor", "Inslag op het midden van het beeld", false, "onweer")) { Meteor(); menuOpen = false; }
-        Ui.Label(new Rect(x + 2f, y + 168f, iw, 16f), "METEOOR", Ui.T.Tiny);
-        int mz = Ui.Seg(new Rect(x, y + 186f, iw, 30f), new[] { "Klein · 1 vak", "Middel · 7", "Groot · 19" }, meteorSize); if (mz >= 0) meteorSize = mz;
-        y += 4 * 56f + 8f;
+        AiMenuCards(x, y + 168f, half);   // AI-bouwer: starten, pauzeren, stoppen en het tempo (PlanetBuilder.AI.cs)
+        Ui.Label(new Rect(x + 2f, y + 224f, iw, 16f), "METEOOR", Ui.T.Tiny);
+        int mz = Ui.Seg(new Rect(x, y + 242f, iw, 30f), new[] { "Klein · 1 vak", "Middel · 7", "Groot · 19" }, meteorSize); if (mz >= 0) meteorSize = mz;
+        y += 5 * 56f + 8f;
         section("LEVEN EN INSTELLINGEN");
         if (Ui.CardButton(new Rect(x, y, half, 48f), "Mensen", PlanetLife.PeopleOn ? "aan" : "uit", PlanetLife.PeopleOn, "mensen")) PlanetLife.PeopleOn = !PlanetLife.PeopleOn;
         if (Ui.CardButton(new Rect(x + half + 8f, y, half, 48f), "Auto's", PlanetLife.CarsOn ? "aan" : "uit", PlanetLife.CarsOn, "auto")) PlanetLife.CarsOn = !PlanetLife.CarsOn;
