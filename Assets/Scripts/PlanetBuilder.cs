@@ -1455,24 +1455,28 @@ public partial class PlanetBuilder : MonoBehaviour
     // ---- welkom: bij het starten (uit te zetten)
     void Welcome(float W, float H)
     {
+        // na een nieuwe stad: alleen een korte uitleg en Aan de slag (wat voor wereld het wordt, kies je al op het startscherm)
         Ui.DimBack(0.3f);
-        float w = 440f, h = 420f; var r = new Rect((W - w) * 0.5f, (H - h) * 0.5f, w, h); Ui.Panel(r, true, 16f);
+        float w = 460f, h = 372f; var r = new Rect((W - w) * 0.5f, (H - h) * 0.5f, w, h); Ui.Panel(r, true, 16f);
         float x = r.x + 20f, iw = w - 40f, y = r.y + 18f;
-        Ui.Tex(new Rect(x, y + 2f, 30f, 34f), Ui.Hex(Ui.Signal, Ui.Signal, 0f, true)); Ui.Label(new Rect(x + 42f, y - 2f, 300f, 30f), "RAATSTAD", Ui.T.Title, null, null, 26);
-        Ui.Label(new Rect(x + 42f, y + 24f, iw - 42f, 16f), "Bouw een stad van zeshoeken op een planeet en wandel erdoorheen", Ui.T.Dim, null, null, 11); y += 56f;
-        Ui.Label(new Rect(x, y, iw, 112f),
-            "•  <b>Bouwen</b>: kies onderin een categorie en tik op een vak. Huizen, winkels, parken en wegen sluiten vanzelf op elkaar aan.\n" +
-            "•  <b>Lopen</b>: knop rechtsonder (L): loop door je eigen straten.\n" +
-            "•  <b>Leven</b>: auto's rijden, mensen wandelen en praten over je stad.", Ui.T.Help); y += 118f;
-        int blocks = beauty != null ? beauty.blocks : PlanetCity.Cells.Count;
-        if (Ui.CardButton(new Rect(x, y, iw, 54f), "Verder bouwen", CityName + " · " + blocks + " blokken", true, "huis")) welcome = false; y += 62f;
-        float half = (iw - 8f) * 0.5f;
-        if (Ui.CardButton(new Rect(x, y, half, 48f), "Startstad", null, false, "stad")) { StartTown(); welcome = false; }
-        if (Ui.CardButton(new Rect(x + half + 8f, y, half, 48f), "Lege bouwgrond", null, false, "leeg")) { Empty(); welcome = false; }
-        y += 60f;
+        Ui.Tex(new Rect(x, y + 2f, 30f, 34f), Ui.Hex(Ui.Signal, Ui.Signal, 0f, true)); Ui.Label(new Rect(x + 42f, y - 2f, iw - 42f, 30f), "WELKOM IN " + CityName.ToUpper(), Ui.T.Title, null, null, 24);
+        Ui.Label(new Rect(x + 42f, y + 24f, iw - 42f, 16f), "Zo bouw je je stad van zeshoeken", Ui.T.Dim, null, null, 11); y += 58f;
+        string[] icon = { "stad", "lopen", "menu", "pijl" };
+        string[] head = { "Bouwen", "Lopen", "Menu", "Aanwijzen" };
+        string[] text = { "Kies onderin een categorie (1–6, of houd Tab vast) en klik op een vak", "Rechtsonder of L: loop door je eigen straten", "Linksboven of M: opslaan, gereedschap en instellingen", "V: klik een vak aan voor opties, rechts klikken roept iets op" };
+        for (int k = 0; k < 4; k++)
+        {
+            var hx = new Rect(x, y + 2f, 36f, 32.4f); Ui.Tex(hx, Ui.Hex(new Color(0.07f, 0.09f, 0.12f, 0.92f), Ui.Signal, 1.4f));
+            Ui.Tex(new Rect(hx.center.x - 9f, hx.center.y - 9f, 18f, 18f), Ui.Icon(icon[k]), Ui.Ink);
+            Ui.Label(new Rect(x + 50f, y, iw - 50f, 18f), head[k], Ui.T.Bold, null, null, 13);
+            Ui.Label(new Rect(x + 50f, y + 18f, iw - 50f, 18f), text[k], Ui.T.Dim, null, null, 11);
+            y += 46f;
+        }
+        y += 6f;
+        if (Ui.Button(new Rect(x, y, iw, 42f), "Aan de slag", true)) welcome = false; y += 54f;
         bool off = PlayerPrefs.GetInt("raatstad-welkom-uit", 0) == 1; var cb = new Rect(x, y, 16f, 16f);
-        bool flip = Ui.Button(cb, null, off, off ? "sluit" : null, false, 4f); Ui.Label(new Rect(x + 24f, y - 2f, iw - 24f, 20f), "Niet meer tonen bij het starten", Ui.T.Dim);
-        flip |= GUI.Button(new Rect(x + 20f, y - 2f, 220f, 20f), GUIContent.none, GUIStyle.none);
+        bool flip = Ui.Button(cb, null, off, off ? "sluit" : null, false, 4f); Ui.Label(new Rect(x + 24f, y - 2f, iw - 24f, 20f), "Niet meer tonen bij een nieuwe stad", Ui.T.Dim);
+        flip |= GUI.Button(new Rect(x + 20f, y - 2f, 240f, 20f), GUIContent.none, GUIStyle.none);
         if (flip) PlayerPrefs.SetInt("raatstad-welkom-uit", off ? 0 : 1);
         if (Ui.DimClick()) welcome = false;
     }

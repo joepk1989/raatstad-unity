@@ -46,7 +46,7 @@ public partial class PlanetBuilder
             }
             return true;
         }
-        if (dialog != 0) { if (Inp.Down(K.Esc)) dialog = 0; return true; }
+        if (dialog != 0) { if (Inp.Down(K.Esc)) { dialog = 0; homeToNew = false; } return true; }
         if (loading != null) return false;
         if (thumbAt > 0f && Time.time > thumbAt && CityFiles.Current != null) { thumbAt = -1f; var t = Shot(); CityFiles.SaveThumb(CityFiles.Current, t); Destroy(t); }
         if (Time.time - autoT > AutoSaveEvery && !flying) { autoT = Time.time; if (SaveCity(true)) Say("Stad vanzelf opgeslagen"); }
@@ -83,13 +83,15 @@ public partial class PlanetBuilder
     }
 
     // ---------- naar het startscherm en terug ----------
+    bool homeToNew;   // Nieuwe wereld (raatmenu): na het opslaan meteen Nieuwe stad op het startscherm
     void GoHome()
     {
         dialog = 0; menuOpen = helpOpen = scoreOpen = welcome = todOpen = catOpen = wheelOpen = modesOpen = false; eraser = false;
         if (aiOn) AiStop();
         if (walking) ToggleWalk();
         outline.enabled = false; ShowBrush(-1); ShowGhost(-1); ShowVerts(-1); ShowPlan(null); hasHover = false;
-        home = true; page = Page.Main; CityFiles.Scan(); homeT = Time.unscaledTime;
+        home = true; page = homeToNew ? Page.New : Page.Main; CityFiles.Scan(); homeT = Time.unscaledTime;
+        if (homeToNew) nameEdit = CityFiles.FreeName("Nieuwe stad"); homeToNew = false;   // via Nieuwe wereld: meteen het venster Nieuwe stad
     }
 
     void OpenCity(CityInfo c) { if (!busy) StartCoroutine(OpenRoutine(c, -1)); }
@@ -318,12 +320,12 @@ public partial class PlanetBuilder
         }
         else
         {
-            Ui.Label(new Rect(x, y, iw, 28f), "NAAR HET STARTSCHERM", Ui.T.Title); y += 38f;
+            Ui.Label(new Rect(x, y, iw, 28f), homeToNew ? "NIEUWE WERELD" : "NAAR HET STARTSCHERM", Ui.T.Title); y += 38f;
             Ui.Label(new Rect(x, y, iw, 36f), "Wil je " + (CityFiles.Current != null ? CityFiles.Current.name : "je stad") + " eerst opslaan?", Ui.T.Text); y += 44f;
-            if (Ui.CardButton(new Rect(x, y, iw, 48f), "Opslaan en naar het startscherm", null, true, "huis")) { SaveCity(false); GoHome(); }
+            if (Ui.CardButton(new Rect(x, y, iw, 48f), homeToNew ? "Opslaan en een nieuwe wereld" : "Opslaan en naar het startscherm", null, true, "huis")) { SaveCity(false); GoHome(); }
             y += 56f; float half = (iw - 8f) * 0.5f;
             if (Ui.Button(new Rect(x, y, half, 40f), "Niet opslaan")) GoHome();
-            if (Ui.Button(new Rect(x + half + 8f, y, half, 40f), "Annuleren")) dialog = 0;
+            if (Ui.Button(new Rect(x + half + 8f, y, half, 40f), "Annuleren")) { dialog = 0; homeToNew = false; }
         }
     }
 

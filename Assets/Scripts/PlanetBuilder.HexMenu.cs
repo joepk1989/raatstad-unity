@@ -19,6 +19,7 @@ public partial class PlanetBuilder
         var l = new List<MItem>();
         if (space) l.Add(new MItem { name = "Landen", sub = "Terug naar de grond om te bouwen", icon = "huis", act = () => { distGoal = LandDist; Say("Landen"); } });
         else l.Add(new MItem { name = "Verder spelen", sub = CityName + " · " + blocks + " blokken", icon = "huis", act = () => menuOpen = false });
+        l.Add(new MItem { name = "Nieuwe wereld", sub = "Startstad, leeg, natuur of de hele planeet vol", icon = "kompas", act = () => { menuOpen = false; homeToNew = true; dialog = 2; } });   // eerst opslaan? dan het startscherm met Nieuwe stad open
         l.Add(new MItem { name = "Opslaan", sub = "Elke 3 minuten vanzelf, en bij afsluiten", icon = "boek", kids = () => new List<MItem> {
             new MItem { name = "Nu opslaan", sub = CityName, act = () => { menuOpen = false; Say(SaveCity(false) ? CityName + " opgeslagen" : "Opslaan lukte niet"); } },
             new MItem { name = "Opslaan als", sub = "Als nieuwe stad bewaren", act = () => { menuOpen = false; dialog = 1; nameEdit = CityFiles.FreeName(CityFiles.Current != null ? CityFiles.Current.name : "Nieuwe stad"); } },
