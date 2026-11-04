@@ -66,7 +66,7 @@ public static partial class PlanetAI
         _ => new Prefs { floors = new[] { 3, 3, 2, 2, 1 }, park = 0.4f, shop = 0.15f, path = 0.25f, office = 0.3f, ring = 0, main = 2, canal = false, molen = 150, toren = 150, meer = 100, rot = 60 },
     };
 
-    public const string Version = "2 (4 nov 2026)";   // ophogen bij een nieuwe versie van de planner, voor het scoreboek (ai-scores.txt)
+    public const string Version = "3 (4 nov 2026)";   // ophogen bij een nieuwe versie van de planner, voor het scoreboek (ai-scores.txt)
     public static int Start = -1;
     public static readonly HashSet<int> Owned = new HashSet<int>();   // de vakken die de AI bebouwde
     public static int Moves, Rejected;
@@ -137,6 +137,14 @@ public static partial class PlanetAI
     // rotondes: het midden (IsRot) en de zes ringvakken eromheen; een arm is een weg op een ringvak (aan het midden vast)
     static bool RotRing(int c) => PlanetCity.RotOf(c) >= 0 && !PlanetCity.IsRot(c);
     static bool Arm(int c) => PlanetCity.IsRoad(c) && RotRing(c);
+    // ligt er een rotonde binnen zoveel stappen? Minstens 5 vakken (zo'n 78 m) van midden tot midden, anders staan ze te dicht op elkaar
+    public const int RotGap = 5;
+    static bool RotNear(int c, int steps)
+    {
+        var seen = new HashSet<int> { c }; var fr = new List<int> { c };
+        for (int s = 0; s < steps; s++) { var nx = new List<int>(); foreach (int x in fr) foreach (int j in Planet.Cells[x].nb) if (seen.Add(j)) { if (PlanetCity.IsRot(j)) return true; nx.Add(j); } fr = nx; }
+        return false;
+    }
     // ligt er al een arm op een ringvak naast dit ringvak? Dan zouden twee wegen 60° uit elkaar in elkaar overlopen (minstens 120° tussen de armen)
     static bool ArmBeside(int c) { int r = PlanetCity.RotOf(c); foreach (int x in Planet.Cells[c].nb) if (x != c && PlanetCity.RotOf(x) == r && !PlanetCity.IsRot(x) && Arm(x) && PlanetCity.StyleOf(x) > 0) return true; return false; }   // naast een laan of brede weg geen nieuwe arm
     // een lijn die op het midden van een rotonde begint of eindigt: dat vak eraf, zodat hij op een ringvak aansluit (een arm wordt)
@@ -395,7 +403,7 @@ public static partial class PlanetAI
             string kind = v.Substring(0, n);
             bool done = kind == "gracht" ? rings.Contains(RingR[0]) || !Pref.canal : rings.Contains(r);
             if (done && kind == "rotonde") { int ri = System.Array.IndexOf(RingR, r); int nr = ri >= 0 && ri + 1 < RingR.Length ? RingR[ri + 1] : r; done = rings.Contains(nr); int at = ringAt.TryGetValue(nr, out int a) ? a : 0;   // pas na de volgende ring: dan komt de spaak naar buiten, de derde arm
-                 int hub = -1; foreach (int h in hubs) if (h == kv.Key || System.Array.IndexOf(Planet.Cells[h].nb, kv.Key) >= 0) { hub = h; break; } done = done && ((hub >= 0 && PlanetCity.IsRot(hub)) || Moves - at > 40); }
+                 int hub = -1; foreach (int h in hubs) if (h == kv.Key || System.Array.IndexOf(Planet.Cells[h].nb, kv.Key) >= 0) { hub = h; break; } done = done && ((hub >= 0 && PlanetCity.IsRot(hub)) || Moves - at > 40); if (hub >= 0 && !PlanetCity.IsRot(hub) && RotNear(hub, RotGap - 1)) done = true; }   // een rotonde vlakbij: hier komt er geen meer
             if (done && Free(kv.Key)) (free ??= new List<int>()).Add(kv.Key);
         }
         if (free != null) foreach (int c in free) reserved.Remove(c);
@@ -556,7 +564,7 @@ public static partial class PlanetAI
                 // en met brede wegen of lanen; het vak en de zes ernaast leeg of alleen een weg of pad (zoals PlaceRoundabout)
                 int roadNb = 0, busy = 0; bool loose = false; foreach (int j in Planet.Cells[c].nb) if (PlanetCity.IsWalk(j)) { if (!PlanetCity.Linked(c, j)) loose = true; else if (PlanetCity.IsRoad(j)) { roadNb++; if (PlanetCity.StyleOf(j) > 0) busy++; } }   // alleen armen die echt op dit kruispunt aansluiten; een weg die er langs loopt zou de rotonde in getrokken worden
                 bool hub = hubs.Contains(c);
-                if (GroundRoad(c) && roadNb >= 3 && !loose && pf.rot < 9999 && (hub || (rotondes < 1 + Owned.Count / pf.rot && Owned.Count > 50)))
+                if (GroundRoad(c) && roadNb >= 3 && !loose && pf.rot < 9999 && !RotNear(c, RotGap - 1) && (hub || (rotondes < 1 + Owned.Count / pf.rot && Owned.Count > 50)))
                 {
                     bool ok = !PlanetCity.Underpass(c) && PlanetCity.Cells[c].Count == 1;
                     foreach (int j in Planet.Cells[c].nb)   // twee armen naast elkaar (60° uit elkaar) alleen als het gewone straten zijn: met een laan of brede weg erbij lopen ze in elkaar over

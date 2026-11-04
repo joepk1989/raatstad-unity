@@ -11,8 +11,11 @@ public static partial class PlanetAI
     public class Metrics
     {
         public int beauty, moves, cells, roads, deadEnds, roundabouts, buildings; public float asphalt, symmetry; public string rows;
+        // het wegennet beoordeeld: losse stukken (niet aan het grootste net), scherpe bochten (120° of meer), kruispunten vlak naast elkaar,
+        // straten die zij aan zij lopen zonder verbinding, rotondes te dicht bij elkaar (minder dan RotGap vakken)
+        public int loose, sharp, twinX, sideBySide, rotClose;
         // één regel voor het scoreboek
-        public string Line => "doodlopend " + deadEnds + ";rotondes " + roundabouts + ";asfalt " + Mathf.RoundToInt(asphalt * 100f) + "%;symmetrie " + Mathf.RoundToInt(symmetry * 100f) + "%;" + rows;
+        public string Line => "doodlopend " + deadEnds + ";rotondes " + roundabouts + ";losse stukken " + loose + ";scherpe bochten " + sharp + ";kruispunten naast elkaar " + twinX + ";zij aan zij " + sideBySide + ";rotondes te dicht " + rotClose + ";asfalt " + Mathf.RoundToInt(asphalt * 100f) + "%;symmetrie " + Mathf.RoundToInt(symmetry * 100f) + "%;" + rows;
     }
 
     public static Metrics Measure()
@@ -27,11 +30,39 @@ public static partial class PlanetAI
             string t = Top(c);   // symmetrie: staat hetzelfde blok om de 60° rondom het centrum?
             for (int k = 1; k < 6; k++) { tried++; if (Top(Turn(c, k)) == t) same++; }
         }
+        Review(m);
         m.asphalt = m.cells > 0 ? m.roads / (float)m.cells : 0f; m.symmetry = tried > 0 ? same / (float)tried : 0f;
         var sb = new StringBuilder(); foreach (var r in b.rows) sb.Append(r.name.ToLower() + " " + (r.v < 0f ? "-" : Mathf.RoundToInt(r.v * 100f).ToString()) + ",");
         m.rows = sb.ToString().TrimEnd(','); return m;
     }
 
+    static Vector3 Dir2(int a, int b) { Vector3 da = Planet.Cells[a].dir, t = Planet.Cells[b].dir - da; t -= da * Vector3.Dot(t, da); return t.normalized; }
+    static void Review(Metrics m)
+    {
+        var roads = new List<int>(); foreach (int c in Owned) if (PlanetCity.IsRoad(c)) roads.Add(c);
+        // losse stukken: samenhangende delen van het eigen wegennet (via de verbindingen), alles behalve het grootste telt
+        var seen = new HashSet<int>(); var sizes = new List<int>();
+        foreach (int c in roads)
+        {
+            if (!seen.Add(c)) continue; int n = 0; var q = new Queue<int>(); q.Enqueue(c);
+            while (q.Count > 0) { int x = q.Dequeue(); n++; foreach (int j in PlanetCity.Partners(x)) if (PlanetCity.IsRoad(j) && seen.Add(j)) q.Enqueue(j); }
+            sizes.Add(n);
+        }
+        sizes.Sort(); m.loose = 0; for (int i = 0; i < sizes.Count - 1; i++) m.loose += sizes[i];
+        foreach (int c in roads)
+        {
+            var p = new List<int>(); foreach (int j in PlanetCity.Partners(c)) if (PlanetCity.IsRoad(j)) p.Add(j);
+            if (p.Count == 2 && !PlanetCity.IsRot(c) && Vector3.Angle(Dir2(p[0], c), Dir2(c, p[1])) > 100f) m.sharp++;   // een bocht van 120° of scherper
+            bool node = p.Count >= 3 && !PlanetCity.IsRot(c);
+            foreach (int j in Planet.Cells[c].nb)
+            {
+                if (j < c || !PlanetCity.IsRoad(j)) continue;
+                if (PlanetCity.Linked(c, j)) { if (node && !PlanetCity.IsRot(j) && PlanetCity.LinkCount(j) >= 3) m.twinX++; }
+                else if (PlanetCity.RotOf(c) < 0 && PlanetCity.RotOf(j) < 0 && !PlanetCity.Underpass(c) && !PlanetCity.Underpass(j) && Owned.Contains(j)) m.sideBySide++;
+            }
+            if (PlanetCity.IsRot(c) && RotNear(c, RotGap - 1)) m.rotClose++;
+        }
+    }
     static string RunDir => Path.Combine(Application.persistentDataPath, "ai-runs");
     // de plattegrond en de stad bewaren; geeft de bestandsnaam (zonder extensie) of null
     public static string Archive(string why)
