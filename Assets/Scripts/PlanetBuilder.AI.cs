@@ -11,8 +11,9 @@ using UnityEngine;
 public partial class PlanetBuilder
 {
     bool aiPick, aiOn, aiPaused, aiFollow = true; int aiTempo = 1, aiFails, aiPinCell = -1, aiBeauty0 = -1, aiLogged; float aiStartT; string aiBest;
-    float aiNext, aiShowT; PlanetAI.Move aiMove; string aiWhat = "";
-    static readonly string[] AiTempoNames = { "Langzaam", "Normaal", "Snel" }; static readonly float[] AiPace = { 2.6f, 1.1f, 0.4f };
+    float aiNext, aiShowT; PlanetAI.Move aiMove; string aiWhat = ""; bool aiUnsaved;
+    // tempo: seconden per zet (een deel tonen, een deel wachten) en hoeveel ms hij per beeld mag denken; Turbo toont de zet maar heel kort
+    static readonly string[] AiTempoNames = { "Langzaam", "Normaal", "Snel", "Turbo" }; static readonly float[] AiPace = { 2.6f, 1.1f, 0.4f, 0.08f }, AiThinkMs = { 3f, 3f, 4f, 8f };
     readonly List<LineRenderer> aiLines = new List<LineRenderer>(); Transform aiPin; static Material aiMat;
     static readonly Color AiCol = new Color(0.35f, 0.76f, 1f);
 
@@ -25,8 +26,8 @@ public partial class PlanetBuilder
         if (aiOn) { if (Ui.CardButton(new Rect(x + half + 8f, y, half, 48f), "AI-bouwer stoppen", PlanetAI.Moves + " zetten gedaan", false, "sluit")) { AiStop(); menuOpen = false; } }
         else
         {
-            var sz = new Rect(x + half + 8f, y, half, 48f); Ui.Label(new Rect(sz.x + 2f, sz.y, sz.width, 16f), "TEMPO AI-BOUWER", Ui.T.Tiny);
-            int t = Ui.Seg(new Rect(sz.x, sz.y + 18f, sz.width, 30f), AiTempoNames, aiTempo); if (t >= 0) aiTempo = t;
+            // vier tempo's passen niet naast elkaar op een halve kaart: een klik kiest het volgende
+            if (Ui.CardButton(new Rect(x + half + 8f, y, half, 48f), "Tempo: " + AiTempoNames[aiTempo], "Klik voor het volgende tempo", false, "wissel")) aiTempo = (aiTempo + 1) % AiTempoNames.Length;
         }
     }
     void AiButton()
@@ -41,6 +42,7 @@ public partial class PlanetBuilder
     void AiStop()
     {
         if (aiOn && PlanetAI.Moves > 0) AiScore("gestopt");
+        if (aiUnsaved) { PlanetCity.Save(); aiUnsaved = false; }   // wat Turbo nog niet bewaard had
         aiOn = aiPaused = aiPick = false; aiMove = null;
         Say("AI-bouwer gestopt na " + PlanetAI.Moves + " zetten (Ctrl+Z haalt ze één voor één weg)");
         PlanetAI.Reset(); AiLines(null); aiPinCell = -1; if (aiPin != null) aiPin.gameObject.SetActive(false); AiFlagShow(-1);
@@ -74,11 +76,11 @@ public partial class PlanetBuilder
     {
         if (!aiOn || loading != null) return;
         AiFollow();
-        if (aiPaused) return;
+        if (aiPaused) { if (aiUnsaved && !rebuilding) { PlanetCity.Save(); aiUnsaved = false; } return; }   // gepauzeerd of klaar: bewaren wat Turbo nog niet bewaard had
         if (aiMove == null)
         {
             if (Time.time < aiNext) return;
-            if (!PlanetAI.Think(3f, out var m)) { aiWhat = "denkt na: " + PlanetAI.Status; return; }
+            if (!PlanetAI.Think(AiThinkMs[aiTempo], out var m)) { aiWhat = "denkt na: " + PlanetAI.Status; return; }
             if (m == null)
             {
                 aiFails++; aiNext = Time.time + 0.6f;
@@ -112,7 +114,12 @@ public partial class PlanetBuilder
         {
             bool hh = hasHover; int hv = hover; Vector3 hp = hoverPoint;
             hasHover = true; hover = at; hoverPoint = Planet.Cells[at].dir * (Planet.R + PlanetCity.G(at));   // het geluid en het tekenen op de plek van de zet
-            Changed();
+            if (aiTempo < 3) Changed();
+            else   // Turbo: zoals Changed, maar de stad niet bij elke zet bewaren (dat kost op een grote planeet veel tijd), wel om de 20 zetten en bij Stop
+            {
+                Sounds.After(hoverPoint); PlanetCity.UserEdit(); beautyVer++; PlanetCity.RebuildSoon(at); rebuilding = true; RebuildTick(0f); beautyT = -99f;
+                if ((PlanetAI.Moves + 1) % 20 == 0) PlanetCity.Save(); else aiUnsaved = true;
+            }
             hasHover = hh; hover = hv; hoverPoint = hp;
             PlanetAI.Commit(m);
             if (PlanetAI.Moves % 50 == 0) AiScore("tussenstand");
@@ -230,7 +237,7 @@ public partial class PlanetBuilder
             Ui.Panel(r, false, 18f); Ui.Label(r, t, Ui.T.Bold, AiCol, TextAnchor.MiddleCenter); return;
         }
         if (!aiOn) return;
-        float pw = 520f, ph = 126f; var p = new Rect((W - pw) * 0.5f, 12f, pw, ph); Ui.Panel(p, false, 14f);
+        float pw = 600f, ph = 126f; var p = new Rect((W - pw) * 0.5f, 12f, pw, ph); Ui.Panel(p, false, 14f);
         float x = p.x + 14f, y = p.y + 10f, iw = pw - 28f;
         Ui.Tex(new Rect(x, y + 2f, 16f, 16f), Ui.Icon("stad"), AiCol); Ui.Label(new Rect(x + 24f, y, 200f, 20f), "AI-BOUWER", Ui.T.Bold, AiCol, null, 12);
         string state = aiPaused ? (aiFails >= 3 ? "klaar" : "gepauzeerd") : aiMove != null ? "bouwt" : "denkt";
