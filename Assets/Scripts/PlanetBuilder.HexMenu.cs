@@ -35,6 +35,7 @@ public partial class PlanetBuilder
             else g.Add(new MItem { name = "Tempo AI-bouwer", value = AiTempoNames[aiTempo], act = () => aiTempo = (aiTempo + 1) % AiTempoNames.Length });
             return g; } });
         l.Add(new MItem { name = "Instellingen", sub = "Leven, geluid en beeld", icon = "zon", kids = () => {
+            if (hexDev) return DevItems(true);   // Instellingen › Ontwikkelaar (PlanetBuilder.Dev.cs)
             float[] sizes = { 0.9f, 1f, 1.15f, 1.3f }; int si = 0; for (int k = 1; k < 4; k++) if (Mathf.Abs(sizes[k] - Ui.Size) < Mathf.Abs(sizes[si] - Ui.Size)) si = k;
             return new List<MItem> {
                 new MItem { name = "Mensen", value = PlanetLife.PeopleOn ? "aan" : "uit", on = PlanetLife.PeopleOn, act = () => PlanetLife.PeopleOn = !PlanetLife.PeopleOn },
@@ -43,7 +44,8 @@ public partial class PlanetBuilder
                 new MItem { name = "Totale chaos", value = PlanetLife.Chaos ? "aan" : "uit", on = PlanetLife.Chaos, act = () => { PlanetLife.Chaos = !PlanetLife.Chaos; Say(PlanetLife.Chaos ? "Totale chaos: racers, ontwijkers en jagers op de weg" : "Netjes verkeer"); } },
                 new MItem { name = "Geluid", value = Babble.Muted ? "uit" : "aan", on = !Babble.Muted, act = () => ToggleSound() },
                 new MItem { name = "Bouwmuziek", value = BuildMusic.StyleNames[BuildMusic.Style], act = () => { int ms = (BuildMusic.Style + 1) % BuildMusic.StyleNames.Length; BuildMusic.SetStyle(ms); Say("Bouwmuziek: " + BuildMusic.StyleNames[ms]); } },
-                new MItem { name = "Interfacegrootte", value = Mathf.RoundToInt(sizes[si] * 100f) + "%", act = () => Ui.Size = sizes[(si + 1) % 4] } }; } });
+                new MItem { name = "Interfacegrootte", value = Mathf.RoundToInt(sizes[si] * 100f) + "%", act = () => Ui.Size = sizes[(si + 1) % 4] },
+                new MItem { name = "Ontwikkelaar ›", sub = "Vijfhoeken, hoekpunten, vakinfo, statistieken, log", act = () => { hexDev = true; hexSubT = Time.unscaledTime; } } }; } });
         l.Add(new MItem { name = "Bediening", sub = "Alle toetsen op een rij (?)", icon = "menu", act = () => { menuOpen = false; helpOpen = true; } });
         return l;
     }
@@ -56,7 +58,7 @@ public partial class PlanetBuilder
         var items = MainItems(!overlay);
         hexRight = false;   // links, onder de hamburger linksboven (gespiegeld rechts kan nog, maar links bleek fijner)
         int hit = Tiles(items, G + 70f, H * 0.5f + 10f, hexT, hexOpen, overlay ? "MENU" : "RAATSTAD", 60f, 18, out float subX, out float mid, out float R, out float cy);
-        if (hit >= 0) { var m = items[hit]; if (m.kids != null) { hexOpen = hexOpen == hit ? -1 : hit; hexSubT = Time.unscaledTime; } else { hexOpen = -1; m.act?.Invoke(); } }
+        if (hit >= 0) { hexDev = false; var m = items[hit]; if (m.kids != null) { hexOpen = hexOpen == hit ? -1 : hit; hexSubT = Time.unscaledTime; } else { hexOpen = -1; m.act?.Invoke(); } }
         if (hexOpen >= 0 && hexOpen < items.Count && items[hexOpen].kids != null)
             SubHex(items[hexOpen].kids(), hexOpenMid, R, subX, cy, Time.unscaledTime);
         if (overlay && Ui.DimClick()) { if (hexOpen >= 0) hexOpen = -1; else menuOpen = false; }   // ernaast klikken: eerst de keuzes dicht, dan het menu

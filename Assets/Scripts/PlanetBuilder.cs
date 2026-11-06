@@ -243,7 +243,8 @@ public partial class PlanetBuilder : MonoBehaviour
         if (flying) { FlyUpdate(); return; }   // cameramodus: alleen vliegen, kijken en een foto
         if (Inp.Down(K.L)) ToggleWalk();
         if (Inp.Down(K.Slash)) ToggleHelp();
-        if (walking) { if (Inp.Down(K.Esc)) helpOpen = false; return; }
+        DevKeys();   // ` : de ontwikkelaarsconsole (PlanetBuilder.Dev.cs)
+        if (walking) { if (Inp.Down(K.Esc)) helpOpen = false; WalkHide(); return; }
         if (Inp.Down(K.Esc)) CloseTop();
         if (Inp.Down(K.M)) { bool open = !menuOpen; helpOpen = scoreOpen = welcome = todOpen = catOpen = false; menuOpen = open; }
         if (Inp.Down(K.Space) && !Modal) { FlyStart(); return; }
@@ -475,6 +476,7 @@ public partial class PlanetBuilder : MonoBehaviour
     GameObject verts; MeshFilter[] vertMf; int vertsAt = -2; float vertsT, vertsSize;
     void ShowVerts(int c)
     {
+        if (!Dev.Verts) c = -1;   // de hoekpunten alleen als ontwikkelaarshulp (console `, Instellingen › Ontwikkelaar)
         if (verts == null)
         {
             verts = new GameObject("Hoekpunten"); vertMf = new MeshFilter[3];
@@ -746,8 +748,8 @@ public partial class PlanetBuilder : MonoBehaviour
         var c = Planet.Cells[i]; float h = PlanetCity.StackHeight(i) + 0.3f; bool plat = PlanetCity.Plateau(i);
         outline.loop = true; outline.widthMultiplier = 0.35f;   // (de stand Rand tekent er één rand mee)
         if (Planet.IsPole(i) && Time.time > msgT) Say(i == Planet.North ? "De noordpool: hier gaat de as van de planeet doorheen" : "De zuidpool: hier gaat de as van de planeet doorheen");
-        else if (c.corners.Length == 5 && Time.time > msgT) Say("Dit is een van de 12 vijfhoeken (oranje): op een bol passen niet alleen zeshoeken");
-        else if (Time.time > msgT && System.Array.IndexOf(Planet.Starts, i) >= 0) Say("Startplek (een van de 20): zo ver mogelijk van de vijfhoeken, hier is het raster het netst");
+        else if (c.corners.Length == 5 && Dev.Pentagons && Time.time > msgT) Say("Dit is een van de 12 vijfhoeken (oranje): op een bol passen niet alleen zeshoeken");
+        else if (Dev.Starts && Time.time > msgT && System.Array.IndexOf(Planet.Starts, i) >= 0) Say("Startplek (een van de 20): zo ver mogelijk van de vijfhoeken, hier is het raster het netst");
         if (outline.positionCount != c.corners.Length) outline.positionCount = c.corners.Length;
         for (int k = 0; k < c.corners.Length; k++)   // op het plateau, of op het maaiveld en de weg die er helt
             outline.SetPosition(k, c.corners[k] * (Planet.R + (plat ? PlanetCity.G(i) + h : (PlanetCity.IsWalk(i) ? Mathf.Max(PlanetCity.OwnCorner(i, k), PlanetCity.SurfaceH(i, c.corners[k] * Planet.R)) : PlanetCity.OwnCorner(i, k)) + 0.3f)));
@@ -818,6 +820,12 @@ public partial class PlanetBuilder : MonoBehaviour
         distSeen = dist;
     }
 
+    // lopen: geen enkel bouwvoorbeeld in beeld (ook niet van de AI-bouwer, die gewoon door kan bouwen)
+    void WalkHide()
+    {
+        outline.enabled = false; ShowBrush(-1); ShowVerts(-1); ShowPlan(null); ShowGhost(-1);
+        AiLines(null); if (aiPin != null) aiPin.gameObject.SetActive(false);
+    }
     void ToggleWalk()
     {
         walking = !walking; Sounds.Fx("whoosh"); PlanetCity.ShowGrid(PlanetCity.GridOn && !walking); catOpen = todOpen = menuOpen = scoreOpen = helpOpen = welcome = wheelOpen = false;
@@ -939,6 +947,8 @@ public partial class PlanetBuilder : MonoBehaviour
         if (Time.time < msgT) Ui.Toast(msg, Mathf.Clamp01((msgT - Time.time) / 0.5f), catOpen ? CatBottom + CatHeight(W) + 12f : walking ? G + 52f : inSpace ? 12f + 56f + 10f : DockTop);
         if (scoreOpen) ScorePanel(W, H);
         if (!Modal) CursorGui(W, H);   // Aanwijzen: de knop, wat je aanwijst en de vensters (PlanetBuilder.Cursor.cs)
+        BeaconLabels(W, H);   // de naam Pentagon boven de bakens op de vijfhoeken (PlanetBuilder.Beacons.cs)
+        DevGui(W, H);   // ontwikkelaar: vakinfo, statistieken, log en de console (PlanetBuilder.Dev.cs)
         if (!walking) AiGui(W, H);   // AI-bouwer: het paneel bovenin en de markering (PlanetBuilder.AI.cs)
         if (menuOpen && !inSpace) HexMenu(W, H, true);   // het raatmenu (PlanetBuilder.HexMenu.cs); in de ruimte staat het altijd in beeld
         if (!menuOpen && !(inSpace && !walking)) HexMenuClosed();
@@ -1259,8 +1269,7 @@ public partial class PlanetBuilder : MonoBehaviour
         Ui.Tip(new Rect(x, y, 44f, 44f), "Gum", "Klik of sleep om vakken leeg te maken", "Delete"); x += 50f;
         if (Ui.RoundButton(new Rect(x, y, 44f, 44f), "ongedaan", false, undo.Count == 0)) Undo();
         Ui.Tip(new Rect(x, y, 44f, 44f), "Ongedaan maken", undo.Count == 0 ? "Nog niets om terug te draaien" : null, "Ctrl+Z");
-        string f = Mathf.RoundToInt(fps) + " fps";   // mensen en auto's staan in het schoonheidspaneel
-        var fr = new Rect(G, y - 8f - 20f, Ui.Width(f, Ui.T.Bold, 10) + 16f, 20f); Ui.Panel(fr, false, 10f); Ui.Label(fr, f, Ui.T.Bold, Ui.InkDim, TextAnchor.MiddleCenter, 10);
+        // de beeldsnelheid staat nu bij de ontwikkelaarsstatistieken (console `)
     }
 
     // ---- rechtsonder: bouwen of lopen (L), daarboven ? voor alle toetsen
@@ -1411,6 +1420,7 @@ public partial class PlanetBuilder : MonoBehaviour
         "O|ander weer (Shift+O: vorige)",
         "G|raster aan en uit",
         "M|menu",
+        "`|ontwikkelaarsconsole (ook Instellingen › Ontwikkelaar)",
         "?|dit overzicht",
         "Esc|venster sluiten",
     };

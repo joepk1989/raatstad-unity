@@ -150,7 +150,7 @@ public static partial class PlanetCity
                 bool hasDeck = deckSide.TryGetValue(i, out var dk);
                 float kk = Mathf.Pow(Mathf.Clamp01((c.distort - 0.04f) / 0.125f), 1.4f);
                 bool start = System.Array.IndexOf(Planet.Starts, i) >= 0, pole = Planet.IsPole(i), special = pole || pent || start;
-                var mb0 = pole ? PM("ijs") : pent ? pm : start ? sm : ms[Mathf.Clamp(Mathf.RoundToInt(kk * (Steps - 1)), 0, Steps - 1)];
+                var mb0 = pole ? PM("ijs") : pent && Dev.Pentagons ? pm : start && Dev.Starts ? sm : Dev.Distort ? ms[Mathf.Clamp(Mathf.RoundToInt(kk * (Steps - 1)), 0, Steps - 1)] : ms[0];   // vervorming en vijfhoeken alleen als ontwikkelaarshulp (Dev)
                 if (!cut)
                 {
                     Vector3 mid = c.dir * (Planet.R + hc);
@@ -254,7 +254,7 @@ public static partial class PlanetCity
                         TB("sokkel").Quad(a * RG, b * RG, b * (Planet.R + gb), a * (Planet.R + ga), (a + b) * 0.5f - c.dir);
                     }
                 if (pole) PoleMarker(PM, c, g, i == Planet.North);
-                if (start && !pole)   // startplek (op een pool staat de poolpaal): lichtblauw vak met een witte paal van 30 m en een vlaggetje
+                if (start && !pole && Dev.Starts)   // startplek (ontwikkelaarshulp) (op een pool staat de poolpaal): lichtblauw vak met een witte paal van 30 m en een vlaggetje
                 {
                     Vector3 top = c.dir * (RG + 30f);
                     for (int k = 0; k < 6; k++) { Vector3 a = Vector3.Lerp(c.corners[k], c.dir, 0.93f) * (RG + 0.3f), b = Vector3.Lerp(c.corners[(k + 1) % 6], c.dir, 0.93f) * (RG + 0.3f); sm.Tri(a, b, top, (a + b) * 0.5f - c.dir * RG + c.dir * 0.05f); }
@@ -262,12 +262,28 @@ public static partial class PlanetCity
                     sm.Tri(top, fl, fb, c.north); sm.Tri(top, fb, fl, -c.north);
                     for (int k = 0; k < 6; k++) { Vector3 a = c.corners[k], b = c.corners[(k + 1) % 6]; Vector3 am = (a + b) * 0.5f; Vector3 ai = Vector3.Lerp(a, c.dir, 0.08f), bi = Vector3.Lerp(b, c.dir, 0.08f); sm.Quad(a * (Planet.R + hk[k]), b * (Planet.R + hk[(k + 1) % 6]), bi * (RG + 0.25f), ai * (RG + 0.25f), am - c.dir); }
                 }
-                if (pent)   // baken: een slanke oranje punt van 60 m, zodat je de vijfhoeken ook vanuit de ruimte vindt
+                if (pent && Dev.Pentagons)   // baken (ontwikkelaarshulp, samen met de vervorming): een vijfzijdige zuil op een vijfhoekige sokkel (de vorm van het vak zelf), licht steen met een amber punt; de naam erboven (PlanetBuilder.Beacons.cs)
                 {
-                    Vector3 apex = c.dir * (RG + 60f);
-                    for (int k = 0; k < 5; k++) { Vector3 a = Vector3.Lerp(c.corners[k], c.dir, 0.7f) * (RG + 0.3f), b = Vector3.Lerp(c.corners[(k + 1) % 5], c.dir, 0.7f) * (RG + 0.3f); pm.Tri(a, b, apex, (a + b) * 0.5f - c.dir * RG + c.dir * 0.05f); }
+                    Vector3 P(int k, float t, float h) => Vector3.Lerp(c.corners[k % 5], c.dir, t).normalized * (RG + h);
+                    void Ring(MeshBuilder mb, float t0, float h0, float t1, float h1)   // de mantel tussen twee vijfhoeken
+                    {
+                        for (int k = 0; k < 5; k++)
+                        {
+                            Vector3 a0 = P(k, t0, h0), b0 = P(k + 1, t0, h0), a1 = P(k, t1, h1), b1 = P(k + 1, t1, h1);
+                            Vector3 nrm = ((a0 + b0) * 0.5f - c.dir * Vector3.Dot((a0 + b0) * 0.5f, c.dir)).normalized;
+                            mb.Quad(a0, b0, b1, a1, nrm);
+                        }
+                    }
+                    void Lid(MeshBuilder mb, float t, float h) { Vector3 mid = c.dir * (RG + h); for (int k = 0; k < 5; k++) mb.Tri(mid, P(k + 1, t, h), P(k, t, h), c.dir); }
+                    var stone = PM("baken"); var glow = PM("bakenlicht");
+                    float gb = hc - g;   // vanaf het midden van het vak
+                    Ring(stone, 0.5f, gb - 0.4f, 0.5f, gb + 0.9f); Lid(stone, 0.5f, gb + 0.9f);              // sokkel
+                    Ring(stone, 0.56f, gb + 0.9f, 0.6f, gb + 1.5f); Lid(stone, 0.6f, gb + 1.5f);             // trede
+                    Ring(stone, 0.8f, gb + 1.5f, 0.88f, gb + 24f);                                           // de zuil, iets taps
+                    Ring(glow, 0.88f, gb + 24f, 0.86f, gb + 25.2f);                                          // een lichtende band
+                    for (int k = 0; k < 5; k++) glow.Tri(P(k, 0.86f, gb + 25.2f), P(k + 1, 0.86f, gb + 25.2f), c.dir * (RG + gb + 29.5f), ((P(k, 0.86f, gb + 25.2f) + P(k + 1, 0.86f, gb + 25.2f)) * 0.5f - c.dir * (RG + gb + 25.2f)).normalized + c.dir * 0.3f);   // de punt
                 }
-                if (pent)   // opstaand randje rondom, zodat de vijfhoek ook van dichtbij opvalt
+                if (pent && Dev.Pentagons)   // opstaand randje rondom, zodat de vijfhoek ook van dichtbij opvalt
                     for (int k = 0; k < 5; k++) { Vector3 a = c.corners[k], b = c.corners[(k + 1) % 5]; Vector3 am = (a + b) * 0.5f; Vector3 ai = Vector3.Lerp(a, c.dir, 0.08f), bi = Vector3.Lerp(b, c.dir, 0.08f); pm.Quad(a * (Planet.R + hk[k]), b * (Planet.R + hk[(k + 1) % 5]), bi * (RG + 0.25f), ai * (RG + 0.25f), am - c.dir); }
             }
             foreach (var kv in terrB)
@@ -368,6 +384,7 @@ public static partial class PlanetCity
         switch (k)
         {
             case "ijs": return new Color(0.92f, 0.96f, 1f); case "rood": return new Color(0.8f, 0.15f, 0.15f); case "wit": return new Color(0.97f, 0.97f, 0.95f);
+            case "baken": return new Color(0.88f, 0.86f, 0.8f); case "bakenlicht": return new Color(0.98f, 0.72f, 0.2f);
             case "goud": return new Color(0.9f, 0.72f, 0.25f); case "vlagrood": return new Color(0.68f, 0.11f, 0.16f); case "vlagwit": return Color.white; case "vlagblauw": return new Color(0.13f, 0.27f, 0.55f);
             default: return Color.gray;
         }
