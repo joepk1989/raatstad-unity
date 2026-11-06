@@ -15,7 +15,7 @@ public class WegVoorbeeld : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Boot()
     {
-        if (!File.Exists(Flag)) return; mode = File.ReadAllText(Flag).Trim(); File.Delete(Flag);   // tekst "fiets": de fietspaden en de startstad
+        if (!File.Exists(Flag)) return; mode = File.ReadAllText(Flag).Trim(); File.Delete(Flag); PlanetCity.Ground2 = false; PlanetCity.Seams = true; for (bool again = true; again;) { again = false; if (mode.EndsWith(" v2")) { PlanetCity.Ground2 = true; mode = mode.Substring(0, mode.Length - 3); again = true; } if (mode.EndsWith(" geennaden")) { PlanetCity.Seams = false; mode = mode.Substring(0, mode.Length - 10); again = true; } }   // "... v2": met Terrein v2; "... geennaden": zonder naden   // tekst "fiets": de fietspaden en de startstad
         Application.runInBackground = true;
         new GameObject("Wegvoorbeeld").AddComponent<WegVoorbeeld>();
     }
@@ -376,7 +376,7 @@ public class WegVoorbeeld : MonoBehaviour
             if (road) { nRoad++; if (ground && hGround > hRoad + 0.03f && hGround < hRoad + 4f) { nA++; foutA.Add((dir, hGround - hRoad)); } }   // (meer dan 4 m erboven: een tunnel of brug)
             if (!road && ground && hg.collider.gameObject.layer == Layers.Bodem)   // C: de mesh tegenover de hoogtefunctie H (stap 2 van Terrein v2 bouwt de mesh uit H: dan 0)
             {
-                nC++; float hH = PlanetCity.H(dir), dh = Mathf.Abs(hGround - hH); if (dh > 0.1f) { foutC.Add((dir, dh)); if (dh > maxC) { maxC = dh; worstC = "mesh " + hGround.ToString("0.00") + " (" + hg.collider.name + ") H " + hH.ToString("0.00") + " vak " + Planet.Nearest(dir * Planet.R) + " | " + PlanetCity.HInfo(dir); } }
+                nC++; float hH = PlanetCity.H(dir), lo = hH, hi = hH; foreach (var sd in new[] { e, -e, n, -n }) { float hs = PlanetCity.H((dir * Planet.R + sd * 0.05f).normalized); lo = Mathf.Min(lo, hs); hi = Mathf.Max(hi, hs); } float dh = hGround < lo ? lo - hGround : hGround > hi ? hGround - hi : 0f; if (dh > 0.1f) { foutC.Add((dir, dh)); if (dh > maxC) { maxC = dh; worstC = "mesh " + hGround.ToString("0.00") + " (" + hg.collider.name + ") H " + hH.ToString("0.00") + " vak " + Planet.Nearest(dir * Planet.R) + " | " + PlanetCity.HInfo(dir); } }
             }
             if (!road)   // ook schuin (30° uit vier richtingen): een kier in een wand zie je alleen van opzij
             {
@@ -392,7 +392,8 @@ public class WegVoorbeeld : MonoBehaviour
             }
         }
         }
-        bouw.Append("gescand: ").Append(nRoad).Append(" punten op de weg, ").Append(nGround).AppendLine(" ernaast");
+        bouw.Append("gescand: ").Append(nRoad).Append(" punten op de weg, ").Append(nGround).Append(" ernaast; Terrein v2 ").AppendLine(PlanetCity.Ground2 ? "aan" : "uit");
+        if (PlanetCity.Ground2) { var cc = new HashSet<int>(); foreach (var disc in discs) for (int ci = 0; ci < Planet.Cells.Length; ci++) if (Vector3.Angle(Planet.Cells[ci].dir, Planet.Cells[disc.c].dir) * Mathf.Deg2Rad * Planet.R < disc.R + 10f) cc.Add(ci); bouw.AppendLine(PlanetCity.Ground2Check(cc)); }
         bouw.Append("A terrein boven het wegdek: ").Append(nA).Append(" punten (").Append(nRoad > 0 ? (100f * nA / nRoad).ToString("0.00") : "0").AppendLine("%)");
         bouw.Append("B gaten in het terrein: ").Append(foutB.Count).AppendLine(" punten");
         bouw.Append("C mesh wijkt af van H: ").Append(foutC.Count).Append(" van ").Append(nC).Append(" punten (").Append(nC > 0 ? (100f * foutC.Count / nC).ToString("0.00") : "0").Append("%), hoogstens ").Append(maxC.ToString("0.00")).AppendLine(" m");

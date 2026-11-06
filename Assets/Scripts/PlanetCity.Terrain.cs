@@ -180,15 +180,14 @@ public static partial class PlanetCity
     // (de rand van de wegbodem, de voet van de schuine kant, het begin en eind van elk stuk weg), dan elk stuk op de hoogte uit
     // GroundField. Binnen een stuk is de functie (vrijwel) een vlak, dus de kanten worden strakke vlakken met rechte randen, zoals
     // het voorbeeld overpass_path; gedeelde randen krijgen in beide vakken dezelfde snijpunten en hoogten.
-    static void LineGround(Planet.Cell c, int k, float hc0, float h1, float h2, System.Action<Vector3, Vector3, Vector3, float, float, float, bool> emit)
+    // De snijlijnen van de hoogtefunctie in driehoekje k van vak c (midden hc0, hoeken h1 en h2 als vlak): de rand van de wegbodem, de
+    // voet van het talud, het begin en eind van elk stuk, de zijden van elke kop, de vlakke stukken; met de stukken (ls) en koppen (lc)
+    // die hier meetellen. Voor LineGround en voor Terrein v2 (PlanetGround2.cs: de randpunten en de vakken).
+    static List<Lin> FieldLines(Planet.Cell c, int k, float hc0, float h1, float h2, List<Seg> ls, List<Cap> lc)
     {
-        int m = c.corners.Length; Vector2 L1 = c.local[k], L2 = c.local[(k + 1) % m]; Vector3 D0 = c.dir, D1 = c.corners[k], D2 = c.corners[(k + 1) % m];
-        float det = L1.x * L2.y - L1.y * L2.x; if (Mathf.Abs(det) < 1e-6f) return;
+        int m = c.corners.Length; Vector2 L1 = c.local[k], L2 = c.local[(k + 1) % m]; float det = L1.x * L2.y - L1.y * L2.x; var lines = new List<Lin>(); if (Mathf.Abs(det) < 1e-6f) return lines;
         Vector3 o3 = c.dir * Planet.R;
-        var polys = new List<List<Vector2>> { new List<Vector2> { Vector2.zero, L1, L2 } };
-        // het gewone terrein als lineaire functie van de vlakke coördinaten (zoals Base hieronder): de voet van een kant ligt waar wegdek plus talud dat raakt
         Lin B = new Lin { a = hc0, x = ((h1 - hc0) * L2.y - (h2 - hc0) * L1.y) / det, y = ((h2 - hc0) * L1.x - (h1 - hc0) * L2.x) / det };
-        var ls = new List<Seg>(); var lc = new List<Cap>();   // de stukken en koppen die hier iets doen (de rest overslaan bij elk punt)
         foreach (var q in segsUse)
         {
             Vector3 ab = q.b - q.a; float len = ab.magnitude; if (len < 1e-3f) continue;
@@ -205,10 +204,7 @@ public static partial class PlanetCity
             // liep de mesh van het eind schuin naar de verste hoek van de veelhoek en week hij meters van de hoogtefunctie af
             // en op het bereik van het veld (FieldReach) naast het stuk: verder reikt het talud niet, een hoger verschil is daar een klif
             var fs = new List<Lin> { T - Lin.C(q.hw), T + Lin.C(q.hw), toeP, toeM, S, S - Lin.C(len), S + Lin.C(dz), S - Lin.C(len + dz), S + Lin.C(EndSlack + 0.02f), S - Lin.C(len + EndSlack + 0.02f), T - Lin.C(q.hw + FieldReach + 0.02f), T + Lin.C(q.hw + FieldReach + 0.02f) };   // (2 cm voorbij de grens: op de grens zelf telt het stuk nog mee, de wand zit ertussen)
-            foreach (var f in fs)
-            {
-                var next = new List<List<Vector2>>(); foreach (var pl in polys) if (!SplitBy(pl, f, next)) next.Add(pl); polys = next;
-            }
+            lines.AddRange(fs);
         }
         foreach (var q in capsUse)
         {
@@ -221,10 +217,7 @@ public static partial class PlanetCity
                 Vector3 pn = Vector3.Cross(q.dir, n).normalized; Lin P = new Lin { a = Vector3.Dot(o3 - q.c, pn), x = Vector3.Dot(c.east, pn), y = Vector3.Dot(c.north, pn) };
                 Lin toe = N - Lin.C(q.hw) - (B - Lin.C(q.h - 0.05f)) * (sg / FK);   // de voet: waar wegdek + talud het terrein raakt
                 var fc = new List<Lin> { N - Lin.C(q.hw), toe, N, P, N - Lin.C(q.hw + FieldReach + 0.02f) };   // (ook het bereik van het veld: daarbuiten een klif)
-                foreach (var f in fc)   // de zijde, de voet, de graat naar de hoek, de vouw in een bocht
-                {
-                    var next = new List<List<Vector2>>(); foreach (var pl in polys) if (!SplitBy(pl, f, next)) next.Add(pl); polys = next;
-                }
+                lines.AddRange(fc);   // de zijde, de voet, de graat naar de hoek, de vouw in een bocht
             }
         }
         foreach (var q in flatsUse)
@@ -234,10 +227,21 @@ public static partial class PlanetCity
             Lin T = new Lin { a = Vector3.Dot(o3 - q.a, across), x = Vector3.Dot(c.east, across), y = Vector3.Dot(c.north, across) };
             Lin S = new Lin { a = Vector3.Dot(o3 - q.a, along), x = Vector3.Dot(c.east, along), y = Vector3.Dot(c.north, along) };
             if (Mathf.Abs(T.a) > q.hw + c.radius + 1f || S.a < -c.radius - 1f || S.a > len + c.radius + 1f) continue;
-            foreach (var f in new[] { T - Lin.C(q.hw), T + Lin.C(q.hw), S, S - Lin.C(len) })
-            {
-                var next = new List<List<Vector2>>(); foreach (var pl in polys) if (!SplitBy(pl, f, next)) next.Add(pl); polys = next;
-            }
+            lines.AddRange(new[] { T - Lin.C(q.hw), T + Lin.C(q.hw), S, S - Lin.C(len) });
+        }
+        return lines;
+    }
+
+    static void LineGround(Planet.Cell c, int k, float hc0, float h1, float h2, System.Action<Vector3, Vector3, Vector3, float, float, float, bool> emit)
+    {
+        int m = c.corners.Length; Vector2 L1 = c.local[k], L2 = c.local[(k + 1) % m]; Vector3 D0 = c.dir, D1 = c.corners[k], D2 = c.corners[(k + 1) % m];
+        float det = L1.x * L2.y - L1.y * L2.x; if (Mathf.Abs(det) < 1e-6f) return;
+        var polys = new List<List<Vector2>> { new List<Vector2> { Vector2.zero, L1, L2 } };
+        // het gewone terrein als lineaire functie van de vlakke coördinaten (zoals Base hieronder): de voet van een kant ligt waar wegdek plus talud dat raakt
+        var ls = new List<Seg>(); var lc = new List<Cap>();   // de stukken en koppen die hier iets doen (de rest overslaan bij elk punt)
+        foreach (var f in FieldLines(c, k, hc0, h1, h2, ls, lc))
+        {
+            var next = new List<List<Vector2>>(); foreach (var pl in polys) if (!SplitBy(pl, f, next)) next.Add(pl); polys = next;
         }
         System.Func<Vector2, Vector3> Dir = q2 => { float b1 = (q2.x * L2.y - q2.y * L2.x) / det, b2 = (L1.x * q2.y - L1.y * q2.x) / det; return (D0 * (1f - b1 - b2) + D1 * b1 + D2 * b2).normalized; };
         System.Func<Vector2, float> Base = q2 => { float b1 = (q2.x * L2.y - q2.y * L2.x) / det, b2 = (L1.x * q2.y - L1.y * q2.x) / det; return hc0 * (1f - b1 - b2) + h1 * b1 + h2 * b2; };

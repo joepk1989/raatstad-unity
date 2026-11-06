@@ -166,7 +166,7 @@ public static partial class PlanetCity
                 var mb0 = pole ? PM("ijs") : pent && Dev.Pentagons ? pm : start && Dev.Starts ? sm : Dev.Distort ? ms[Mathf.Clamp(Mathf.RoundToInt(kk * (Steps - 1)), 0, Steps - 1)] : ms[0];   // vervorming en vijfhoeken alleen als ontwikkelaarshulp (Dev)
                 // naden langs de rand (Skirt): bij vakken waar de grond door wegen, geulen of tunnels gesneden wordt, en hun buren; niet
                 // bij een plateau of strook (die hebben een sokkel) en niet naar een vak zonder bodem (gracht, geul onder een brug)
-                bool seam = !plat && !cut && SeamCell(i) && !StripCut(i); var edgeN = new Vector3[m]; var seamEdge = new bool[m];
+                bool seam = !Ground2 && !plat && !cut && SeamCell(i) && !StripCut(i); var edgeN = new Vector3[m]; var seamEdge = new bool[m];   // (Terrein v2 deelt de randpunten met de buren: geen naden nodig)
                 if (seam) for (int k = 0; k < m; k++) { edgeN[k] = Vector3.Cross(c.corners[k], c.corners[(k + 1) % m]).normalized; int j = edN[i][k]; seamEdge[k] = j >= 0 && !NoGround(j) && !Quay(j); }
                 if (!cut)
                 {
@@ -208,6 +208,11 @@ public static partial class PlanetCity
                             tag = up < 0.72f ? "aarde" : "t" + Mathf.Clamp(Mathf.FloorToInt((h0 + h1 + h2) / 9f), 0, 29);
                         if (!steep) tag = NatureTag(i, tag, h0, h1, h2, up);   // rots, sneeuw, strand en zeebodem (PlanetNature.cs)
                         Put(tag, P0, P1, P2); rec?.Add(new GTri { tag = tag, a = P0, b = P1, c = P2 });
+                    }
+                    if (Ground2)   // Terrein v2: het vak uit de hoogtefunctie, de randpunten gedeeld met de buren (PlanetGround2.cs)
+                    {
+                        Ground2Cell(i, Plateau(i), Emit2, k => { if (!hasDeck) return false; Vector3 dw = (c.corners[k] + c.corners[(k + 1) % m]).normalized * Planet.R - dk.p; return Vector3.Dot(dw, dk.o) - dk.skew * Vector3.Dot(dw, dk.t) < -0.5f; });
+                        goto Walls;
                     }
                     // bij een geul of dijk: het maaiveld zonder geul als vlak, de geul of dijk komt er precies in (ExactGround)
                     if (fieldCells.Contains(i) && !plat && NearSeg(c.dir, c.radius))   // ook als een weg alleen de rand van het vak raakt (een schuine onderdoorgang)
@@ -272,6 +277,18 @@ public static partial class PlanetCity
                             Vector3 pa = Vector3.Lerp(ca, cb, t0).normalized, pb = Vector3.Lerp(ca, cb, t1).normalized; float ba = Mathf.Lerp(hA, hB, t0), bb = Mathf.Lerp(hA, hB, t1);
                             if (g - ba < 0.01f && g - bb < 0.01f) continue;
                             TB("sokkel").Quad(pa * RG, pb * RG, pb * (Planet.R + bb), pa * (Planet.R + ba), (ca + cb) * 0.5f - c.dir);
+                            continue;
+                        }
+                        if (Ground2)   // Terrein v2: de wand tot op de randpunten die de buur ook tekent (precies aansluitend, geen kier)
+                        {
+                            var prof = EdgeProfile(i, k); Vector3 ca = c.corners[k], cb = c.corners[(k + 1) % m];
+                            for (int t = 0; t + 1 < prof.Count; t++)
+                            {
+                                Vector3 pa = Vector3.Lerp(ca, cb, prof[t].t).normalized, pb = Vector3.Lerp(ca, cb, prof[t + 1].t).normalized;
+                                float ta = strip ? GroundField(pa, g) : g, tb = strip ? GroundField(pb, g) : g, ba = Mathf.Min(prof[t].h, ta), bb = Mathf.Min(prof[t + 1].h, tb);   // de bovenkant: het plateau, of waar de weg in het vak steekt de grond daar
+                                if (ta - ba < 0.01f && tb - bb < 0.01f) continue;
+                                TB("sokkel").Quad(pa * (Planet.R + ta), pb * (Planet.R + tb), pb * (Planet.R + bb), pa * (Planet.R + ba), (ca + cb) * 0.5f - c.dir);
+                            }
                             continue;
                         }
                         Vector3 a = c.corners[k], b = c.corners[(k + 1) % m];

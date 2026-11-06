@@ -161,6 +161,11 @@ Erbij gekomen op 6 november 2026 (Terrein v2, stap 1, `PlanetGround2.cs`):
 - `LineGround` snijdt ook 2 cm voorbij elke grens waar de hoogtefunctie ophoudt (`EndSlack` voorbij het eind van een stuk, `FieldReach` naast een stuk of kop): een hoger verschil is daar een wand; eerder liep de mesh van die grens schuin naar de verste hoek van de veelhoek en `Refine` maakte er spitsen van.
 - Fout verholpen: `CapDist` rekende in het raakvlak van de kop en vond de overkant van de planeet vlakbij (met alle koppen in gebruik tilde een kop van 75 m de zee aan de andere kant op); nu telt voorbij 80 m de gewone afstand, en ook de wegstukken slaan punten verder dan 80 m over.
 
+Erbij gekomen op 6 november 2026 (Terrein v2, stap 2, `PlanetGround2.cs`, schakelaar "Terrein v2" in de ontwikkelaarsmodus):
+- De bodem van elk vak komt uit de hoogtefunctie (`Ground2Cell`, `H2`: basisvlak, hoogtefunctie langs wegen, dijk, geul; dezelfde regels voor elk punt). Elke vakrand wordt één keer berekend (`EdgeProfile`: een polylijn met een punt op elke knik, de snijlijnen uit `FieldLines` en van de geulen, verfijnd tot 3 cm; het vak met het laagste nummer rekent, de buur krijgt dezelfde lijst omgekeerd, onthouden in `edgeCache`) en door beide buren gebruikt; een sokkelwand loopt tot op diezelfde randpunten. Geen kieren en geen naden meer nodig (`Seams` doet dan niets). `Ground2Check` meet in de test of hoeken en randen van twee kanten gelijk zijn (0 ongelijk).
+- Testvlaggen: `hoogtetest v2`, `mijnstad v2` (met Terrein v2), `... geennaden` (zonder naden); de test zet beide schakelaars eerst terug (statische velden overleven een herstart van Play). Metriek C telt met een marge van 5 cm opzij (een wand van de hoogtefunctie ligt in de mesh een paar cm anders).
+- Nog open: een paar gaten en te hoge grond bij dalbruggen en tunnelportalen (stap 3: sokkels, kades en portalen als eigen meshes) en een gelijkvloerse kruising met kop (0,6–0,8 m terrein boven het wegdek).
+
 Nog te doen:
 1. Modules als JSON met edge-codes (nu nog in code)
 2. Onderdelen uit `docs/overdracht-webversie.md` bouwen: stadsgenerator, wenteltrap; geluid: crunch/squeal aanroepen in `PlanetLife`, jump in `PlanetWalker`
