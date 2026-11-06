@@ -33,29 +33,8 @@ public static partial class PlanetCity
             M(v == 0 ? "steen" : "tunnel").Quad(q0, q1, q2, q3, axis - (q0 + q1 + q2 + q3) * 0.25f);   // naar binnen gekeerd
         }
     }
-    // de hoogte van het maaiveld zoals het getekend wordt (BuildGround) op punt dir: het waaierdriehoekje van het vak daar, met de
-    // hoogtefunctie langs wegen op een niveau
-    public static float TerrainAt(Vector3 dir)
-    {
-        int i0 = Planet.Nearest(dir * Planet.R); if (TerrainIn(i0, dir, out float h0)) return h0;
-        foreach (int j in Planet.Cells[i0].nb) if (TerrainIn(j, dir, out float h1)) return h1;   // het dichtstbijzijnde midden is niet altijd het vak waar het punt in ligt (vakken zijn niet overal even groot)
-        return G(i0);
-    }
-    static bool TerrainIn(int i, Vector3 dir, out float h)
-    {
-        h = 0f; var c = Planet.Cells[i]; int m = c.corners.Length;
-        Vector3 v = (dir - c.dir) * Planet.R; Vector2 q = new Vector2(Vector3.Dot(v, c.east), Vector3.Dot(v, c.north));
-        float hc = 0f; for (int k = 0; k < m; k++) hc += CornerBase(i, k); hc = (levelled.Contains(i) ? hc / m : G(i)) + CenterOfs1(i);
-        for (int k = 0; k < m; k++)
-        {
-            Vector2 L1 = c.local[k], L2 = c.local[(k + 1) % m]; float det = L1.x * L2.y - L1.y * L2.x; if (Mathf.Abs(det) < 1e-6f) continue;
-            float b1 = (q.x * L2.y - q.y * L2.x) / det, b2 = (L1.x * q.y - L1.y * q.x) / det; if (b1 < -0.02f || b2 < -0.02f || b1 + b2 > 1.02f) continue;
-            if (fieldCells.Contains(i) && !FlatGround(i) && NearSeg(c.dir, c.radius)) { h = GroundField(dir, hc * (1f - b1 - b2) + CornerBase(i, k) * b1 + CornerBase(i, (k + 1) % m) * b2); return true; }
-            if (FlatGround(i)) { h = G(i); return true; }
-            h = hc * (1f - b1 - b2) + OwnCorner(i, k) * b1 + OwnCorner(i, (k + 1) % m) * b2; return true;
-        }
-        return false;
-    }
+    // de hoogte van het maaiveld op punt dir: de hoogtefunctie H (PlanetGround2.cs); de mesh hoort hetzelfde te geven
+    public static float TerrainAt(Vector3 dir) => H(dir);
     // Het betonblok van een brug over een weg of pad op een niveau (model overpass_path): één blok van portaal tot portaal, los van
     // het terrein (dat is een hoogteveld en kan niet tegelijk grond boven en een koker eronder hebben; de bak loopt gewoon onder de
     // brug door en verdwijnt in het blok). Doorsnede: de grote zeshoek van het portaal (onder ±(tubeW+3,75) op 2,17 m onder de vloer,

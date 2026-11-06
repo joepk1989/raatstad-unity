@@ -163,7 +163,7 @@ public static partial class PlanetCity
             foreach (var q in segsUse)   // (tijdens het tekenen alleen de stukken in de buurt)
             {
                 Vector3 ab = q.b - q.a; float l2 = ab.sqrMagnitude; if (l2 < 1e-4f) continue; float u = Mathf.Clamp01(Vector3.Dot(w - q.a, ab) / l2);
-                Vector3 dv = w - (q.a + ab * u); dv -= dir * Vector3.Dot(dv, dir); if (dv.magnitude < q.hw - 1.7f) { hit = true; break; }   // hw is de stoep plus 1,5 m
+                Vector3 dv = w - (q.a + ab * u); if (dv.sqrMagnitude > 80f * 80f) continue; dv -= dir * Vector3.Dot(dv, dir); if (dv.magnitude < q.hw - 1.7f) { hit = true; break; }   // hw is de stoep plus 1,5 m
             }
             if (!hit) foreach (var q in capsUse) if (CapDist(q, w) < q.hw - 1.7f) { hit = true; break; }
         }
@@ -201,7 +201,10 @@ public static partial class PlanetCity
             // de voet van de kant loopt schuin als de weg helt (hij ligt waar wegdek + talud het terrein raakt): een rechte lijn in (S, T)
             float sg = hr < hc0 ? 1f : -1f; Lin gap = (Lin.C(q.ha - 0.05f) + S * ((q.hb - q.ha) / len) - B) * (sg / FK);
             Lin toeP = T - Lin.C(q.hw) + gap, toeM = T + Lin.C(q.hw) - gap;
-            var fs = new List<Lin> { T - Lin.C(q.hw), T + Lin.C(q.hw), toeP, toeM, S, S - Lin.C(len), S + Lin.C(dz), S - Lin.C(len + dz) };
+            // ook op EndSlack voorbij elk eind: daar houdt het stuk op (GroundField), zonder kop is dat een klif (landhoofd, portaal); anders
+            // liep de mesh van het eind schuin naar de verste hoek van de veelhoek en week hij meters van de hoogtefunctie af
+            // en op het bereik van het veld (FieldReach) naast het stuk: verder reikt het talud niet, een hoger verschil is daar een klif
+            var fs = new List<Lin> { T - Lin.C(q.hw), T + Lin.C(q.hw), toeP, toeM, S, S - Lin.C(len), S + Lin.C(dz), S - Lin.C(len + dz), S + Lin.C(EndSlack + 0.02f), S - Lin.C(len + EndSlack + 0.02f), T - Lin.C(q.hw + FieldReach + 0.02f), T + Lin.C(q.hw + FieldReach + 0.02f) };   // (2 cm voorbij de grens: op de grens zelf telt het stuk nog mee, de wand zit ertussen)
             foreach (var f in fs)
             {
                 var next = new List<List<Vector2>>(); foreach (var pl in polys) if (!SplitBy(pl, f, next)) next.Add(pl); polys = next;
@@ -217,7 +220,7 @@ public static partial class PlanetCity
                 Lin N = new Lin { a = Vector3.Dot(o3 - q.c, n), x = Vector3.Dot(c.east, n), y = Vector3.Dot(c.north, n) };
                 Vector3 pn = Vector3.Cross(q.dir, n).normalized; Lin P = new Lin { a = Vector3.Dot(o3 - q.c, pn), x = Vector3.Dot(c.east, pn), y = Vector3.Dot(c.north, pn) };
                 Lin toe = N - Lin.C(q.hw) - (B - Lin.C(q.h - 0.05f)) * (sg / FK);   // de voet: waar wegdek + talud het terrein raakt
-                var fc = new List<Lin> { N - Lin.C(q.hw), toe, N, P };
+                var fc = new List<Lin> { N - Lin.C(q.hw), toe, N, P, N - Lin.C(q.hw + FieldReach + 0.02f) };   // (ook het bereik van het veld: daarbuiten een klif)
                 foreach (var f in fc)   // de zijde, de voet, de graat naar de hoek, de vouw in een bocht
                 {
                     var next = new List<List<Vector2>>(); foreach (var pl in polys) if (!SplitBy(pl, f, next)) next.Add(pl); polys = next;
@@ -310,7 +313,14 @@ public static partial class PlanetCity
         for (int k = 0; k < n.Length; k++) n[k] = Tan(Planet.Cells[cell.nb[k]].dir - cell.dir, cell.dir);
         caps.Add(new Cap { c = cell.dir * Planet.R, dir = cell.dir, n = n, h = h, hw = hw, ic = i });
     }
-    static float CapDist(Cap q, Vector3 w) { Vector3 v = w - q.c; float d = float.MinValue; foreach (var n in q.n) d = Mathf.Max(d, Vector3.Dot(v, n)); return d; }   // zeshoekige afstand tot het hart
+    // zeshoekige afstand tot het hart, in het raakvlak van de kop. Ver weg (de bol kromt onder het raakvlak door, aan de overkant van
+    // de planeet komt er bijna 0 uit) telt de gewone afstand: anders tilt een kop met alle koppen in gebruik (UseAll) de grond aan de
+    // overkant op
+    static float CapDist(Cap q, Vector3 w)
+    {
+        Vector3 v = w - q.c; float far = v.magnitude; if (far > 80f) return far;
+        float d = float.MinValue; foreach (var n in q.n) d = Mathf.Max(d, Vector3.Dot(v, n)); return d;
+    }
     // de helling van de kant langs een weg op een niveau (hoogte per meter opzij; 1 = 45°), in te stellen met het schuifje Talud
     public static float FieldK = 1f / 1.5f;   // standaard 1 op 1,5 (34°), zoals het model overpass_path
     static float FieldReach => Mathf.Min(14f / FK, 40f);
@@ -367,7 +377,8 @@ public static partial class PlanetCity
             foreach (var q in segs)
             {
                 Vector3 ab = q.b - q.a; float l2 = ab.sqrMagnitude; if (l2 < 1e-4f) continue; float len = Mathf.Sqrt(l2), u = Vector3.Dot(w - q.a, ab) / l2;
-                Vector3 dv = w - (q.a + ab * u); dv -= dir * Vector3.Dot(dv, dir); float lat = dv.magnitude, over = Mathf.Max(0f, Mathf.Max(-u, u - 1f) * len);   // naast het stuk, en voorbij een eind
+                Vector3 dv = w - (q.a + ab * u); if (dv.sqrMagnitude > 80f * 80f) continue;   // (ver weg: na het wegnemen van de radiale richting lijkt de overkant van de planeet vlakbij)
+                dv -= dir * Vector3.Dot(dv, dir); float lat = dv.magnitude, over = Mathf.Max(0f, Mathf.Max(-u, u - 1f) * len);   // naast het stuk, en voorbij een eind
                 if (lat > q.hw + FieldReach || over > EndSlack) continue;   // (met wat speling: op het hart zelf valt een punt door afronding anders net buiten beide stukken) alleen naast het stuk: voorbij het eind doet de kop het, of het volgende stuk (een rechte kop gaf daar een trapje)
                 float hr = Mathf.Lerp(q.ha, q.hb, Mathf.Clamp01(u)), rise = Mathf.Max(0f, lat - q.hw) * FK;   // de kant
                 if (lat <= q.hw) onLevelH = Mathf.Min(onLevelH, hr);
@@ -388,7 +399,7 @@ public static partial class PlanetCity
         if (RoadShape) foreach (var q in flatsUse)   // waar twee wegen over elkaar liggen wint de laagste (een helling naar een kruispunt, een weg onder een brug)
         {
             Vector3 ab = q.b - q.a; float l2 = ab.sqrMagnitude; if (l2 < 1e-4f) continue; float len = Mathf.Sqrt(l2), u = Vector3.Dot(w - q.a, ab) / l2;
-            Vector3 dv = w - (q.a + ab * Mathf.Clamp01(u)); dv -= dir * Vector3.Dot(dv, dir); float over = Mathf.Max(0f, Mathf.Max(-u, u - 1f) * len);
+            Vector3 dv = w - (q.a + ab * Mathf.Clamp01(u)); if (dv.sqrMagnitude > 80f * 80f) continue; dv -= dir * Vector3.Dot(dv, dir); float over = Mathf.Max(0f, Mathf.Max(-u, u - 1f) * len);
             float rise = Mathf.Max(Mathf.Max(0f, dv.magnitude - q.hw), over) * FK; if (rise > 20f) continue;
             float hr = Mathf.Lerp(q.ha, q.hb, Mathf.Clamp01(u)) - 0.03f; if (onLevelH <= hr + 0.3f) continue;
             // gaat hier een weg een heel niveau lager onder deze weg door (een brug), dan mag de bak eronder: alleen geen grond erboven

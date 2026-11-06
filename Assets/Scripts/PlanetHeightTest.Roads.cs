@@ -25,7 +25,8 @@ public static partial class PlanetCity
             for (int leg = 0; leg < 4 && cur != b; leg++)
             {
                 var line = LinePlan(cur, b); if (line == null || line.Count < 2) break;
-                if (PlaceLine(line, "weg") > 0) { SetLevel(line, 0, "weg"); DipUnder(line); BoreLine(line); UpdateCuts(); }
+                prog?.Invoke(q / (float)pairs.Count, "weg " + a + "-" + b + " stuk " + leg + " vanaf " + cur + " (" + line.Count + " vakken)");
+                if (PlaceLine(line, "weg") > 0) { prog?.Invoke(q / (float)pairs.Count, "gelegd"); SetLevel(line, 0, "weg"); prog?.Invoke(q / (float)pairs.Count, "niveau"); DipUnder(line); prog?.Invoke(q / (float)pairs.Count, "dip"); BoreLine(line); prog?.Invoke(q / (float)pairs.Count, "bore"); UpdateCuts(); prog?.Invoke(q / (float)pairs.Count, "cuts"); }
                 int end = line[line.Count - 1]; if (end == cur) break; cur = end;
             }
             if (cur == b) HeightTestRoadCount++;

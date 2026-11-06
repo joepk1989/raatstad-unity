@@ -155,6 +155,12 @@ Erbij gekomen op 4 november 2026 (startscherm en steden, `StartScreen.cs` en `Ci
 - Menu > Steden: Opslaan, Opslaan als (nieuwe naam), Naar het startscherm (eerst vragen: opslaan, niet opslaan, annuleren). Elke 3 minuten vanzelf opslaan als er iets veranderd is, en bij het sluiten van het spel.
 - Verwijderen: in Stad openen verschijnt bij het aanwijzen van een stad een gumknop, daarna Verwijderen of Nee (`delAsk`). `CityFiles.Delete` verplaatst de bestanden naar `steden/prullenbak` (niet definitief weg; terugzetten = de bestanden terug naar `steden`).
 
+Erbij gekomen op 6 november 2026 (Terrein v2, stap 1, `PlanetGround2.cs`):
+- Eén hoogtefunctie `PlanetCity.H(punt)` voor het maaiveld (basisvlak per vak, geulen en dijken, de hoogtefunctie langs wegen), met dezelfde keuzes als `BuildGround` (`UseNear` per vak, `FlatGround`, de veld-, geul- en gewone weg); `TerrainAt` (lopen, rijden, bruggen, bomen) gaat erdoorheen. `HInfo` geeft de tussenstappen. Plan: stap 2 bouwt de mesh uit H met gedeelde punten op de vakranden (geen kieren, naden overbodig), stap 3 sokkels, kades en portalen als eigen meshes, stap 4 wegen als zuivere modifier en `preLevel` weg.
+- De scan in `WegVoorbeeld` (`Scan`) meet naast A (terrein boven het wegdek) en B (gaten) ook C: hoeveel punten de mesh meer dan 10 cm van H afwijkt, met per vak de ergste plek, de geraakte driehoek en de wegstukken die daar meetellen (`TriInfo`, `GroundInfo`), en foto's `_C1..3`. Stand: hoogtetest 2,7% (alleen nog op vakranden en bij kliffen van 90 m), Bug planet 0,2% (randen van sokkels).
+- `LineGround` snijdt ook 2 cm voorbij elke grens waar de hoogtefunctie ophoudt (`EndSlack` voorbij het eind van een stuk, `FieldReach` naast een stuk of kop): een hoger verschil is daar een wand; eerder liep de mesh van die grens schuin naar de verste hoek van de veelhoek en `Refine` maakte er spitsen van.
+- Fout verholpen: `CapDist` rekende in het raakvlak van de kop en vond de overkant van de planeet vlakbij (met alle koppen in gebruik tilde een kop van 75 m de zee aan de andere kant op); nu telt voorbij 80 m de gewone afstand, en ook de wegstukken slaan punten verder dan 80 m over.
+
 Nog te doen:
 1. Modules als JSON met edge-codes (nu nog in code)
 2. Onderdelen uit `docs/overdracht-webversie.md` bouwen: stadsgenerator, wenteltrap; geluid: crunch/squeal aanroepen in `PlanetLife`, jump in `PlanetWalker`
