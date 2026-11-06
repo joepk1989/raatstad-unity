@@ -6,11 +6,11 @@ De wereld is een bol (planeet). Alles is gebaseerd op hexagons en driehoeken.
 ## Techniek
 - Unity 6000.6.7f1 (Unity 6.x), Universal Render Pipeline (URP)
 - Taal: C#
-- Doelplatform: pc. De browserversie (hexstad) was het eerste speelbare prototype.
+- Doelplatform: pc. De browserversie (raatstad-web, eerst hexstad) was het eerste speelbare prototype.
 - De Unity-editor is gekoppeld via MCP. Gebruik de Console om je eigen werk te controleren na elke scriptwijziging.
 
 ## Referentie
-- De browserversie (repo `joepk1989/hexstad`, JavaScript) is de referentie voor hoe dingen moeten werken.
+- De browserversie (repo `joepk1989/raatstad-web`, eerst `hexstad`, JavaScript) is de referentie voor hoe dingen moeten werken.
 - Neem regels en data over (module-JSON, edge-codes, wegregels), vertaal de JS-code niet regel voor regel.
 - `docs/overdracht-webversie.md` beschrijft wat er in de webversie is bijgekomen (maten, regels, formules): stadsgenerator, wenteltrap, voertuigen, geluid. Lees dat voordat je een van die onderdelen in Unity bouwt.
 
@@ -21,7 +21,7 @@ De wereld is een bol (planeet). Alles is gebaseerd op hexagons en driehoeken.
 - Modules sluiten naadloos op elkaar aan via edge-codes en zijn stapelbaar.
 - Modules worden als JSON-data beschreven, niet hard in code.
 - Voetgangersmodules (paden, oplopende paden, kruisingen, hofjes) creëren hoogte en zijn beloopbaar.
-- Standaardspelmodus heet "vrije modus".
+- Standaardspelmodus heet "vrije modus". Alle spelmodi (vrije modus, duel tegen AI, multiplayer, oorlogsmodus), de volgorde en wat nog open is: `docs/spelmodi.md`. Lees dat voordat je aan een modus, scores tussen spelers of een modusmenu werkt.
 - Bolwereld (`Assets/Scripts/Planet.cs`): Goldberg-veelvlak, een icosaëder verdeeld in M×M driehoeken (M = 46, straal 600 m) met 10·M²+2 vakken. Dat zijn zeshoeken plus de 12 vijfhoeken die op een bol onvermijdelijk zijn. De vijfhoeken zitten op de hoekpunten van de icosaëder. Aansluitlogica moet dus 5 of 6 buren aankunnen (`Cell.nb`).
 - Polen: de as (`Planet.Axis`) gaat door de middens van twee tegenover elkaar liggende icosaëdervlakken. Noord- en zuidpool zijn dus twee startplekken (`Planet.North`/`South`), en noord en zuid zijn elkaars spiegelbeeld. De evenaar is de rand tussen de vakken van beide halfronden (`PlanetCity.NorthSide`); breedte en lengte via `PlanetCity.LatLon`.
 
