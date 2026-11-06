@@ -14,7 +14,7 @@ public partial class PlanetBuilder
     Page page;
     int dialog;   // in het spel: 1 opslaan als, 2 eerst opslaan voor het startscherm?
     bool HomeModal => home || dialog != 0;
-    string nameEdit = ""; int newKind = 1; int listOfs;
+    string nameEdit = ""; int newKind = 1; int listOfs; string delAsk;   // delAsk: de stad waarvan gevraagd wordt of hij weg mag
     // laden
     bool busy;
     // opslaan
@@ -262,7 +262,19 @@ public partial class PlanetBuilder
             Ui.Label(new Rect(tx, rr.y + 10f, tw - 16f, 20f), c.name, Ui.T.Bold, hv ? Ui.Signal : Ui.Ink, null, 14);
             Ui.Label(new Rect(tx, rr.y + 31f, tw, 16f), CityFiles.When(c.saved) + (!string.IsNullOrEmpty(c.from) ? " · uit " + c.from : ""), Ui.T.Dim, null, null, 11);
             Ui.Label(new Rect(tx, rr.y + 48f, tw, 16f), CityFiles.Stats(c), Ui.T.Dim, Ui.Signal, null, 11);
-            Ui.Hit(rr); if (GUI.Button(rr, GUIContent.none, GUIStyle.none)) { Sounds.Fx("click"); OpenCity(c); }
+            if (delAsk == c.id)   // eerst vragen: over de rij een balk met Verwijderen en Nee
+            {
+                var ar = new Rect(rr.x + 1f, rr.y + 1f, rr.width - 2f, rr.height - 2f); Ui.Box(ar, Ui.PanelSolid, Color.clear, 9f);
+                Ui.Label(new Rect(ar.x + 14f, ar.y + 10f, ar.width - 28f, 20f), c.name + " verwijderen?", Ui.T.Bold, null, null, 14);
+                Ui.Label(new Rect(ar.x + 14f, ar.y + 32f, ar.width - 220f, 30f), "Gaat naar de prullenbak in de map steden", Ui.T.Dim, null, null, 11);
+                if (Ui.Button(new Rect(ar.xMax - 196f, ar.y + 30f, 110f, 32f), "Verwijderen", true, "gum")) { CityFiles.Delete(c); delAsk = null; Sounds.Fx("remove"); break; }
+                if (Ui.Button(new Rect(ar.xMax - 80f, ar.y + 30f, 68f, 32f), "Nee")) delAsk = null;
+                Ui.Hit(rr); y += rowH + 6f; continue;
+            }
+            var db = new Rect(rr.xMax - 38f, rr.yMax - 36f, 30f, 30f);
+            if (hv && Ui.RoundButton(db, "gum")) delAsk = c.id;   // verwijderen (alleen zichtbaar bij aanwijzen)
+            if (hv) Ui.Tip(db, "Verwijderen", "Naar de prullenbak");
+            Ui.Hit(rr); if (GUI.Button(rr, GUIContent.none, GUIStyle.none)) { Sounds.Fx("click"); delAsk = null; OpenCity(c); }
             y += rowH + 6f;
         }
         if (all.Count > rows) Ui.Label(new Rect(x, y, iw, 18f), (listOfs + 1) + "–" + Mathf.Min(all.Count, listOfs + rows) + " van " + all.Count + " · scroll voor meer", Ui.T.Dim, null, TextAnchor.MiddleCenter, 11);

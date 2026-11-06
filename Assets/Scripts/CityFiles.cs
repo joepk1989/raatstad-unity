@@ -113,6 +113,24 @@ public static class CityFiles
         try { return File.ReadAllText(DataPath(c.id)); }
         catch (Exception e) { Debug.LogWarning("Stad lezen mislukt: " + e.Message); return null; }
     }
+    // een stad weggooien: zijn bestanden gaan naar de map prullenbak (niet definitief weg; met de hand terug te zetten)
+    public static bool Delete(CityInfo c)
+    {
+        try
+        {
+            string bin = Path.Combine(Dir, "prullenbak"); Directory.CreateDirectory(bin);
+            string stamp = File.Exists(Path.Combine(bin, c.id + ".json")) ? "-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") : "";
+            foreach (var (src, ext) in new[] { (InfoPath(c.id), ".info.json"), (ThumbPath(c.id), ".png"), (DataPath(c.id), ".json") })
+                if (File.Exists(src)) File.Move(src, Path.Combine(bin, c.id + stamp + ext));
+            if (thumbs.TryGetValue(c.id, out var t) && t != null) UnityEngine.Object.Destroy(t);
+            thumbs.Remove(c.id); thumbVer.Remove(c.id);
+            list?.RemoveAll(x => x.id == c.id);
+            if (Current != null && Current.id == c.id) Current = null;
+            if (PlayerPrefs.GetString(LastKey, "") == c.id) { PlayerPrefs.DeleteKey(LastKey); PlayerPrefs.Save(); }
+            return true;
+        }
+        catch (Exception e) { Debug.LogWarning("Stad verwijderen mislukt: " + e.Message); return false; }
+    }
     public static void MarkOpened(CityInfo c) { Current = c; PlayerPrefs.SetString(LastKey, c.id); PlayerPrefs.Save(); }
 
     // de schermafbeelding van een stad (null als er nog geen is); onthouden tot het bestand verandert

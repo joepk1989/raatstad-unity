@@ -146,10 +146,17 @@ Erbij gekomen op 3 november 2026 (AI-bouwer, `PlanetAI.cs` en `PlanetBuilder.AI.
 - Versie 4 (6 november 2026): rotondes alleen op de ringhoeken waar een spaak naar buiten vertrekt (ring 4 en 10 de oneven, ring 7 de even hoeken: drie armen op 120°, minstens 7 vakken uit elkaar); op een druk kruispunt mag de AI eerst een eigen gebouw of park weghalen om ruimte te maken (`clearFor`, de ring blijft dan 20 zetten vrij: `ruimte`). Losse stukken straat (bijvoorbeeld een ring waar de spaken niet bij kwamen) verbindt hij met Dijkstra met de rest; Dijkstra loopt niet pal langs een andere straat (een vak naast een straat kost extra). Zij aan zij telt niet meer twee armen van hetzelfde kruispunt. Herkomst per vak (`Origin`) en een logboek van geplande stukken die niet konden (`PlanLog`, `Why`). Gemeten: vlak 4–8 rotondes, 8 paren zij aan zij, geen losse stukken; met een heuvel en een meer 0–2 rotondes (spaken kunnen niet over een helling van meer dan 2,6 m per vak), 2–6 paren zij aan zij; schoonheid 84–87, 0 fouten.
 - Nog niet in het menu met spelmodi; hoe het duel werkt staat open. Het startscherm (`StartScreen.GoHome`) stopt de AI.
 
+Erbij gekomen op 4 november 2026 (startscherm en steden, `StartScreen.cs` en `CityFiles.cs`):
+- Bij Play eerst het startscherm (deel van `PlanetBuilder`, `home`): de planeet draait vanuit de ruimte rechts in beeld, links Verder (de laatste stad), Nieuwe stad (naam; startstad, lege planeet of hele planeet vol), Stad openen (lijst met voorbeeldplaatje, datum, vakken en schoonheid), Spelmodus (alleen de vrije modus werkt, de rest "komt later"), Instellingen en Afsluiten. Draait er een testscript (een component waarvan de naam op `Test` eindigt), dan wordt het startscherm overgeslagen.
+- Openen en nieuw gaan zoals Hele planeet vol (`OpenRoutine`): geen laadscherm, de camera draait om de bol die als blauwdruk volloopt (`PlanetBlueprint`), onderaan het laadpaneel (`LoadingGui`) met de echte voortgang (`FillSteps`, `RebuildSteps`); daarna zakt de camera naar de stad. `HexLoadingScreen` wordt niet gebruikt.
+- Meerdere steden in `persistentDataPath/steden`: per stad `<id>.json` (`PlanetCity.Snapshot`), `<id>.info.json` (`CityInfo`: naam, datum, vakken, schoonheid) en `<id>.png` (320×180, `Shot`). De oude `planeet1..3.json` worden de eerste keer gekopieerd als Stad 1–3 (`from`); de originelen worden nooit meer beschreven. Tijdens het spelen schrijft `PlanetCity.Save` naar het werkbestand `planeet0.json` (Slot 0); dat leest niets terug.
+- Menu > Steden: Opslaan, Opslaan als (nieuwe naam), Naar het startscherm (eerst vragen: opslaan, niet opslaan, annuleren). Elke 3 minuten vanzelf opslaan als er iets veranderd is, en bij het sluiten van het spel.
+- Verwijderen: in Stad openen verschijnt bij het aanwijzen van een stad een gumknop, daarna Verwijderen of Nee (`delAsk`). `CityFiles.Delete` verplaatst de bestanden naar `steden/prullenbak` (niet definitief weg; terugzetten = de bestanden terug naar `steden`).
+
 Nog te doen:
 1. Modules als JSON met edge-codes (nu nog in code)
 2. Onderdelen uit `docs/overdracht-webversie.md` bouwen: stadsgenerator, wenteltrap; geluid: crunch/squeal aanroepen in `PlanetLife`, jump in `PlanetWalker`
-3. Laadscherm (`Assets/Scripts/UI/HexLoadingScreen.cs`) in de startscène hangen
+3. Steden: hernoemen op het startscherm, en de prullenbak legen of terugzetten in het spel
 4. Terrein: hoogtelijnen tijdens het boetseren; tunnels door hoog terrein (bestaande koker, portalen en `TunnelLinks` hergebruiken)
 5. Ragdolls voor mensen die bij de chaos worden geraakt
 6. Tunnels: een tunnel komt alleen bij het leggen (niet als je later een berg boetseert over een weg)
