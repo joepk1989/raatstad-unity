@@ -271,6 +271,15 @@ public static partial class PlanetCity
         }
         bool PlainRoad(int a) => IsRoad(a) && !levelled.Contains(a) && !Underpass(a) && !carved.Contains(a) && !preCarve.ContainsKey(a) && !IsRot(a);
         var uneven = new HashSet<int>(); if (RoadField) foreach (var kv in Cells) if (PlainRoad(kv.Key) && Uneven(kv.Key)) uneven.Add(kv.Key);
+        // De weg wordt in een bocht afgerond (SmoothLine): bij het hart van een bochtvak ligt hij dan op het gemiddelde van de bocht,
+        // lager dan het vak zelf als hij daar daalt; de grond rekent met die hoogte (anders lag hij tot een meter boven de stoep)
+        float RH(int x)
+        {
+            var ps = new List<int>(); foreach (int j in Partners(x)) if (IsRoad(j) && !IsBore(x, j)) ps.Add(j);
+            if (ps.Count >= 3) { float lo = 0f; foreach (int j in ps) lo = Mathf.Min(lo, G(j) - G(x)); return G(x) + lo * 0.6f; }   // een kruising helt naar zijn armen (Frame.H): de kop zo laag als de laagste arm op 8 m
+            if (ps.Count != 2 || !Capped(x)) return G(x);
+            return Mathf.Min(G(x), (G(ps[0]) + 2f * G(x) + G(ps[1])) * 0.25f);
+        }
         foreach (int a in uneven)
         {
             Vector3 ad = Planet.Cells[a].dir; float hw = WalkHW(a); int na = 0;
@@ -278,9 +287,22 @@ public static partial class PlanetCity
             {
                 if (!IsRoad(b)) continue; na++;
                 if (!PlainRoad(b) || IsBore(a, b) || TunnelLinks.Contains(Key(a, b)) || (uneven.Contains(b) && b < a)) continue;
-                AddWalkSeg(segs, new Seg { a = ad * Planet.R, b = Planet.Cells[b].dir * Planet.R, ha = G(a), hb = G(b), hw = hw, capA = Capped(a), capB = uneven.Contains(b) && Capped(b), ia = a, ib = b });
+                AddWalkSeg(segs, new Seg { a = ad * Planet.R, b = Planet.Cells[b].dir * Planet.R, ha = RH(a), hb = RH(b), hw = hw, capA = Capped(a), capB = uneven.Contains(b) && Capped(b), ia = a, ib = b });
             }
-            if (Capped(a)) AddCap(a, G(a), na <= 1 ? hw + HeadExtra(a) : hw);
+            // een kruising tekent zijn stoep verder dan de gewone breedte (afgeronde hoeken, een spitse kruising loopt door): de kop ruimer
+            if (Capped(a)) AddCap(a, RH(a), na <= 1 ? hw + HeadExtra(a) : na >= 3 ? hw + 4f : hw);
+        }
+        // Een brug over een dal: van het hart van elk landhoofdvak tot het landhoofd ligt de grond op weghoogte, met het talud ernaast
+        // (anders ligt het terrein van de helling over de weg naar de brug); onder het dek blijft het lager (SpanBottom in GroundField).
+        foreach (long k in TunnelLinks)   // (ook een tunnel: de weg helt van het portaalvak de berg in)
+        {
+            int a0 = (int)(k >> 20), b0 = (int)(k & 0xFFFFF); if (!IsBore(a0, b0) || !IsWalk(a0) || !IsWalk(b0)) continue;
+            foreach (var (e, oe) in new[] { (a0, b0), (b0, a0) })
+            {
+                Vector3 de = Planet.Cells[e].dir, dO = Planet.Cells[oe].dir; float L = Vector3.Angle(de, dO) * Mathf.Deg2Rad * Planet.R, t = FlatL * 0.55f / L;
+                Vector3 pe = Vector3.Slerp(de, dO, t).normalized * Planet.R;
+                AddWalkSeg(segs, new Seg { a = de * Planet.R, b = pe, ha = G(e), hb = Mathf.Lerp(G(e), G(oe), t), hw = WalkHW(e), ia = e, ib = e });
+            }
         }
         // gewone wegen en paden (niet op een niveau) in de buurt: onder zo'n weg ligt de grond op de hoogte van die weg, wat het talud
         // ernaast ook doet (zoals Cities: Skylines 2), anders loopt een talud bij een kruispunt over de weg heen

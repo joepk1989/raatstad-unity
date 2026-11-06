@@ -17,7 +17,8 @@ public static partial class PlanetCity
     // Hoger: een bestaande weg die de lijn recht kruist, gaat onder de nieuwe weg door. Zo past één niveau lager of hoger altijd
     // precies onder of over een weg op het maaiveld. Een half niveau is te weinig om onder of over een weg te gaan: daar wordt het
     // een kruispunt (de weg helt er naartoe).
-    public static float LevelTarget(int c, int lv) => (PadGround(c) ?? G(c)) + lv * StepH;   // de hoogte van vak c op niveau lv (voor het voorbeeld)
+    public static float LevelTarget(int c, int lv) { float t = (PadGround(c) ?? G(c)) + lv * StepH; return lv >= 0 ? Mathf.Max(t, DryRoad) : t; }
+    public static float DryRoad => SeaLevel + 0.6f;   // de laagste hoogte van een weg of pad op het maaiveld (60 cm boven de zee)   // de hoogte van vak c op niveau lv (voor het voorbeeld)
     // Voor het voorbeeld tijdens het slepen: wordt vak c van de lijn een brug? +1: de nieuwe weg gaat erover (dek op deck), -1: de
     // nieuwe gaat eronderdoor (de bestaande weg is het dek), 0: niets. Dezelfde regels als SetLevel, Place en PlaceLine.
     public static int CrossingPreview(int c, List<int> line, int lv, string type, out float deck)
@@ -87,6 +88,7 @@ public static partial class PlanetCity
         {
             int c = line[k]; if (!IsWalk(c)) continue;
             float? pg = PadGround(c); float b = pg ?? (float.IsNaN(carry) ? G(c) : carry); carry = b; float target = b + lv * StepH;
+            if (lv >= 0) target = Mathf.Max(target, DryRoad);   // een weg of pad op het maaiveld ligt nooit onder water: over de zee een dam (of een brug, BoreLine)
             if (Underpass(c))   // een kruising die het leggen net maakte (of die er al was): de nieuwe weg of het pad eronder op zijn niveau
             {
                 bool padUnder = PadUnder(c);

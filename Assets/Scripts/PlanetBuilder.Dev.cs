@@ -5,7 +5,7 @@ using UnityEngine;
 // alles opnieuw tekenen, en de laatste meldingen uit de log. Dezelfde schakelaars staan in het raatmenu onder Instellingen › Ontwikkelaar.
 public partial class PlanetBuilder
 {
-    bool devOpen, hexDev;   // hexDev: in het raatmenu toont Instellingen de ontwikkelaarskeuzes
+    bool devOpen, hexDev; int devScroll;   // devScroll: de eerste zichtbare schakelaar in de console   // hexDev: in het raatmenu toont Instellingen de ontwikkelaarskeuzes
 
     void DevKeys() { if (Inp.Down(K.Backquote)) devOpen = !devOpen; }
 
@@ -17,6 +17,9 @@ public partial class PlanetBuilder
         if (inMenu) l.Add(new MItem { name = "‹ Terug", sub = "Naar de gewone instellingen", act = () => { hexDev = false; hexSubT = Time.unscaledTime; } });
         l.Add(new MItem { name = "Vijfhoeken en vervorming", value = On(Dev.Pentagons), on = Dev.Pentagons, sub = "Oranje vijfhoeken met baken, de grond kleurt mee met de vervorming", act = () => Dev.Pentagons = !Dev.Pentagons });
         l.Add(new MItem { name = "Startplekken", value = On(Dev.Starts), on = Dev.Starts, sub = "De twintig startplekken met paal, vlag en bordje", act = () => Dev.Starts = !Dev.Starts });
+        l.Add(new MItem { name = "Terrein door wegen", value = On(PlanetCity.RoadShape), on = PlanetCity.RoadShape, sub = "Uit: geen dijken onder wegen; waar het terrein hoger ligt wordt het met een talud afgegraven", act = () => { PlanetCity.RoadShape = !PlanetCity.RoadShape; Dev.Redraw(); Say("Terrein door wegen " + On(PlanetCity.RoadShape)); } });
+        l.Add(new MItem { name = "Talud langs wegen", value = On(PlanetCity.RoadSlopes), on = PlanetCity.RoadSlopes, sub = "Uit: de kant naast de weg bijna loodrecht in plaats van een schuin talud", act = () => { PlanetCity.RoadSlopes = !PlanetCity.RoadSlopes; Dev.Redraw(); Say("Talud langs wegen " + On(PlanetCity.RoadSlopes)); } });
+        l.Add(new MItem { name = "Naden langs wegen", value = On(PlanetCity.Seams), on = PlanetCity.Seams, sub = "Stroken langs de randen van vakken die een kier afdekken; uit laat zien waar het terrein niet aansluit", act = () => { PlanetCity.Seams = !PlanetCity.Seams; Dev.Redraw(); Say("Naden " + On(PlanetCity.Seams)); } });
         l.Add(new MItem { name = "Hoekpunten", value = On(Dev.Verts), on = Dev.Verts, sub = "Bij het terreingereedschap rond de muis", act = () => Dev.Verts = !Dev.Verts });
         l.Add(new MItem { name = "Vakinfo bij de muis", value = On(Dev.CellInfo), on = Dev.CellInfo, sub = "Nummer, hoogte, vervorming, stapel", act = () => Dev.CellInfo = !Dev.CellInfo });
         l.Add(new MItem { name = "Statistieken", value = On(Dev.Stats), on = Dev.Stats, sub = "Fps, vakken, leven, camera", act = () => Dev.Stats = !Dev.Stats });
@@ -74,7 +77,7 @@ public partial class PlanetBuilder
     // het venster: links de schakelaars (zeshoekjes), rechts de log
     void Console(float W, float H)
     {
-        float w = Mathf.Min(860f, W - 40f), h = 380f; var r = new Rect((W - w) * 0.5f, 12f + 48f + 40f, w, h);
+        float w = Mathf.Min(860f, W - 40f), h = Mathf.Clamp(H - 12f - 48f - 40f - 90f, 260f, 520f); var r = new Rect((W - w) * 0.5f, 12f + 48f + 40f, w, h);
         Ui.Box(r, new Color(0.02f, 0.05f, 0.1f, 0.95f), new Color(0.45f, 0.7f, 1f, 0.6f), 14f); Ui.Hit(r);
         float x = r.x + 18f, y = r.y + 14f;
         Ui.Tex(new Rect(x, y + 6f, 16f, 14.4f), Ui.Hex(new Color(0.45f, 0.7f, 1f), Color.clear, 0f));
@@ -82,7 +85,16 @@ public partial class PlanetBuilder
         Ui.Label(new Rect(x + 24f, y, w - 90f, 28f), "` sluit", Ui.T.Dim, null, TextAnchor.MiddleRight, 11);
         if (Ui.RoundButton(new Rect(r.xMax - 18f - 28f, y, 28f, 28f), "sluit")) devOpen = false;
         y += 40f; float lw = 330f;
-        foreach (var m in DevItems(false)) { if (HexRow(new Rect(x, y, lw, 36f), m.name, null, m.value, m.on)) m.act?.Invoke(); y += 40f; }
+        // de schakelaars: wat niet past schuift met het muiswiel (alleen hele regels, met een balkje rechts ervan)
+        var items = DevItems(false); float top = y, room = r.yMax - 12f - top; int fit = Mathf.Max(1, Mathf.FloorToInt((room + 4f) / 40f)), max = Mathf.Max(0, items.Count - fit);
+        var lr0 = new Rect(x, top, lw + 14f, room); if (lr0.Contains(Ui.Mouse) && Inp.Scroll != 0f) devScroll -= Mathf.RoundToInt(Mathf.Sign(Inp.Scroll));
+        devScroll = Mathf.Clamp(devScroll, 0, max);
+        for (int k = devScroll; k < Mathf.Min(items.Count, devScroll + fit); k++) { var m = items[k]; if (HexRow(new Rect(x, y, lw, 36f), m.name, null, m.value, m.on)) m.act?.Invoke(); y += 40f; }
+        if (max > 0)
+        {
+            var bar = new Rect(x + lw + 4f, top, 4f, fit * 40f - 4f); Ui.Box(bar, new Color(1f, 1f, 1f, 0.08f), Color.clear, 2f);
+            float bh = bar.height * fit / items.Count; Ui.Box(new Rect(bar.x, bar.y + (bar.height - bh) * devScroll / max, 4f, bh), new Color(0.45f, 0.7f, 1f, 0.8f), Color.clear, 2f);
+        }
         // rechts: de log
         var lr = new Rect(x + lw + 24f, r.y + 54f, w - lw - 60f, h - 70f);
         Ui.Box(lr, new Color(0f, 0f, 0f, 0.35f), Color.clear, 8f);

@@ -111,13 +111,26 @@ public static partial class PlanetCity
         long h = 1469598103934665603L;
         void F(float f) { h = unchecked((h ^ (uint)System.BitConverter.SingleToInt32Bits(f)) * 1099511628211L); }
         void V(Vector3 v) { F(v.x); F(v.y); F(v.z); }
-        F(i); F(hcb0); foreach (float x in hb0) F(x); F(FieldK); F(special ? 1f : 0f); F(carved.Count > 0 && cuts.Count > 0 ? 1f : 0f); h ^= cutsHash;
+        F(i); F(hcb0); foreach (float x in hb0) F(x); F(FieldK); F(special ? 1f : 0f); F((RoadShape ? 1f : 0f) + (RoadSlopes ? 2f : 0f));   // de schakelaars Terrein door wegen en Talud F(carved.Count > 0 && cuts.Count > 0 ? 1f : 0f); h ^= cutsHash;
         foreach (var q in segsUse) { V(q.a); V(q.b); F(q.ha); F(q.hb); F(q.hw); F(q.capA ? 1f : 0f); F(q.capB ? 1f : 0f); }
         foreach (var q in flatsUse) { V(q.a); V(q.b); F(q.ha); F(q.hb); F(q.hw); }
         foreach (var q in capsUse) { V(q.c); F(q.h); F(q.hw); }
         return h;
     }
     static void BuildGround(int ch) { try { BuildGround0(ch); } finally { UseAll(); } }   // na het tekenen weer alle wegstukken (UseNear)
+    const float SkirtD = 10f;   // hoe diep een naad langs de rand van een vak naar beneden hangt (Skirt in BuildGround0)
+    public static bool Seams = true;   // de naden aan (uit: om te zien waar het terrein niet aansluit)
+    // vakken waar de grond door wegen, geulen of tunnels gesneden wordt, en hun buren: daar kan een gedeelde rand van twee kanten anders uitvallen
+    static bool SeamCell(int i)
+    {
+        if (!Seams) return false;
+        if (fieldCells.Contains(i) || boreNear.ContainsKey(i) || spanNear.ContainsKey(i) || (carved.Count > 0 && carved.Contains(i)) || IsWalk(i)) return true;
+        foreach (int j in Planet.Cells[i].nb) if (fieldCells.Contains(j) || (carved.Count > 0 && carved.Contains(j)) || IsWalk(j) || Plateau(j)) return true;   // ook naast een weg of een bebouwd vak (een half wegvak ligt soms lager dan de hoek ernaast)
+        return false;
+    }
+    // heeft vak j geen eigen bodem (een gracht, uitgraving of de geul onder een brug)? Daar geen naad naartoe.
+    static bool NoGround(int j) => (Cells.TryGetValue(j, out var s) && s.Count > 0 && (s[0] == "water" || s[0] == "kuil"))
+        || (Under.TryGetValue(j, out var u) && (u == "water" || u == "kuil" || u == "pad" || u == "weg") && !FieldBridge(j));
     static void BuildGround0(int ch)
     {
         { long h = 17; foreach (var q in cuts) h = unchecked(h * 31 + (q.p.GetHashCode() ^ q.floor.GetHashCode() * 7 ^ q.ground.GetHashCode() * 13 ^ q.hw.GetHashCode() * 17 ^ q.skew.GetHashCode() * 19 ^ q.flat.GetHashCode() * 23 ^ q.ramp.GetHashCode() * 29 ^ q.end.GetHashCode() * 37 ^ (q.fill ? 41 : 0) ^ q.o.GetHashCode() * 43 ^ q.t.GetHashCode() * 47)); cutsHash = h; }
@@ -151,6 +164,10 @@ public static partial class PlanetCity
                 float kk = Mathf.Pow(Mathf.Clamp01((c.distort - 0.04f) / 0.125f), 1.4f);
                 bool start = System.Array.IndexOf(Planet.Starts, i) >= 0, pole = Planet.IsPole(i), special = pole || pent || start;
                 var mb0 = pole ? PM("ijs") : pent && Dev.Pentagons ? pm : start && Dev.Starts ? sm : Dev.Distort ? ms[Mathf.Clamp(Mathf.RoundToInt(kk * (Steps - 1)), 0, Steps - 1)] : ms[0];   // vervorming en vijfhoeken alleen als ontwikkelaarshulp (Dev)
+                // naden langs de rand (Skirt): bij vakken waar de grond door wegen, geulen of tunnels gesneden wordt, en hun buren; niet
+                // bij een plateau of strook (die hebben een sokkel) en niet naar een vak zonder bodem (gracht, geul onder een brug)
+                bool seam = !plat && !cut && SeamCell(i) && !StripCut(i); var edgeN = new Vector3[m]; var seamEdge = new bool[m];
+                if (seam) for (int k = 0; k < m; k++) { edgeN[k] = Vector3.Cross(c.corners[k], c.corners[(k + 1) % m]).normalized; int j = edN[i][k]; seamEdge[k] = j >= 0 && !NoGround(j) && !Quay(j); }
                 if (!cut)
                 {
                     Vector3 mid = c.dir * (Planet.R + hc);
@@ -158,8 +175,30 @@ public static partial class PlanetCity
                     List<GTri> rec = null;   // de driehoekjes van een vak langs een weg op een niveau, om te onthouden (groundCache)
                     void Put(string tag, Vector3 P0, Vector3 P1, Vector3 P2)   // naar de bodemmesh (met het vak bij elk hoekpunt) of naar het materiaal van de soort
                     {
-                        if (soil != null && SoilTag(tag) && (tag != null || mb0 == ms[0])) { int v0 = soil.v.Count; BoreTri(soil, P0, P1, P2, c.dir, bn); for (int q = v0; q < soil.v.Count; q++) soilCell.Add(i); }
-                        else BoreTri(tag == null ? mb0 : TB(tag), P0, P1, P2, c.dir, bn);
+                        PutTri(tag, P0, P1, P2, c.dir);
+                        if (seam) { Skirt(tag, P0, P1); Skirt(tag, P1, P2); Skirt(tag, P2, P0); }
+                    }
+                    void PutTri(string tag, Vector3 P0, Vector3 P1, Vector3 P2, Vector3 outw)
+                    {
+                        if (soil != null && SoilTag(tag) && (tag != null || mb0 == ms[0])) { int v0 = soil.v.Count; BoreTri(soil, P0, P1, P2, outw, bn); for (int q = v0; q < soil.v.Count; q++) soilCell.Add(i); }
+                        else BoreTri(tag == null ? mb0 : TB(tag), P0, P1, P2, outw, bn);
+                    }
+                    // Een naad: ligt dit randje van een driehoekje op de rand van het vak, dan hangt er een strook van SkirtD naar beneden (naar
+                    // buiten gekeerd). Sluit het buurvak goed aan, dan zit die strook in de grond; zo niet (een ander aantal snijpunten op de
+                    // gedeelde rand, een andere hoogte) dan dekt hij de kier af in plaats van dat je door de planeet kijkt.
+                    void Skirt(string tag, Vector3 P0, Vector3 P1)
+                    {
+                        Vector3 u0 = P0.normalized, u1 = P1.normalized;
+                        for (int k = 0; k < m; k++)
+                        {
+                            if (!seamEdge[k]) continue; Vector3 nk = edgeN[k];
+                            if (Mathf.Abs(Vector3.Dot(u0, nk)) > 2e-6f || Mathf.Abs(Vector3.Dot(u1, nk)) > 2e-6f) continue;
+                            Vector3 outw = Vector3.Dot(c.dir, nk) > 0f ? -nk : nk;
+                            // effen in de grondkleur (de bodem met textures maakt een loodrechte strook kale aarde: een bruine wand)
+                            float hh = P0.magnitude - Planet.R; var sb2 = TB(tag != null && tag.StartsWith("t") ? tag : "t" + Mathf.Clamp(Mathf.FloorToInt(hh * 3f / 9f), 0, 29));
+                            BoreTri(sb2, P0, P1, P1 - u1 * SkirtD, outw, bn); BoreTri(sb2, P0, P1 - u1 * SkirtD, P0 - u0 * SkirtD, outw, bn);
+                            return;
+                        }
                     }
                     void Emit2(Vector3 P0, Vector3 P1, Vector3 P2, float h0, float h1, float h2, bool steep)   // steep: op de schuine kant van een weg (gras, of aarde als het steiler is dan 40°)
                     {
@@ -176,11 +215,11 @@ public static partial class PlanetCity
                         var hb0 = new float[m]; float hcb0 = 0f; for (int k = 0; k < m; k++) { hb0[k] = FieldBase(i, k); hcb0 += hb0[k]; } hcb0 = (levelled.Contains(i) ? hcb0 / m : g) + CenterOfs1(i);   // het gewone terrein, zonder de weg (een bebouwd vak: zijn plateau)
                         // hetzelfde als de vorige keer (zelfde hoogtes en dezelfde wegen in de buurt): de onthouden driehoekjes, niet opnieuw snijden
                         long key = FieldKey(i, hcb0, hb0, special);
-                        if (groundCache.TryGetValue(i, out var gc) && gc.key == key) { foreach (var t in gc.tris) Put(t.tag, t.a, t.b, t.c); continue; }
+                        if (groundCache.TryGetValue(i, out var gc) && gc.key == key) { foreach (var t in gc.tris) Put(t.tag, t.a, t.b, t.c); goto Walls; }   // (de sokkel van een strook komt hieronder nog)
                         rec = new List<GTri>();
                         for (int k = 0; k < m; k++) LineGround(c, k, hcb0, hb0[k], hb0[(k + 1) % m], Emit2);
                         groundCache[i] = (key, rec); rec = null;
-                        continue;
+                        goto Walls;
                     }
                     var near = (carved.Count > 0 || fillN > 0) && !plat ? CutsNear(c) : null; float[] hbase = null; float hcb = g;
                     if (near != null && near.Count > 0)
@@ -209,6 +248,7 @@ public static partial class PlanetCity
                     }
                     skewRoad = Vector2.zero;
                 }
+                Walls:
                 // sokkel: een plateau boven het maaiveld krijgt stenen wanden tot op het maaiveld ernaast (tussen twee plateaus: een keermuur)
                 bool strip = !plat && !cut && StripCut(i);   // een bebouwd vak waar een weg in steekt: ook een sokkel, met als bovenkant de grond van het vak (op de weg zelf lager)
                 if ((plat || cut || strip) && !Quay(i))   // een gracht heeft kademuren in plaats van een sokkel (PlanetNature.cs)

@@ -12,7 +12,8 @@ public static partial class PlanetCity
     public static readonly Dictionary<int, float> Terr = new Dictionary<int, float>();
     public const float TerrTop = 90f, TerrLow = -12f;   // bergen tot 90 m (rots en sneeuw, PlanetNature.cs); afgraven kan tot 12 m onder het gewone maaiveld
     public static float G(int i) => LakeG(i, Terr.TryGetValue(i, out var h) ? h : 0f);   // een meer ligt vanzelf onder het zeeniveau (PlanetNature.cs)
-    public static bool Plateau(int i) => Cells.TryGetValue(i, out var l) && l.Count > 0 && !IsWalk(i) && !OpenGround(l) && !PathHalf(i);   // bomen, meren en grachten liggen in het terrein (PlanetNature.cs)
+    public static bool Plateau(int i) => Cells.TryGetValue(i, out var l) && l.Count > 0 && !IsWalk(i) && !OpenGround(l) && !PathHalf(i) && (RoadShape || !IsHalf(i) || HalfBuilt(i));   // zonder terrein door wegen is een half wegvak met alleen groen geen plaat (die stak over de weg uit); met een gebouw wel (anders zweeft het)
+    static bool HalfBuilt(int i) { var l = Cells[i]; for (int k = 1; k < l.Count; k++) if (l[k] != "park" && l[k] != "bos") return true; return false; }   // bomen, meren en grachten liggen in het terrein (PlanetNature.cs)
     public static bool SetTerr(int i, float h)   // geeft true als de hoogte echt veranderde
     {
         h = Mathf.Clamp(Mathf.Round(h * 100f) / 100f, TerrLow, TerrTop); if (Mathf.Abs(h - G(i)) < 0.005f) return false;
@@ -95,10 +96,15 @@ public static partial class PlanetCity
             Topo(); foreach (int c in new[] { i, cnA[i][kk], cnB[i][kk] }) { Touch(c); foreach (int j in Planet.Cells[c].nb) Touch(j); }
         }
     }
+    // Terrein door wegen (ontwikkelaar, Instellingen › Ontwikkelaar): uit tekent het terrein zonder taluds en dijken langs wegen
+    // en zonder wegvlakken op de hoekpunten; alleen onder de weg zelf wordt het uitgesneden tot net onder het wegdek (GroundField)
+    public static bool RoadShape = true;
+    // Talud langs wegen (ontwikkelaar): uit is de kant naast de weg bijna loodrecht (FK) in plaats van 1 op 1,5
+    public static bool RoadSlopes = true;
     static float CornerBase0(int i, int k)
     {
         Topo(); int a = cnA[i][k], b = cnB[i][k];
-        if (RoadCorner(i, a, b, out float rh)) return rh;
+        if (RoadShape && RoadCorner(i, a, b, out float rh)) return rh;
         bool qi = Quay(i), qa = Quay(a), qb = Quay(b); DamSkip(i, a, b, ref qi, ref qa, ref qb);   // een gracht heeft kademuren: de buren lopen niet naar de bodem af; een weg over een meer is een dam (PlanetNature.cs)
         if (carved.Count == 0 && !qi && !qa && !qb) return Mathf.Min(G(i), Mathf.Min(G(a), G(b)));
         float h = float.MaxValue; if (!carved.Contains(i) && !qi) h = G(i); if (!carved.Contains(a) && !qa) h = Mathf.Min(h, G(a)); if (!carved.Contains(b) && !qb) h = Mathf.Min(h, G(b));
@@ -191,11 +197,12 @@ public static partial class PlanetCity
             Lin S = new Lin { a = Vector3.Dot(o3 - q.a, along), x = Vector3.Dot(c.east, along), y = Vector3.Dot(c.north, along) };
             if (Mathf.Abs(T.a) > q.hw + FieldReach + c.radius + 1f || S.a < -c.radius - FieldReach - 1f || S.a > len + c.radius + FieldReach + 1f) continue;
             ls.Add(q);
-            float hr = Mathf.Lerp(q.ha, q.hb, Mathf.Clamp01(S.a / len)) - 0.05f, dz = Mathf.Max(0.3f, Mathf.Abs(hr - hc0)) / FieldK;   // het wegdek (5 cm onder de weg)
+            float hr = Mathf.Lerp(q.ha, q.hb, Mathf.Clamp01(S.a / len)) - 0.05f, dz = Mathf.Max(0.3f, Mathf.Abs(hr - hc0)) / FK;   // het wegdek (5 cm onder de weg)
             // de voet van de kant loopt schuin als de weg helt (hij ligt waar wegdek + talud het terrein raakt): een rechte lijn in (S, T)
-            float sg = hr < hc0 ? 1f : -1f; Lin gap = (Lin.C(q.ha - 0.05f) + S * ((q.hb - q.ha) / len) - B) * (sg / FieldK);
+            float sg = hr < hc0 ? 1f : -1f; Lin gap = (Lin.C(q.ha - 0.05f) + S * ((q.hb - q.ha) / len) - B) * (sg / FK);
             Lin toeP = T - Lin.C(q.hw) + gap, toeM = T + Lin.C(q.hw) - gap;
-            foreach (var f in new[] { T - Lin.C(q.hw), T + Lin.C(q.hw), toeP, toeM, S, S - Lin.C(len), S + Lin.C(dz), S - Lin.C(len + dz) })
+            var fs = new List<Lin> { T - Lin.C(q.hw), T + Lin.C(q.hw), toeP, toeM, S, S - Lin.C(len), S + Lin.C(dz), S - Lin.C(len + dz) };
+            foreach (var f in fs)
             {
                 var next = new List<List<Vector2>>(); foreach (var pl in polys) if (!SplitBy(pl, f, next)) next.Add(pl); polys = next;
             }
@@ -209,8 +216,9 @@ public static partial class PlanetCity
             {
                 Lin N = new Lin { a = Vector3.Dot(o3 - q.c, n), x = Vector3.Dot(c.east, n), y = Vector3.Dot(c.north, n) };
                 Vector3 pn = Vector3.Cross(q.dir, n).normalized; Lin P = new Lin { a = Vector3.Dot(o3 - q.c, pn), x = Vector3.Dot(c.east, pn), y = Vector3.Dot(c.north, pn) };
-                Lin toe = N - Lin.C(q.hw) - (B - Lin.C(q.h - 0.05f)) * (sg / FieldK);   // de voet: waar wegdek + talud het terrein raakt
-                foreach (var f in new[] { N - Lin.C(q.hw), toe, N, P })   // de zijde, de voet, de graat naar de hoek, de vouw in een bocht
+                Lin toe = N - Lin.C(q.hw) - (B - Lin.C(q.h - 0.05f)) * (sg / FK);   // de voet: waar wegdek + talud het terrein raakt
+                var fc = new List<Lin> { N - Lin.C(q.hw), toe, N, P };
+                foreach (var f in fc)   // de zijde, de voet, de graat naar de hoek, de vouw in een bocht
                 {
                     var next = new List<List<Vector2>>(); foreach (var pl in polys) if (!SplitBy(pl, f, next)) next.Add(pl); polys = next;
                 }
@@ -234,8 +242,21 @@ public static partial class PlanetCity
         {
             int n = pl.Count; var P = new Vector3[n]; var H = new float[n]; Vector2 ctr = Vector2.zero;
             for (int v = 0; v < n; v++) { Vector3 d = Dir(pl[v]); H[v] = GroundField(d, Base(pl[v]), out _, ls, lc); P[v] = d * (Planet.R + H[v]); ctr += pl[v]; }
-            ctr /= n; GroundField(Dir(ctr), Base(ctr), out bool steep, ls, lc);
-            for (int v = 1; v + 1 < n; v++) emit(P[0], P[v], P[v + 1], H[0], H[v], H[v + 1], steep);
+            for (int v = 1; v + 1 < n; v++) Refine(pl[0], pl[v], pl[v + 1], P[0], P[v], P[v + 1], H[0], H[v], H[v + 1], 0);
+        }
+        // Waar twee taluds of koppen elkaar raken knikt de functie midden in een stuk (die lijn wordt niet gesneden): ligt het midden van
+        // een driehoekje meer dan 6 cm naast het vlak door zijn hoeken, dan in drie stukken via dat midden (geen nieuwe punten op de randen,
+        // dus geen kieren met de buren), tot drie keer. Zo geen vouwen en geen losse steile (bruine) driehoekjes meer.
+        void Refine(Vector2 a, Vector2 b, Vector2 cc, Vector3 Pa, Vector3 Pb, Vector3 Pc, float ha, float hb, float hc2, int depth)
+        {
+            Vector2 m2 = (a + b + cc) / 3f; Vector3 dm = Dir(m2); float hm = GroundField(dm, Base(m2), out bool steep, ls, lc);
+            if (depth < 3 && Mathf.Abs(hm - (ha + hb + hc2) / 3f) > 0.06f && (b - a).sqrMagnitude + (cc - a).sqrMagnitude > 0.5f)
+            {
+                Vector3 Pm = dm * (Planet.R + hm);
+                Refine(a, b, m2, Pa, Pb, Pm, ha, hb, hm, depth + 1); Refine(b, cc, m2, Pb, Pc, Pm, hb, hc2, hm, depth + 1); Refine(cc, a, m2, Pc, Pa, Pm, hc2, ha, hm, depth + 1);
+                return;
+            }
+            emit(Pa, Pb, Pc, ha, hb, hc2, steep);
         }
     }
 
@@ -292,7 +313,8 @@ public static partial class PlanetCity
     static float CapDist(Cap q, Vector3 w) { Vector3 v = w - q.c; float d = float.MinValue; foreach (var n in q.n) d = Mathf.Max(d, Vector3.Dot(v, n)); return d; }   // zeshoekige afstand tot het hart
     // de helling van de kant langs een weg op een niveau (hoogte per meter opzij; 1 = 45°), in te stellen met het schuifje Talud
     public static float FieldK = 1f / 1.5f;   // standaard 1 op 1,5 (34°), zoals het model overpass_path
-    static float FieldReach => Mathf.Min(14f / FieldK, 40f);   // tot zover naast de weg kan de grond nog omhoog of omlaag lopen (45°: twee niveaus plus de marge)
+    static float FieldReach => Mathf.Min(14f / FK, 40f);
+    static float FK => RoadSlopes ? FieldK : 8f;   // de steilte van de kant; Talud uit: bijna loodrecht (83°), geen sprong (een sprong kan het raster niet tekenen: gaten)   // tot zover naast de weg kan de grond nog omhoog of omlaag lopen (45°: twee niveaus plus de marge)
     public static void SetFieldK(float k)
     {
         if (Mathf.Abs(k - FieldK) < 1e-4f) return; FieldK = k;
@@ -347,25 +369,27 @@ public static partial class PlanetCity
                 Vector3 ab = q.b - q.a; float l2 = ab.sqrMagnitude; if (l2 < 1e-4f) continue; float len = Mathf.Sqrt(l2), u = Vector3.Dot(w - q.a, ab) / l2;
                 Vector3 dv = w - (q.a + ab * u); dv -= dir * Vector3.Dot(dv, dir); float lat = dv.magnitude, over = Mathf.Max(0f, Mathf.Max(-u, u - 1f) * len);   // naast het stuk, en voorbij een eind
                 if (lat > q.hw + FieldReach || over > EndSlack) continue;   // (met wat speling: op het hart zelf valt een punt door afronding anders net buiten beide stukken) alleen naast het stuk: voorbij het eind doet de kop het, of het volgende stuk (een rechte kop gaf daar een trapje)
-                float hr = Mathf.Lerp(q.ha, q.hb, Mathf.Clamp01(u)), rise = Mathf.Max(0f, lat - q.hw) * FieldK;   // de kant
+                float hr = Mathf.Lerp(q.ha, q.hb, Mathf.Clamp01(u)), rise = Mathf.Max(0f, lat - q.hw) * FK;   // de kant
                 if (lat <= q.hw) onLevelH = Mathf.Min(onLevelH, hr);
+                if (!RoadShape && pass == 0) continue;   // terrein door wegen uit: niets opvullen (geen dijk), wel afgraven met een talud
                 if (pass == 0 && hr > base_ + 0.01f) { float v = hr - rise - 0.05f; if (v > h) { h = v; slope = rise > 0f; } }        // talud (5 cm onder het wegdek: geen streepje gras op de weg)
                 else if (pass == 1 && hr - 0.05f < base_) { float v = hr + rise - 0.05f; lowRoad = Mathf.Min(lowRoad, hr); if (v < h) { h = v; slope = rise > 0f; } }   // uitgraving: pas als het wegdek (5 cm onder de weg) onder het terrein ligt, dan loopt het veld zonder sprong door
             }
             foreach (var q in caps)
             {
-                float rise = Mathf.Max(0f, CapDist(q, w) - q.hw) * FieldK; if (rise > FieldReach * FieldK) continue; if (rise <= 0f) onLevelH = Mathf.Min(onLevelH, q.h);
+                float rise = Mathf.Max(0f, CapDist(q, w) - q.hw) * FK; if (rise > FieldReach * FK) continue; if (rise <= 0f) onLevelH = Mathf.Min(onLevelH, q.h);
+                if (!RoadShape && pass == 0) continue;
                 if (pass == 0 && q.h > base_ + 0.01f) { float v = q.h - rise - 0.05f; if (v > h) { h = v; slope = rise > 0f; } }   // een kop ligt net als de weg 5 cm onder het wegdek
                 else if (pass == 1 && q.h - 0.05f < base_) { float v = q.h + rise - 0.05f; if (v < h) { h = v; slope = rise > 0f; } }
             }
         }
         // gewone wegen erbij: onder de weg de hoogte van die weg, ernaast hooguit het talud hoger of lager (zacht, zonder sprong),
         // zodat het talud van een weg op een niveau nooit over een gewone weg heen loopt
-        foreach (var q in flatsUse)   // waar twee wegen over elkaar liggen wint de laagste (een helling naar een kruispunt, een weg onder een brug)
+        if (RoadShape) foreach (var q in flatsUse)   // waar twee wegen over elkaar liggen wint de laagste (een helling naar een kruispunt, een weg onder een brug)
         {
             Vector3 ab = q.b - q.a; float l2 = ab.sqrMagnitude; if (l2 < 1e-4f) continue; float len = Mathf.Sqrt(l2), u = Vector3.Dot(w - q.a, ab) / l2;
             Vector3 dv = w - (q.a + ab * Mathf.Clamp01(u)); dv -= dir * Vector3.Dot(dv, dir); float over = Mathf.Max(0f, Mathf.Max(-u, u - 1f) * len);
-            float rise = Mathf.Max(Mathf.Max(0f, dv.magnitude - q.hw), over) * FieldK; if (rise > 20f) continue;
+            float rise = Mathf.Max(Mathf.Max(0f, dv.magnitude - q.hw), over) * FK; if (rise > 20f) continue;
             float hr = Mathf.Lerp(q.ha, q.hb, Mathf.Clamp01(u)) - 0.03f; if (onLevelH <= hr + 0.3f) continue;
             // gaat hier een weg een heel niveau lager onder deze weg door (een brug), dan mag de bak eronder: alleen geen grond erboven
             float nh = lowRoad <= hr - LevelH + 0.1f ? Mathf.Min(h, hr + rise) : Mathf.Clamp(h, hr - rise, hr + rise);
@@ -374,6 +398,7 @@ public static partial class PlanetCity
         // op een weg zelf (binnen zijn strook) nooit hoger dan die weg: anders legt het talud of de kop van een hogere weg ernaast een
         // plaat gras over het asfalt (waar twee stroken elkaar raken wint de laagste weg, net als onder een brug)
         if (onLevelH < float.MaxValue && h > onLevelH - 0.05f) h = onLevelH - 0.05f;
+        if (spans.Count > 0 && SpanBottom(w, out float sb)) h = Mathf.Min(h, sb);   // onder het dek van een brug over een dal
         if (carved.Count > 0 && cuts.Count > 0) h = Mathf.Min(h, Carve(dir));
         return h;
     }

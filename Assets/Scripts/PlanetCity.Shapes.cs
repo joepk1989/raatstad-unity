@@ -46,7 +46,8 @@ public static partial class PlanetCity
             {
                 float L = sq[k].magnitude, cs = Vector2.Dot(p, sq[k]) / (pl * L); if (cs <= 0f) continue;
                 float w = cs * cs; w *= w; w *= w;   // cos^8
-                h += w * Mathf.Clamp01(Vector2.Dot(p, sq[k]) / (L * L)) * sd[k]; ws += w;
+                if (pl > L) { w *= w; w *= w; }   // voorbij de rand (een lange spitse kruising): cos^32, zodat de schuine arm ernaast (30°) niet meetelt
+                h += w * Mathf.Max(0f, Vector2.Dot(p, sq[k]) / (L * L)) * sd[k]; ws += w;   // voorbij de rand helt het door (een spitse kruising loopt tot 22 m door, AcuteTrim): anders vlak terwijl de weg verder stijgt
             }
             return ws > 1e-9f ? h / ws : 0f;
         }

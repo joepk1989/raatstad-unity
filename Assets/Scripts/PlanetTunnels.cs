@@ -108,7 +108,7 @@ public static partial class PlanetCity
         {
             if (IsWalk(c)) return G(c); float s = 0f; int n = 0;
             foreach (int j in Planet.Cells[c].nb) if (!IsWalk(j) && !Underpass(j) && !line.Contains(j)) { s += G(j); n++; }
-            return n > 0 ? s / n : G(c);
+            return Mathf.Max(n > 0 ? s / n : G(c), DryRoad);   // nooit onder water (SetLevel)
         }
         System.Func<int, bool> Step = k => LineStep(line[k], line[k + 1]);
         var taken = new HashSet<int>();   // al in een tunnel: geen dal meer
@@ -313,6 +313,17 @@ public static partial class PlanetCity
         Vector3 dA = Planet.Cells[a].dir, dB = Planet.Cells[b].dir, n = Vector3.Cross(dA, dB).normalized;
         float L = Vector3.Angle(dA, dB) * Mathf.Deg2Rad * Planet.R;
         return new SpanC { a = a, b = b, dA = dA, eA = Vector3.Cross(n, dA).normalized, n = n, L = L, ha = ha, hb = hb, hw = hw, s0 = FlatL * 0.55f, s1 = L - FlatL * 0.55f };
+    }
+    // ligt wereldpunt w onder het dek van een brug over een dal (voorbij de landhoofden)? Dan hooguit tot 20 cm onder de onderkant.
+    static bool SpanBottom(Vector3 w, out float bottom)
+    {
+        bottom = 0f; if (!spanNear.TryGetValue(Planet.Nearest(w), out var sl)) return false; Vector3 d = w.normalized; bool hit = false;
+        foreach (int si in sl)
+        {
+            var q = spans[si]; SpanLocal(q, d, out float s, out float x); if (s <= q.s0 || s >= q.s1 || Mathf.Abs(x) > q.hw + 0.6f) continue;
+            float b = Mathf.Lerp(q.ha, q.hb, s / q.L) - 1.5f; if (!hit || b < bottom) bottom = b; hit = true;
+        }
+        return hit;
     }
     // ligt wereldpunt p boven het dek van een brug over een dal (tussen de landhoofden)? Daar zakt de zijkant van de stoep niet tot in het dal.
     static bool OverSpan(Vector3 p)

@@ -113,10 +113,13 @@ public static partial class PlanetCity
         foreach (int j in new[] { i, cnA[i][k], cnB[i][k] }) if (!IsWalk(j)) h = Mathf.Min(h, G(j));
         return h;
     }
+    // graaft de hoogtefunctie hier (een weg lager dan het terrein ernaast)? Dan geen water in het vak.
+    static bool DugHere(int i) => G(i) + CenterOfs1(i) < SeaLevel && GroundField(Planet.Cells[i].dir, G(i), out _, segs, caps) < G(i) - 0.1f;   // (alleen onder het zeeniveau van belang; alle wegstukken, los van UseNear)
     public static bool Wet(int i)
     {
         if (Quay(i)) return true;
-        if (IsWalk(i) || carved.Contains(i) || levelled.Contains(i) || (fieldCells.Contains(i) && NearSeg(Planet.Cells[i].dir, Planet.Cells[i].radius))) return false;
+        if (IsWalk(i) || carved.Contains(i) || levelled.Contains(i)) return false;
+        if (fieldCells.Contains(i) && NearSeg(Planet.Cells[i].dir, Planet.Cells[i].radius) && DugHere(i)) return false;   // de geul van een verdiepte weg loopt niet vol; een dam of een weg langs het water laat de zee wel liggen
         if (Cells.TryGetValue(i, out var l) && l.Count > 0 && l[0] == "kuil") return false;
         if (DryPit(i)) return false;   // een droge meteoorkrater (PlanetCity.Scorch.cs)
         if (G(i) + CenterOfs1(i) < SeaLevel) return true;
