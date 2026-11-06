@@ -11,6 +11,7 @@ using UnityEngine;
 // terug en maakt terug.png (MeldingTest hieronder).
 public static class Meldingen
 {
+    public static int Last;   // het nummer van de laatst bewaarde melding
     public static string Root => Path.Combine(Application.persistentDataPath, "meldingen");
 
     [Serializable] public class LogLine { public string tijd, soort, tekst, stapel; }
@@ -95,7 +96,7 @@ public static class Meldingen
     {
         try
         {
-            d.nummer = NextNumber(); d.tekst = text;
+            d.nummer = NextNumber(); d.tekst = text; Last = d.nummer;
             string dir = Path.Combine(Root, d.nummer + "-" + DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss")); Directory.CreateDirectory(dir);
             if (clean != null) File.WriteAllBytes(Path.Combine(dir, "beeld.png"), clean.EncodeToPNG());
             if (withUi != null) File.WriteAllBytes(Path.Combine(dir, "beeld-met-interface.png"), withUi.EncodeToPNG());
@@ -111,6 +112,7 @@ public static class Meldingen
 public partial class PlanetBuilder
 {
     bool reportOpen, reportBusy; string reportText = ""; float reportScale = 1f; Texture2D reportUi, reportClean; Meldingen.Data reportData; string reportCity;
+    int reportDone; float reportDoneT = -99f;   // de bevestiging na het bewaren: "Melding 3 bewaard"
     CursorLockMode reportLock; bool reportCursor;
 
     // in Update: true zolang de melding loopt (dan geen andere invoer)
@@ -138,7 +140,7 @@ public partial class PlanetBuilder
         int n = save ? Meldingen.Write(reportData, reportText.Trim(), reportUi, reportClean, reportCity) : -1;
         if (reportUi != null) Destroy(reportUi); if (reportClean != null) Destroy(reportClean); reportUi = reportClean = null; reportData = null; reportCity = null;
         Time.timeScale = reportScale; Cursor.lockState = reportLock; Cursor.visible = reportCursor; reportOpen = false;
-        if (save) Say(n > 0 ? "Melding " + n + " bewaard" : "Melding bewaren lukte niet");
+        if (n > 0) { reportDone = n; reportDoneT = Time.unscaledTime; Sounds.Fx("coin"); }   // alleen een bevestiging als het bewaren lukte (anders een waarschuwing in de Console)
     }
 
     Meldingen.Data ReportState()
@@ -173,7 +175,7 @@ public partial class PlanetBuilder
     static GUIStyle reportStyle;
     void ReportGui(float W, float H)
     {
-        if (!reportOpen) return;
+        if (!reportOpen) { ReportDone(W, H); return; }
         var e = Event.current;
         if (e.type == EventType.KeyDown && e.keyCode == KeyCode.Escape) { e.Use(); ReportClose(false); return; }
         if (e.type == EventType.KeyDown && (e.keyCode == KeyCode.Return || e.keyCode == KeyCode.KeypadEnter) && !e.shift) { e.Use(); ReportClose(true); return; }
@@ -196,6 +198,18 @@ public partial class PlanetBuilder
         y += 120f + 14f; float half = (iw - 8f) * 0.5f;
         if (Ui.Button(new Rect(x, y, half, 40f), "Annuleren")) { ReportClose(false); return; }
         if (Ui.Button(new Rect(x + half + 8f, y, half, 40f), "Opslaan", true)) { ReportClose(true); return; }
+    }
+
+    // midden in beeld, 2,5 s, vervaagt aan het eind
+    void ReportDone(float W, float H)
+    {
+        float age = Time.unscaledTime - reportDoneT; if (age > 2.5f) return;
+        float a = Mathf.Clamp01((2.5f - age) / 0.4f); string t = "Melding " + reportDone + " bewaard";
+        float w = Ui.Width(t, Ui.T.Title) + 90f; var r = new Rect((W - w) * 0.5f, H * 0.38f, w, 56f);
+        var old = GUI.color; GUI.color = new Color(1f, 1f, 1f, a);
+        Ui.Panel(r, true, 16f); Ui.Tex(new Rect(r.x + 18f, r.y + 14f, 26f, 28f), Ui.Hex(Ui.Signal, Ui.Signal, 0f, true));
+        Ui.Label(new Rect(r.x + 56f, r.y, w - 66f, 56f), t, Ui.T.Title, null, TextAnchor.MiddleLeft);
+        GUI.color = old;
     }
 
     // voor MeldingTest ("melding maak"): dezelfde weg als F8, dan de tekst invullen en bewaren
@@ -247,7 +261,11 @@ public class MeldingTest : MonoBehaviour
             PlanetCity.Slot = 9;
             if (PlanetCity.Cells.Count == 0) { PlanetCity.StartTown(Planet.North); yield return PlanetCity.RebuildSteps(f => { }); }   // iets om te zien
             for (float t = 0f; t < 3f; t += Time.unscaledDeltaTime) yield return null;   // even spelen
-            yield return pb.ReportForTest(Make.Length > 0 ? Make : "testmelding"); yield return null; Stop(); yield break;
+            yield return pb.ReportForTest(Make.Length > 0 ? Make : "testmelding");
+            for (float t = 0f; t < 0.6f; t += Time.unscaledDeltaTime) yield return null;
+            yield return new WaitForEndOfFrame(); string md = Meldingen.FolderOf(Meldingen.Last);   // de bevestiging in beeld
+            if (md != null) { var sh = ScreenCapture.CaptureScreenshotAsTexture(); File.WriteAllBytes(Path.Combine(md, "na-bewaren.png"), sh.EncodeToPNG()); Destroy(sh); }
+            Stop(); yield break;
         }
         if (dir == null || pb == null) { Debug.LogWarning("Melding " + Nr + " niet gevonden"); Stop(); yield break; }
         var d = JsonUtility.FromJson<Meldingen.Data>(File.ReadAllText(Path.Combine(dir, "melding.json")));
