@@ -235,6 +235,7 @@ public partial class PlanetBuilder : MonoBehaviour
     {
         if (loading != null) { LoadCam(); return; }   // de planeet wordt gevuld: geen bediening, de camera draait om de bol
         if (HomeUpdate()) return;   // het startscherm of een venster van het opslaan (StartScreen.cs); ook vanzelf opslaan
+        if (ReportUpdate()) return;   // F8: een melding voor Claude, het spel staat dan stil (Meldingen.cs)
         if (rebuilding) RebuildTick(25f);
         AiTick();   // de AI-bouwer doet zijn zetten (PlanetBuilder.AI.cs)
         // overal, ook tijdens het lopen en in de cameramodus: P zet de tijd stil, O ander weer (Shift+O het vorige)
@@ -930,7 +931,7 @@ public partial class PlanetBuilder : MonoBehaviour
         if (home) { HomeGui(W, H); Ui.End(); return; }   // het startscherm (StartScreen.cs)
         if (Time.time - beautyT > 3f) { int was = beauty != null ? beauty.score : -1; beauty = Beauty.Compute(); beautyT = Time.time; if (was >= 0 && beauty.score > was) Sounds.Fx("coin"); }   // muntje als de schoonheid stijgt
         fpsN++; if (Time.time - fpsT > 0.5f) { fps = fpsN / (Time.time - fpsT); fpsN = 0; fpsT = Time.time; }
-        if (flying) { if (!photoFrame) FlyGui(W, H); Ui.End(); return; }   // cameramodus: geen interface
+        if (flying) { if (!photoFrame) FlyGui(W, H); ReportGui(W, H); Ui.End(); return; }   // cameramodus: geen interface
 
         if (!inSpace) CentreArrow(W, H);   // in de ruimte staat je stad als marker op de bol
         if (!walking) { TopLeft(); Incidents(); } TopRight(W);   // lopen: zo min mogelijk in beeld, de stad zelf is het beeld
@@ -955,6 +956,7 @@ public partial class PlanetBuilder : MonoBehaviour
         if (helpOpen) Help(W, H);
         if (welcome) Welcome(W, H);
         HomeDialogs(W, H);   // opslaan als, eerst opslaan? (StartScreen.cs)
+        ReportGui(W, H);   // het venster van een melding (Meldingen.cs)
         Ui.End();
     }
 
@@ -1421,6 +1423,7 @@ public partial class PlanetBuilder : MonoBehaviour
         "G|raster aan en uit",
         "M|menu",
         "`|ontwikkelaarsconsole (ook Instellingen › Ontwikkelaar)",
+        "F8|melding voor Claude: beeld, plek en stad bewaren",
         "?|dit overzicht",
         "Esc|venster sluiten",
     };

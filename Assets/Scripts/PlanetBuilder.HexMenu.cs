@@ -26,6 +26,7 @@ public partial class PlanetBuilder
             new MItem { name = "Naar het startscherm", sub = "Andere stad openen of een nieuwe", act = () => { menuOpen = false; dialog = 2; } } } });
         l.Add(new MItem { name = "Gereedschap", sub = "Voorbeeldstad, meteoor, AI-bouwer", icon = "stad", kids = () => {
             var g = new List<MItem> {
+                new MItem { name = "Melding maken", sub = "Iets mis? Beeld, plek en stad bewaren voor Claude (F8)", act = () => StartReport() },
                 new MItem { name = "Voorbeeldstad hier", sub = "Ringweg, huizen en een meer (midden van het beeld)", act = () => { menuOpen = false; Sample(); } },
                 new MItem { name = "Meteoor", sub = "Inslag op het midden van het beeld", danger = true, act = () => { menuOpen = false; Meteor(); } },
                 new MItem { name = "Maat van de meteoor", value = PlanetMeteor.SizeNames[meteorSize] + " · " + MeteorCells[meteorSize], act = () => meteorSize = (meteorSize + 1) % 3 },

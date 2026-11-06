@@ -31,6 +31,8 @@ De wereld is een bol (planeet). Alles is gebaseerd op hexagons en driehoeken.
 - Na een scriptwijziging: wachten tot Unity klaar is met compileren, dan de Console lezen en fouten oplossen.
 - Commit na elke werkende stap met een duidelijke commitboodschap.
 - Geen code in `Library/`, `Temp/`, `Logs/` of `UserSettings/`.
+- Meldingen van de gebruiker (F8 in het spel, `Meldingen.cs`) staan in `persistentDataPath/meldingen/<nummer>-<datum>/`: lees `melding.json` (tekst, camera, vak onder de muis, gereedschap, weer, Console) en bekijk `beeld.png` en `beeld-met-interface.png`; `stad.json` is de stad op dat moment.
+- Terugspelen: zet `melding 3` in `persistentDataPath/niveautest.txt`; het spel laadt die stad in testslot 9, zet camera, weer en tijd terug en schrijft `terug.png` en `terug.txt` in de map van de melding (verkeer en mensen lopen anders). `melding maak <tekst>` maakt zelf een testmelding.
 
 ## Waar staat wat in PlanetCity
 `PlanetCity` is één statische partial-klasse, verdeeld over bestanden per onderwerp. Werk liefst in het bestand van je onderwerp, dan botsen sessies minder.
