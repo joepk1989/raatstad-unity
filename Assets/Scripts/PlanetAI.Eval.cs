@@ -37,8 +37,11 @@ public static partial class PlanetAI
     }
 
     static Vector3 Dir2(int a, int b) { Vector3 da = Planet.Cells[a].dir, t = Planet.Cells[b].dir - da; t -= da * Vector3.Dot(t, da); return t.normalized; }
+    public static readonly List<(int a, int b)> SideBySide = new List<(int, int)>();   // de paren van de laatste beoordeling (voor een test of een markering)
+    static bool SharePartner(int a, int b) { foreach (int x in PlanetCity.Partners(a)) if (PlanetCity.Linked(x, b)) return true; return false; }
     static void Review(Metrics m)
     {
+        SideBySide.Clear();
         var roads = new List<int>(); foreach (int c in Owned) if (PlanetCity.IsRoad(c)) roads.Add(c);
         // losse stukken: samenhangende delen van het eigen wegennet (via de verbindingen), alles behalve het grootste telt
         var seen = new HashSet<int>(); var sizes = new List<int>();
@@ -58,7 +61,8 @@ public static partial class PlanetAI
             {
                 if (j < c || !PlanetCity.IsRoad(j)) continue;
                 if (PlanetCity.Linked(c, j)) { if (node && !PlanetCity.IsRot(j) && PlanetCity.LinkCount(j) >= 3) m.twinX++; }
-                else if (PlanetCity.RotOf(c) < 0 && PlanetCity.RotOf(j) < 0 && !PlanetCity.Underpass(c) && !PlanetCity.Underpass(j) && Owned.Contains(j)) m.sideBySide++;
+                else if (PlanetCity.RotOf(c) < 0 && PlanetCity.RotOf(j) < 0 && !PlanetCity.Underpass(c) && !PlanetCity.Underpass(j) && Owned.Contains(j) && !SharePartner(c, j))   // twee armen van hetzelfde kruispunt (60° uit elkaar) raken elkaar altijd: dat telt niet
+                { m.sideBySide++; if (SideBySide.Count < 400) SideBySide.Add((c, j)); }
             }
             if (PlanetCity.IsRot(c) && RotNear(c, RotGap - 1)) m.rotClose++;
         }

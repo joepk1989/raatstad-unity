@@ -40,6 +40,7 @@ public static partial class PlanetAI
         public float rule, beauty;   // score uit de regels, en het effect op de schoonheid
         public bool joins;           // sluit aan op een bestaande weg of pad
         public bool sym;             // na deze zet dezelfde zet rondom het centrum (symmetrie)
+        public int clearFor = -1;    // gum om ruimte te maken voor een rotonde op dit kruispunt
         public bool queued;          // kwam uit de rij met geplande stukken (dan geen nieuwe kopieën)
         public float Score => rule + Mathf.Clamp(beauty, -3f, 3f) * 0.9f;
     }
@@ -66,7 +67,7 @@ public static partial class PlanetAI
         _ => new Prefs { floors = new[] { 3, 3, 2, 2, 1 }, park = 0.4f, shop = 0.15f, path = 0.25f, office = 0.3f, ring = 0, main = 2, canal = false, molen = 150, toren = 150, meer = 100, rot = 60 },
     };
 
-    public const string Version = "3.1 (4 nov 2026)";   // ophogen bij een nieuwe versie van de planner, voor het scoreboek (ai-scores.txt)
+    public const string Version = "4 (6 nov 2026)";   // ophogen bij een nieuwe versie van de planner, voor het scoreboek (ai-scores.txt)
     public static int Start = -1;
     public static readonly HashSet<int> Owned = new HashSet<int>();   // de vakken die de AI bebouwde
     public static int Moves, Rejected;
@@ -115,7 +116,7 @@ public static partial class PlanetAI
     }
     // zoals Wild, maar zonder dat er al een AI-stad is (Owned is dan leeg)
     static bool WildStart(int c) { if (!PlanetCity.Cells.TryGetValue(c, out var l) || l.Count != 1 || l[0] != "park") return false; foreach (int j in Planet.Cells[c].nb) if (PlanetCity.Cells.TryGetValue(j, out var o) && o.Count > 0 && !(o.Count == 1 && o[0] == "park")) return false; return true; }
-    public static void Reset() { Start = -1; Owned.Clear(); Moves = Rejected = 0; dist.Clear(); core = -1; coreRetry = 0; coreRoad = plein = -1; rings.Clear(); reserved.Clear(); queue.Clear(); banned.Clear(); rotCache.Clear(); hubs.Clear(); ringAt.Clear(); cands = null; think = 0; }
+    public static void Reset() { Start = -1; Owned.Clear(); Origin.Clear(); PlanLog.Clear(); Moves = Rejected = 0; dist.Clear(); core = -1; coreRetry = 0; coreRoad = plein = -1; rings.Clear(); reserved.Clear(); queue.Clear(); banned.Clear(); rotCache.Clear(); hubs.Clear(); ringAt.Clear(); roomFor.Clear(); cands = null; think = 0; }
 
     // ---------- hulp ----------
     static bool Empty(int c) => !PlanetCity.Cells.ContainsKey(c);
@@ -158,6 +159,7 @@ public static partial class PlanetAI
     static bool NearRoad(int c) { foreach (int j in Planet.Cells[c].nb) if (PlanetCity.IsRoad(j) && !PlanetCity.Underpass(j)) return true; return false; }
     static bool NearWalk(int c) { foreach (int j in Planet.Cells[c].nb) if ((PlanetCity.IsRoad(j) && !PlanetCity.Underpass(j)) || PlanetCity.IsPath(j)) return true; return false; }
     static bool NearType(int c, string t) { foreach (int j in Planet.Cells[c].nb) if (PlanetCity.Cells.TryGetValue(j, out var l) && l.Contains(t)) return true; return false; }
+    static bool IsBuildingOrPark(List<string> l) => l.Count > 0 && (IsBuilding(l) || (l.Count == 1 && l[0] == "park"));
     static bool IsBuilding(List<string> l) => l.Count > 0 && l[0] != "weg" && l[0] != "wegdeel" && l[0] != "park" && l[0] != "pad" && l[0] != "water" && l[0] != "meer";
     // buren met een gebouw (geen weg, pad of park: anders kweekt een park steeds nieuwe parken) en buren met een park
     static int BuiltNb(int c) { int n = 0; foreach (int j in Planet.Cells[c].nb) if (PlanetCity.Cells.TryGetValue(j, out var l) && IsBuilding(l)) n++; return n; }
@@ -216,6 +218,9 @@ public static partial class PlanetAI
         if (Pref.rot < 9999)
             for (int i = Pref.canal ? 1 : 0; i < 3; i++) for (int k = 0; k < 6; k++)   // met een gracht op 5 vakken geen rotondes op ring 4 (water naast de ring zou ze tegenhouden): de gracht gaat helemaal rond
                 {
+                    // alleen de hoeken waar een spaak naar buiten vertrekt (ring 4 en 10 de oneven hoeken, ring 7 de even): daar komen de twee
+                    // ringzijden en die spaak samen, drie armen op 120°, en die hoeken liggen allemaal minstens 7 vakken uit elkaar (RotGap 5)
+                    if (k % 2 != (i == 1 ? 0 : 1)) continue;
                     int h = Corner(k, RingR[i]); hubs.Add(h);
                     foreach (int j in Planet.Cells[h].nb) if (!reserved.ContainsKey(j)) reserved[j] = "rotonde" + RingR[i];
                     if (!reserved.ContainsKey(h)) reserved[h] = "rotonde" + RingR[i];
@@ -337,6 +342,8 @@ public static partial class PlanetAI
                 else if (Bridgeable(j) && !Bridgeable(c)) step = 3f;   // een brug over de gracht of een meertje (nooit twee watervakken achter elkaar)   // een eigen straat kruisen
                 else continue;
                 float dg = Mathf.Abs(PlanetCity.G(j) - PlanetCity.G(c)); if (dg > 2.6f) continue; step += dg * 0.3f;
+                if (!g && Free(j)) foreach (int x in Planet.Cells[j].nb)   // niet pal langs een andere straat (zij aan zij): een vak naast een straat die niet het doel of de vorige stap is kost extra
+                    if (x != c && x != a && !goals.Contains(x) && PlanetCity.IsRoad(x) && !PlanetCity.Linked(c, x)) { step += 2.5f; break; }
                 int p = prev[c]; if (p < 0) p = start;   // bij het begin: de straat die er al ligt (een doodlopend eind buigt niet scherp af)
                 if (p >= 0) { float dot = Vector3.Dot(Tangent(p, c), Tangent(c, j)); if (dot < 0.3f) continue; step += dot > 0.95f ? 0f : 0.6f; }   // geen bocht van 120° (een zigzag)
                 float nc = cc + step;
@@ -360,6 +367,22 @@ public static partial class PlanetAI
         return runs;
     }
 
+    // waarom een gepland stuk niet kon (voor een test; hooguit 60 regels)
+    public static readonly List<string> PlanLog = new List<string>();
+    static void Note(string s) { if (PlanLog.Count < 60) PlanLog.Add(Moves + ": " + s); }
+    static string Why(List<int> line)
+    {
+        var sb = new System.Text.StringBuilder();
+        for (int k = 0; k < line.Count; k++)
+        {
+            int c = line[k]; string w = Free(c) ? (PlanetCity.Wet(c) ? "nat" : k > 0 && Mathf.Abs(PlanetCity.G(c) - PlanetCity.G(line[k - 1])) > 2.6f ? "steil" : "vrij")
+                : PlanetCity.IsRoad(c) ? (Owned.Contains(c) ? "weg" + PlanetCity.LinkCount(c) + (PlanetCity.IsRot(c) ? "R" : RotRing(c) ? "r" : "") : "speler") : PlanetCity.Cells.TryGetValue(c, out var l) ? string.Join("+", l) : "?";
+            if (!InRange(c, 0.5f)) w += "/buiten";
+            if (k > 0 && System.Array.IndexOf(Planet.Cells[line[k - 1]].nb, c) < 0) { w += "/schuin"; foreach (int h in PlanetCity.Between(line[k - 1], c)) if (!Free(h) && !PlanetCity.IsHalf(h)) w += "(" + (PlanetCity.Cells.TryGetValue(h, out var hl) ? string.Join("+", hl) : "?") + ")"; }
+            sb.Append(w).Append(k < line.Count - 1 ? " " : "");
+        }
+        return sb.ToString();
+    }
     // ---------- patronen: ringen, gracht en spaken uit het raamwerk, als geplande rechte stukken ----------
     static void Plan(Planned p, bool front = false) { if (front) queue.Insert(0, p); else queue.Add(p); }
     static void PlanLine(int a, int b, string type, byte style, bool bike, string what) => Plan(new Planned { a = a, b = b, type = type, style = style, bike = bike, what = what });
@@ -394,9 +417,10 @@ public static partial class PlanetAI
             }
             if (!CheckLine(line, p.type, out bool joins, 2, true))
             {
+                Note(p.what + ": past niet (" + Why(line) + ")");
                 if (p.type != "weg" || p.cells != null) continue;   // een pad of een stuk route dat niet kan: vervalt
-                int a = line[0], b = line[line.Count - 1]; if (!(Free(a) || GroundRoad(a) || Arm(a))) continue;
-                var path = Route(a, new HashSet<int> { b }, line.Count * 2.5f + 6f); if (path == null || SharpBend(path)) continue;   // een omweg om het obstakel heen
+                int a = line[0], b = line[line.Count - 1]; if (!(Free(a) || GroundRoad(a) || Arm(a))) { Note(p.what + ": vervalt, begin is geen straat"); continue; }
+                var path = Route(a, new HashSet<int> { b }, line.Count * 2.5f + 6f); if (path == null || SharpBend(path)) { Note(p.what + ": vervalt, geen omweg" + (path != null ? " zonder scherpe bocht" : "")); continue; }   // een omweg om het obstakel heen
                 var runs = Runs(path, "weg", p.style, p.what + " (omweg)"); for (int i = runs.Count - 1; i >= 0; i--) Plan(runs[i], true);
                 continue;
             }
@@ -407,7 +431,8 @@ public static partial class PlanetAI
     }
     // Vrijgeven: wat het raamwerk vrijhield maar leeg bleef (de ring of spaak ging met een omweg, er kwam geen rotonde) wordt weer
     // gewone bouwgrond zodra dat stuk klaar is, anders blijven er lege gaten in de stad. Een rotondeplek pas 40 zetten na zijn ring.
-    static readonly Dictionary<int, int> ringAt = new Dictionary<int, int>();   // straal -> zet waarop de ring gepland werd
+    static readonly Dictionary<int, int> ringAt = new Dictionary<int, int>();
+    static readonly Dictionary<int, (int hub, int at)> roomFor = new Dictionary<int, (int, int)>();   // straal -> zet waarop de ring gepland werd
     static void Release()
     {
         if (queue.Count > 0 || reserved.Count == 0) return;
@@ -420,6 +445,7 @@ public static partial class PlanetAI
             bool done = kind == "gracht" ? rings.Contains(RingR[0]) || !Pref.canal : rings.Contains(r);
             if (done && kind == "rotonde") { int ri = System.Array.IndexOf(RingR, r); int nr = ri >= 0 && ri + 1 < RingR.Length ? RingR[ri + 1] : r; done = rings.Contains(nr); int at = ringAt.TryGetValue(nr, out int a) ? a : 0;   // pas na de volgende ring: dan komt de spaak naar buiten, de derde arm
                  int hub = -1; foreach (int h in hubs) if (h == kv.Key || System.Array.IndexOf(Planet.Cells[h].nb, kv.Key) >= 0) { hub = h; break; } done = done && ((hub >= 0 && PlanetCity.IsRot(hub)) || Moves - at > 40); if (hub >= 0 && !PlanetCity.IsRot(hub) && RotNear(hub, RotGap - 1)) done = true; }   // een rotonde vlakbij: hier komt er geen meer
+            if (kind == "ruimte") done = !roomFor.TryGetValue(kv.Key, out var rf) || PlanetCity.IsRot(rf.hub) || Moves - rf.at > 20;
             if (done && Free(kv.Key)) (free ??= new List<int>()).Add(kv.Key);
         }
         if (free != null) foreach (int c in free) reserved.Remove(c);
@@ -585,12 +611,21 @@ public static partial class PlanetAI
                     bool ok = !PlanetCity.Underpass(c) && PlanetCity.Cells[c].Count == 1;
                     foreach (int j in Planet.Cells[c].nb)   // twee armen naast elkaar (60° uit elkaar) alleen als het gewone straten zijn: met een laan of brede weg erbij lopen ze in elkaar over
                         if (PlanetCity.IsRoad(j) && PlanetCity.Linked(c, j)) foreach (int x in Planet.Cells[j].nb) if (x != c && System.Array.IndexOf(Planet.Cells[c].nb, x) >= 0 && PlanetCity.IsRoad(x) && PlanetCity.Linked(c, x) && (PlanetCity.StyleOf(j) > 0 || PlanetCity.StyleOf(x) > 0)) ok = false;
+                    var clear = new List<int>();   // eigen gebouwen of parken op de ring: die mag hij eerst weghalen (opnieuw indelen), die van de speler niet
                     foreach (int j in Planet.Cells[c].nb)
                     {
                         if (PlanetCity.IsPath(j)) ok = false;   // een pad op de ring zou een fietspad over het asfalt van de rotonde worden
                         bool walk1 = PlanetCity.IsWalk(j) && PlanetCity.Cells[j].Count == 1;
-                        if (!(Empty(j) || walk1 || PlanetCity.IsHalf(j)) || PlanetCity.Underpass(j) || PlanetCity.RotOf(j) >= 0) ok = false;
+                        if (!(Empty(j) || walk1 || PlanetCity.IsHalf(j)))
+                        { if (Owned.Contains(j) && !PlanetCity.IsWalk(j) && PlanetCity.Cells.TryGetValue(j, out var jl) && IsBuildingOrPark(jl)) clear.Add(j); else ok = false; }
+                        if (PlanetCity.Underpass(j) || PlanetCity.RotOf(j) >= 0) ok = false;
                         foreach (int k2 in Planet.Cells[j].nb) if (PlanetCity.IsRot(k2)) ok = false;
+                    }
+                    if (ok && clear.Count > 0)   // eerst ruimte maken: één eigen vak per zet, hooguit twee voor een kruispunt met vier armen of een brede weg, één voor een ringhoek
+                    {
+                        if (clear.Count <= (hub ? 2 : roadNb >= 4 || busy > 0 ? 2 : 0))
+                            cands.Add(new Move { kind = "blok", type = "gum", cell = clear[0], clearFor = c, what = "maakt ruimte voor een rotonde (haalt een eigen " + (Top(clear[0]) ?? "vak") + " weg)", rule = 0.8f + (hub ? 2.2f : 0f) + 0.4f * busy + 0.5f * (roadNb - 3) + noise });
+                        ok = false;
                     }
                     if (ok) cands.Add(new Move { kind = "blok", type = "rotonde", cell = c, what = hub ? "maakt een rotonde waar de wegen samenkomen" : "maakt een rotonde van het drukke kruispunt", rule = 1.2f + (hub ? 2.5f : 0f) + 0.4f * busy + 0.5f * (roadNb - 3) + noise });
                 }
@@ -633,6 +668,32 @@ public static partial class PlanetAI
         {
             if (BuiltNb(e) > 0 || NearType(e, "park") || NearType(e, "plein") || PlanetCity.IsBike(e)) continue;
             cands.Add(new Move { kind = "blok", type = "gum", cell = e, what = "haalt een pad weg dat nergens heen gaat", rule = 0.7f + (float)rnd.NextDouble() * 0.3f });
+        }
+        // losse stukken straat (niet verbonden met het grootste deel van het eigen wegennet, bijvoorbeeld een ring waar de spaken niet
+        // bij kwamen): met Dijkstra verbinden met de rest van de stad, en dat gaat voor
+        {
+            var seenC = new HashSet<int>(); var comps = new List<List<int>>();
+            foreach (int c in roads) { if (!seenC.Add(c)) continue; var comp = new List<int>(); var q = new Queue<int>(); q.Enqueue(c); while (q.Count > 0) { int x = q.Dequeue(); comp.Add(x); foreach (int j in PlanetCity.Partners(x)) if (PlanetCity.IsRoad(j) && seenC.Add(j)) q.Enqueue(j); } comps.Add(comp); }
+            if (comps.Count > 1)
+            {
+                comps.Sort((x, y) => y.Count.CompareTo(x.Count));
+                var mainGoals = new HashSet<int>(); foreach (int c in comps[0]) if (GroundRoad(c) && PlanetCity.LinkCount(c) <= 3) mainGoals.Add(c);
+                for (int ci = 1; ci < comps.Count && ci <= 3; ci++)
+                {
+                    List<int> best = null;
+                    foreach (int c in comps[ci])
+                    {
+                        if (!GroundRoad(c) || PlanetCity.LinkCount(c) > 2) continue;
+                        var path = Route(c, mainGoals, 22f); if (path == null || path.Count < 3 || SharpBend(path)) continue;
+                        if (best == null || path.Count < best.Count) best = path;
+                    }
+                    if (best == null) continue;
+                    var runs = Runs(best, "weg", 0, "verbindt een los stuk straat met de stad (vervolg)");
+                    var m = new Move { kind = "lijn", type = "weg", line = runs[0].cells, joins = runs.Count == 1, what = "verbindt een los stuk straat met de stad", rule = 5f + 0.1f * comps[ci].Count - 0.1f * best.Count };
+                    if (runs.Count > 1) m.rest = runs.GetRange(1, runs.Count - 1);
+                    if (CheckLine(m.line, "weg", out _, 1, true)) cands.Add(m);
+                }
+            }
         }
         // zijstraten: vanaf een recht stuk, hooguit een handvol plekken per zet
         Shuffle(roads); int tries = 0;
@@ -728,12 +789,17 @@ public static partial class PlanetAI
         if (Owned.Count == 0) { core = 0; coreRetry = 0; coreRoad = plein = -1; rings.Clear(); ringAt.Clear(); }
         else { var keep = new HashSet<int>(); foreach (int r in rings) { bool any = false; foreach (var kv in reserved) if (kv.Value == "ring" + r && PlanetCity.IsRoad(kv.Key)) { any = true; break; } if (any) keep.Add(r); } rings.IntersectWith(keep); }   // een ring die weg is mag opnieuw
     }
+    // per vak: welke zet het legde (de eerste keer), om het wegennet achteraf te kunnen beoordelen (PlanetAI.Eval.cs)
+    public static readonly Dictionary<int, string> Origin = new Dictionary<int, string>();
     public static void Commit(Move m)
     {
         Moves++; think = 0; cands = null;
+        { string why = m.what ?? m.type; int cut = why.IndexOf(" ("); if (cut > 0) why = why.Substring(0, cut); if (m.line != null) foreach (int c in m.line) { if (!Origin.ContainsKey(c)) Origin[c] = why; } else if (!Origin.ContainsKey(m.cell)) Origin[m.cell] = why; }
         if (m.line != null) foreach (int c in m.line) Owned.Add(c); else Owned.Add(m.cell);
         if (m.type == "rotonde") foreach (int j in Planet.Cells[m.cell].nb) Owned.Add(j);
         if (m.rest != null) for (int i = m.rest.Count - 1; i >= 0; i--) Plan(m.rest[i], true);   // het vervolg van de route eerst
+        if (m.clearFor >= 0)   // ruimte maken voor een rotonde: de ring van dat kruispunt blijft vrij tot de rotonde er ligt (of 20 zetten voorbij zijn)
+            foreach (int j in Planet.Cells[m.clearFor].nb) if (!reserved.ContainsKey(j) || reserved[j] == "ruimte") { reserved[j] = "ruimte"; roomFor[j] = (m.clearFor, Moves); }
         if (m.queued) return;
         // symmetrie: dezelfde zijstraat om de 60° rondom het centrum, een blikvanger om de 120°
         if (m.sym && m.line != null)
