@@ -97,7 +97,7 @@ public partial class PlanetBuilder
     void OpenCity(CityInfo c) { if (!busy) StartCoroutine(OpenRoutine(c, -1)); }
     void NewCity(string name, int kind) { if (!busy) StartCoroutine(OpenRoutine(CityFiles.Create(name), kind)); }
 
-    // kind -1: openen van schijf; 0 leeg, 1 startstad, 2 hele planeet vol, 3 natuurplaneet.
+    // kind -1: openen van schijf; 0 leeg, 1 startstad, 2 hele planeet vol, 3 natuurplaneet, 4 hoogtetest (PlanetHeightTest.cs).
     // Zoals Hele planeet vol (FillRoutine): geen laadscherm, de camera draait om de bol, die als blauwdruk volloopt
     // (PlanetBlueprint); bij het tekenen vervaagt de blauwdruk. Onderaan het laadpaneel (LoadingGui) met de echte voortgang.
     IEnumerator OpenRoutine(CityInfo c, int kind)
@@ -120,6 +120,7 @@ public partial class PlanetBuilder
         }
         else if (kind == 2) yield return PlanetCity.FillSteps((f, what) => { loadFrac = f * 0.4f; loading = what; });
         else if (kind == 3) yield return PlanetCity.WildSteps((f, what) => { loadFrac = f * 0.4f; loading = what; }, Random.Range(1, 100000));   // natuurplaneet
+        else if (kind == 4) yield return PlanetCity.HeightTestSteps((f, what) => { loadFrac = f * 0.4f; loading = what; });   // hoogtetest
         else
         {
             PlanetCity.Restore(empty);
@@ -131,8 +132,9 @@ public partial class PlanetBuilder
         PlanetCity.RebuildGrid(); loadFrac = 1f;
         // de camera naar de stad: van ver weg zakt hij erheen
         undo.Clear(); beautyT = -99f; beauty = null; centreT = -99f; CityCentre();
-        Vector3 to = kind == 1 || kind == 0 || kind == 3 || !hasCentre ? Planet.Cells[start].dir : centre;
+        Vector3 to = kind == 1 || kind == 0 || kind >= 3 || !hasCentre ? Planet.Cells[start].dir : centre;
         focus = to; fwd = Planet.Cells[Planet.Nearest(to)].north; pitch = 48f; distGoal = LandDist;
+        if (kind == 4) { pitch = 38f; distGoal = 420f; }   // hoogtetest: van de pool naar het noorden, berg, hoogvlakte en dal in beeld
         CityFiles.MarkOpened(c); savedKnown = false; autoT = Time.time; busy = false;
         if (ok) { if (kind >= 0) { SaveCity(false); thumbAt = Time.time + 5f; } else { savedHash = PlanetCity.Snapshot().GetHashCode(); savedKnown = true; } }   // een nieuwe stad meteen bewaren
         CityFiles.Scan();
@@ -215,9 +217,9 @@ public partial class PlanetBuilder
     }
 
     // nieuwe stad: een naam, dan vier zeshoeken op een rij om mee te beginnen, met eronder wat de gekozen doet
-    static readonly string[] NewNames = { "Startstad", "Lege planeet", "Natuur", "Planeet vol" };
-    static readonly string[] NewSubs = { "Een plein met winkels en een ring rond de noordpool", "Alleen terrein, zelf vanaf nul", "Zeeën, bergen, rivieren, ijs en woestijn, zonder stad", "Dorpen en steden over de hele bol (duurt even)" };
-    static readonly string[] NewIcons = { "stad", "leeg", "bewolkt", "kompas" }; static readonly int[] NewKinds = { 1, 0, 3, 2 };
+    static readonly string[] NewNames = { "Startstad", "Lege planeet", "Natuur", "Planeet vol", "Hoogtetest" };
+    static readonly string[] NewSubs = { "Een plein met winkels en een ring rond de noordpool", "Alleen terrein, zelf vanaf nul", "Zeeën, bergen, rivieren, ijs en woestijn, zonder stad", "Dorpen en steden over de hele bol (duurt even)", "20 landschappen, een per vlak: bergen, dalen, ravijnen en steilwanden" };
+    static readonly string[] NewIcons = { "stad", "leeg", "bewolkt", "kompas", "heuvel" }; static readonly int[] NewKinds = { 1, 0, 3, 2, 4 };
     void NewPanel(Rect r)
     {
         r.height = 344f; Ui.Panel(r, true, 16f); float x = r.x + 18f, iw = r.width - 36f, y = r.y + 14f;
@@ -226,8 +228,8 @@ public partial class PlanetBuilder
         bool enter = EnterPressed;
         nameEdit = NameField(new Rect(x, y, iw, 38f), nameEdit); y += 52f;
         Ui.Label(new Rect(x + 2f, y, iw, 16f), "BEGIN MET", Ui.T.Tiny); y += 22f;
-        float cw = iw / 4f; const float TS = 62f; int sel = System.Array.IndexOf(NewKinds, newKind);
-        for (int k = 0; k < 4; k++)
+        float cw = iw / NewKinds.Length; const float TS = 56f; int sel = System.Array.IndexOf(NewKinds, newKind);
+        for (int k = 0; k < NewKinds.Length; k++)
         {
             var c = new Rect(x + k * cw, y, cw, TS + 26f); bool on = k == sel, hv = c.Contains(Ui.Mouse);
             var hx = new Rect(c.center.x - TS * 0.5f, y + (hv && !on ? -3f : 0f), TS, TS * 0.9f);
