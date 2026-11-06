@@ -255,7 +255,7 @@ public static partial class PlanetCity
         {
             for (int i = i0; i < i1; i++) if (Cells.TryGetValue(i, out var list) && list.Count > 0)
             {
-                if (bores.Count > 0 && IsWalk(i)) { UseAll(); BoreMesh(mb, i); }   // een tunnel door een berg: koker, portalen en betonblok (PlanetTunnels.cs)
+                if ((bores.Count > 0 || spans.Count > 0) && IsWalk(i)) { UseAll(); BoreMesh(mb, i); }   // een tunnel door een berg (koker, portalen en betonblok) of een brug over een dal (PlanetTunnels.cs)
                 if (fieldCells.Contains(i)) UseNear(i); else UseAll();   // alleen de wegen in de buurt (een brug meet het terrein op zo'n honderd punten)
                 BuildCell(mb, i, list, mills, 0);
             }

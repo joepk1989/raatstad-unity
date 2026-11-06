@@ -188,7 +188,22 @@ public static partial class PlanetCity
         // asfalt: één waaier vanuit het hart (bij een doodlopend eind vanuit het midden van de kop) langs de hele omtrek
         Vector2 hub = na == 1 ? cc[0] : Vector2.zero; var rim = new List<Vector2>();
         for (int c = 0; c < na; c++) { int a = order[c]; rim.Add(P(a, -wA[a], 0f)); rim.Add(P(a, wA[a], 0f)); rim.AddRange(corner(c, 0)); }
-        for (int k = 0; k < rim.Count; k++) { Vector2 p = rim[k], q = rim[(k + 1) % rim.Count]; M("asfalt").Tri(fr.P(hub.x, AY, hub.y), fr.P(p.x, AY, p.y), fr.P(q.x, AY, q.y), fr.u); }
+        // in stukjes van hooguit 3 m: een lange platte driehoek zakt op de bol onder het oppervlak (bij een spitse hoek is de knoop tot 22 m lang)
+        for (int k = 0; k < rim.Count; k++)
+        {
+            Vector2 p = rim[k], q = rim[(k + 1) % rim.Count]; int nt = Mathf.Max(1, Mathf.CeilToInt((q - p).magnitude / 3f));
+            for (int t = 0; t < nt; t++)
+            {
+                Vector2 p1 = Vector2.Lerp(p, q, t / (float)nt), q1 = Vector2.Lerp(p, q, (t + 1) / (float)nt);
+                int nr = Mathf.Max(1, Mathf.CeilToInt(Mathf.Max((p1 - hub).magnitude, (q1 - hub).magnitude) / 3f));
+                for (int r = 0; r < nr; r++)
+                {
+                    float f0 = r / (float)nr, f1 = (r + 1) / (float)nr; Vector2 a0 = Vector2.Lerp(hub, p1, f0), b0 = Vector2.Lerp(hub, q1, f0), a1 = Vector2.Lerp(hub, p1, f1), b1 = Vector2.Lerp(hub, q1, f1);
+                    if (r == 0) M("asfalt").Tri(fr.P(hub.x, AY, hub.y), fr.P(a1.x, AY, a1.y), fr.P(b1.x, AY, b1.y), fr.u);
+                    else M("asfalt").Quad(fr.P(a0.x, AY, a0.y), fr.P(a1.x, AY, a1.y), fr.P(b1.x, AY, b1.y), fr.P(b0.x, AY, b0.y), fr.u);
+                }
+            }
+        }
         // stoeprand en stoep: langs de zijkanten van elke arm tot waar de hoek begint, dan om de hoek heen
         float bestPhi = -1f; Vector2 lampAt = Vector2.zero;
         for (int c = 0; c < na; c++)

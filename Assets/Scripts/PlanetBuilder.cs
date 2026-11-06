@@ -290,9 +290,9 @@ public partial class PlanetBuilder : MonoBehaviour
         }
         // Shift+wiel: het volgende of vorige vak van de snelbalk (zoals de webversie)
         if (Inp.Held(K.Shift) && !Ui.MouseOverUI && !PathDrag) { wheelAcc += Inp.Scroll; if (Mathf.Abs(wheelAcc) >= 0.9f) { SelectSlot((slot + (wheelAcc < 0f ? 1 : Tabs.Length - 1)) % Tabs.Length); wheelAcc = 0f; } } else if (!PathDrag) wheelAcc = 0f;
-        // een klik in de stad sluit de catalogus en het tijdpaneel (en bouwt dan niet); Shift- of Alt-slepen beweegt de camera
+        // een klik in de stad sluit de catalogus (en bouwt meteen) en het tijdpaneel (dan bouwt hij niet); Shift- of Alt-slepen beweegt de camera
         bool leftDown = Inp.LeftDown && camDrag == 0;
-        if (leftDown && !Ui.MouseOverUI && (catOpen || todOpen)) { catOpen = todOpen = false; leftDown = false; }
+        if (leftDown && !Ui.MouseOverUI && (catOpen || todOpen)) { bool eat = todOpen; catOpen = todOpen = false; if (eat) leftDown = false; }   // de lade gaat dicht en de klik bouwt meteen (het blok is al gekozen); het tijdpaneel slikt de klik
 
         // pipet: middelste knop klikken zonder te slepen neemt het blok van dat vak over (slepen blijft draaien)
         if (midCell >= 0 && !Inp.MiddleHeld) { if (Vector2.Distance(Inp.Pos, midAt) < 6f) Pipet(midCell); midCell = -1; }
@@ -682,7 +682,7 @@ public partial class PlanetBuilder : MonoBehaviour
                 Vector3 l0 = Q(a0, -pw, top), l1 = Q(a0, pw, top), l2 = Q(a1, pw, top), l3 = Q(a1, -pw, top); mb.Quad(l0, l1, l2, l3, ad);
             }
         }
-        if (lv == 0) foreach (var t in PlanetCity.BorePlan(cells, type)) TunnelGhost(mb, t.a, t.b, t.ha, t.hb, type == "weg" ? Mathf.Max(6f, hw - 1.2f) : PlanetCity.WalkHalfWidth("pad"), origin);   // door een berg: de tunnel
+        if (lv == 0) foreach (var t in PlanetCity.BorePlan(cells, type)) { if (t.span) PlanetCity.SpanGhost(mb, t.a, t.b, t.ha, t.hb, type, origin); else TunnelGhost(mb, t.a, t.b, t.ha, t.hb, type == "weg" ? Mathf.Max(6f, hw - 1.2f) : PlanetCity.WalkHalfWidth("pad"), origin); }   // door een berg: de tunnel; over een dal: de brug
         var old = lvlF.sharedMesh; lvlF.sharedMesh = m.v.Count > 0 ? m.Build() : null; if (old != null) Destroy(old);
         var oldb = brgF.sharedMesh; brgF.sharedMesh = mb.v.Count > 0 ? mb.Build() : null; if (oldb != null) Destroy(oldb);
         lvlR.sharedMaterial = TerrMat(lv < 0 ? 1 : 0); lvlF.transform.position = origin; lvlR.enabled = lvlF.sharedMesh != null;

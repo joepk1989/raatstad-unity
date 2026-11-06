@@ -1,8 +1,9 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-// Tunnels door een berg of heuvel. Ligt het terrein op een recht stuk van een gesleepte weg of pad ergens minstens 9 m boven de
-// rechte lijn tussen de voet aan beide kanten (met Ongelijkvloers, U: 6 m, net genoeg voor de koker), dan gaat dat stuk erdoorheen
+// Tunnels door een berg of heuvel. Ligt het terrein op een recht stuk van een gesleepte weg of pad overal minstens 6 m (de mantel
+// erin) en ergens minstens 9 m boven de rechte lijn tussen de voet aan beide kanten (met Ongelijkvloers, U: 6 m, net genoeg voor de
+// koker), dan gaat dat stuk erdoorheen
 // in plaats van eroverheen. In de graaf is dat een tunnelverbinding (TunnelLinks, zoals een weg onder een brug door) van het laatste
 // wegvak vóór de berg naar het eerste erna; de vakken ertussen zijn weer gewoon terrein met hun eigen hoogte (er kan op gebouwd
 // worden). Getekend naar het model tunnel entrance.dae (hexgrid city concept): de zeshoekige koker en het portaal van de
@@ -13,16 +14,34 @@ public static partial class PlanetCity
 {
     const float BoreGrade = 0.15f;   // hooguit 15% helling in een tunnel
     static float BoreNeed => DragUnder ? 6f : 2f * LevelH;   // zoveel terrein moet ergens boven de weg liggen
+    // en zoveel boven elk vak ertussen: de hele mantel (koker LevelH − DeckT, plus 2,17 m) in de berg, anders ligt er een grijze balk
+    // over een laag heuveltje; met Ongelijkvloers (U) een half niveau, dan mag de mantel eruit steken
+    static float BoreCover => DragUnder ? StepH : LevelH - DeckT + 2.17f + 0.4f;
 
-    // is a–b een tunnel door een berg (een tunnelverbinding over meer dan één vak)?
+    // Dalbruggen: hetzelfde, maar dan over een dal. Ligt het terrein op een recht stuk overal minstens SpanClear en ergens SpanNeed
+    // onder de rechte lijn tussen de randen (en is het stuk niet langer dan SpanMax), dan gaat de weg er met een brug overheen: een
+    // lange verbinding van landhoofd tot landhoofd (TunnelLinks plus SpanLinks), het dal eronder blijft terrein. Getekend als
+    // betonnen dek met borstwering, landhoofden en zeshoekige pijlers tot op het maaiveld (SpanMesh).
+    const float SpanClear = 0.8f, SpanMax = 260f;
+    static float SpanNeed => DragUnder ? StepH : LevelH;
+    // stap k → k+1 van een rechte lijn: een buur, of schuin (90°) over een hoek
+    static bool LineStep(int a, int b) => IsNeighbour(a, b) || System.Array.IndexOf(Planet.Cells[a].across, b) >= 0;
+    // ligt c recht tussen p en q (ook op een schuine lijn)?
+    static bool Straight(int p, int c, int q) { if (MidCell(p, q) == c) return true; Vector3 d = Planet.Cells[c].dir; return Vector3.Dot(Tan(Planet.Cells[c].dir - Planet.Cells[p].dir, d), Tan(Planet.Cells[q].dir - d, d)) > 0.985f; }
+    public static readonly HashSet<long> SpanLinks = new HashSet<long>();   // de lange verbindingen in TunnelLinks die een brug zijn
+
+    // is a–b een lange verbinding (een tunnel door een berg of een brug over een dal, over meer dan één vak)?
     public static bool IsBore(int a, int b) => TunnelLinks.Contains(Key(a, b)) && MidCell(a, b) < 0;
+    // is a–b een brug over een dal?
+    public static bool IsSpan(int a, int b) => SpanLinks.Contains(Key(a, b)) && IsBore(a, b);
     // begint in vak i een tunnel door een berg (een portaal)?
     static bool BorePortal(int i) { if (TunnelLinks.Count == 0) return false; foreach (int j in Partners(i)) if (IsBore(i, j)) return true; return false; }
 
     // De tunnels op een lijn: per recht stuk de langste waarbij elk vak ertussen minstens een half niveau boven de rechte weg ligt
     // (ground) en ergens BoreNeed, dan links en rechts daarvan opnieuw. plain: kan een portaal zijn; step: de lijn gaat recht naar de
     // buur; inner: mag de berg in; road: de hoogte van de weg in een portaalvak. Geeft de paren (portaal, portaal) als index in de lijn.
-    static List<(int i, int j)> BoreSearch(List<int> line, System.Func<int, bool> plain, System.Func<int, bool> step, System.Func<int, bool> inner, System.Func<int, float> road, System.Func<int, float> ground)
+    // span: een dalbrug zoeken in plaats van een tunnel (het terrein ertussen ligt ónder de rechte weg, SpanClear en SpanNeed)
+    static List<(int i, int j)> BoreSearch(List<int> line, System.Func<int, bool> plain, System.Func<int, bool> step, System.Func<int, bool> inner, System.Func<int, float> road, System.Func<int, float> ground, bool span = false)
     {
         var done = new List<(int i, int j)>();
         void Search(int lo, int hi)
@@ -36,10 +55,10 @@ public static partial class PlanetCity
                     if (!step(j - 1) || (j - 1 > i && !inner(j - 1))) break;
                     if (j - i < 3 || !plain(line[j])) continue;   // minstens twee vakken berg (één vak is een gewone brug)
                     float ga = road(line[i]), gb = road(line[j]), dist = (Planet.Cells[line[i]].dir - Planet.Cells[line[j]].dir).magnitude * Planet.R;
-                    if (Mathf.Abs(gb - ga) > BoreGrade * dist) continue;
+                    if (Mathf.Abs(gb - ga) > BoreGrade * dist || (span && dist > SpanMax)) continue;
                     float mn = float.MaxValue, mx = float.MinValue;
-                    for (int k = i + 1; k < j; k++) { float cv = ground(line[k]) - Mathf.Lerp(ga, gb, (k - i) / (float)(j - i)); mn = Mathf.Min(mn, cv); mx = Mathf.Max(mx, cv); }
-                    if (mn < StepH || mx < BoreNeed) continue;
+                    for (int k = i + 1; k < j; k++) { float cv = ground(line[k]) - Mathf.Lerp(ga, gb, (k - i) / (float)(j - i)); if (span) cv = -cv; mn = Mathf.Min(mn, cv); mx = Mathf.Max(mx, cv); }
+                    if (span ? (mn < SpanClear || mx < SpanNeed) : (mn < BoreCover || mx < BoreNeed)) continue;
                     if (j - i > bj - bi || (j - i == bj - bi && mn > best)) { bi = i; bj = j; best = mn; }
                 }
             }
@@ -54,25 +73,36 @@ public static partial class PlanetCity
     {
         if (line == null || line.Count < 4 || DragLevel != 0) return 0;
         bool Plain(int c) => IsWalk(c) && !Underpass(c) && !IsRot(c) && !preCarve.ContainsKey(c);
-        var done = BoreSearch(line, Plain, k => IsNeighbour(line[k], line[k + 1]) && Linked(line[k], line[k + 1]),
-            k => { int c = line[k], p = line[k - 1], q = line[k + 1]; var ps = Partners(c); return Plain(c) && ps.Count == 2 && ps.Contains(p) && ps.Contains(q) && MidCell(p, q) == c; },
-            G, c => preLevel.TryGetValue(c, out var h) ? h : G(c));   // het terrein van voor de weg (SetLevel zette hem op de hoogte van zijn buren)
+        System.Func<int, bool> Step = k => LineStep(line[k], line[k + 1]) && Linked(line[k], line[k + 1]);
+        System.Func<int, bool> Inner = k => { int c = line[k], p = line[k - 1], q = line[k + 1]; var ps = Partners(c); return Plain(c) && ps.Count == 2 && ps.Contains(p) && ps.Contains(q) && Straight(p, c, q); };
+        System.Func<int, float> Ground = c => preLevel.TryGetValue(c, out var h) ? h : G(c);   // het terrein van voor de weg (SetLevel zette hem op de hoogte van zijn buren)
+        var done = BoreSearch(line, Plain, Step, Inner, G, Ground);
         float len = 0f;
-        foreach (var (i, j) in done)
-        {
-            int a = line[i], b = line[j], f = Flow(a, line[i + 1]);
-            for (int k = i + 1; k < j; k++) Clear(line[k]);   // het stuk door de berg is geen weg op het maaiveld meer
-            LinkTunnel(a, b); if (f > 0) OneWay.Add(DKey(a, b)); else if (f < 0) OneWay.Add(DKey(b, a));
-            Touch(a); Touch(b); len += (Planet.Cells[a].dir - Planet.Cells[b].dir).magnitude * Planet.R - 2f * FlatL;
-        }
-        if (done.Count > 0) LastNote = (done.Count == 1 ? "Een tunnel" : done.Count + " tunnels") + " door de berg (" + Mathf.RoundToInt(len) + " m)";
-        return done.Count;
+        foreach (var (i, j) in done) { len += Span(line, i, j); SpanLinks.Remove(Key(line[i], line[j])); }
+        // daarna de dalen: de rest van de lijn (de vakken in een tunnel zijn al geen weg meer)
+        var dals = BoreSearch(line, Plain, Step, Inner, G, Ground, true);
+        float dlen = 0f;
+        foreach (var (i, j) in dals) { dlen += Span(line, i, j); SpanLinks.Add(Key(line[i], line[j])); }
+        var notes = new List<string>();
+        if (done.Count > 0) notes.Add((done.Count == 1 ? "Een tunnel" : done.Count + " tunnels") + " door de berg (" + Mathf.RoundToInt(len) + " m)");
+        if (dals.Count > 0) notes.Add((dals.Count == 1 ? "Een brug" : dals.Count + " bruggen") + " over het dal (" + Mathf.RoundToInt(dlen) + " m)");
+        if (notes.Count > 0) LastNote = string.Join(", ", notes);
+        return done.Count + dals.Count;
+    }
+    // de vakken tussen line[i] en line[j] worden weer terrein; een lange verbinding van i naar j (tunnel of brug)
+    static float Span(List<int> line, int i, int j)
+    {
+        int a = line[i], b = line[j], f = Flow(a, line[i + 1]);
+        for (int k = i + 1; k < j; k++) Clear(line[k]);   // het stuk door de berg of over het dal is geen weg op het maaiveld meer
+        for (int k = i; k < j; k++) if (!IsNeighbour(line[k], line[k + 1])) ClearHalves(line[k], line[k + 1]);   // schuin: de halve vakken ertussen ook
+        LinkTunnel(a, b); if (f > 0) OneWay.Add(DKey(a, b)); else if (f < 0) OneWay.Add(DKey(b, a));
+        Touch(a); Touch(b); return (Planet.Cells[a].dir - Planet.Cells[b].dir).magnitude * Planet.R - 2f * FlatL;
     }
     // Voor het voorbeeld tijdens het slepen: waar de geplande lijn een tunnel krijgt, met de hoogte van de weg bij de portalen (zoals
     // BoreLine na PlaceLine en SetLevel: een nieuw vak komt op de hoogte van zijn buren, de berg in gaan alleen nieuwe vakken)
-    public static List<(int a, int b, float ha, float hb)> BorePlan(List<int> line, string type)
+    public static List<(int a, int b, float ha, float hb, bool span)> BorePlan(List<int> line, string type)
     {
-        var o = new List<(int, int, float, float)>(); if (line == null || line.Count < 4 || DragLevel != 0) return o;
+        var o = new List<(int, int, float, float, bool)>(); if (line == null || line.Count < 4 || DragLevel != 0) return o;
         bool Plain(int c) => !Underpass(c) && !IsRot(c) && !preCarve.ContainsKey(c) && (IsWalk(c) || CanRoad(c, type));
         float Road(int c)   // een nieuw vak: het gemiddelde van zijn buren die geen weg of pad zijn en niet op de lijn liggen (PadGround na het leggen)
         {
@@ -80,12 +110,17 @@ public static partial class PlanetCity
             foreach (int j in Planet.Cells[c].nb) if (!IsWalk(j) && !Underpass(j) && !line.Contains(j)) { s += G(j); n++; }
             return n > 0 ? s / n : G(c);
         }
-        foreach (var (i, j) in BoreSearch(line, Plain, k => IsNeighbour(line[k], line[k + 1]), k => !IsWalk(line[k]) && Plain(line[k]) && MidCell(line[k - 1], line[k + 1]) == line[k], Road, G))
+        System.Func<int, bool> Step = k => LineStep(line[k], line[k + 1]);
+        var taken = new HashSet<int>();   // al in een tunnel: geen dal meer
+        System.Func<int, bool> Inner = k => !IsWalk(line[k]) && Plain(line[k]) && Straight(line[k - 1], line[k], line[k + 1]) && !taken.Contains(k);
+        void Add(int i, int j, bool span)
         {
             int a = line[i], b = line[j]; float ha = Road(a), hb = Road(b);
             if (a > b) { (a, b) = (b, a); (ha, hb) = (hb, ha); }   // zoals de tunnel straks getekend wordt: vanaf het kleinste vak
-            o.Add((a, b, ha, hb));
+            o.Add((a, b, ha, hb, span)); for (int k = i + 1; k < j; k++) taken.Add(k);
         }
+        foreach (var (i, j) in BoreSearch(line, Plain, Step, Inner, Road, G)) Add(i, j, false);
+        foreach (var (i, j) in BoreSearch(line, Plain, Step, Inner, Road, G, true)) Add(i, j, true);
         return o;
     }
 
@@ -110,6 +145,7 @@ public static partial class PlanetCity
         foreach (int b in Partners(a))
         {
             if (b < a || !IsBore(a, b)) continue;
+            if (SpanLinks.Contains(Key(a, b))) { foreach (var q in spans) if (q.a == a && q.b == b) SpanMesh(M, q, Vector3.zero, false); continue; }   // een brug over een dal
             var f = BoreFrame(a, b, out var p0, out var p1, out _); tubeW = BoreHW(a); float fl = -LevelH, top = -DeckT;
             int ns = Mathf.Max(1, Mathf.CeilToInt((p1 - p0).magnitude / 6f));   // in stukken, zodat de koker de bol volgt
             for (int s = 0; s < ns; s++) TubeSeg(M, f, Vector2.Lerp(p0, p1, s / (float)ns), Vector2.Lerp(p0, p1, (s + 1) / (float)ns), fl, fl, top, false, false);
@@ -151,10 +187,23 @@ public static partial class PlanetCity
     static string boreSig = "";
     static void CollectBores()
     {
-        var old = new List<int>(boreNear.Keys); bores.Clear(); boreNear.Clear(); var sb = new System.Text.StringBuilder();
+        var old = new List<int>(boreNear.Keys); old.AddRange(spanNear.Keys); bores.Clear(); boreNear.Clear(); spans.Clear(); spanNear.Clear(); var sb = new System.Text.StringBuilder();
+        SpanLinks.RemoveWhere(k => !TunnelLinks.Contains(k));
         foreach (long key in TunnelLinks)
         {
             int a = (int)(key >> 20), b = (int)(key & 0xFFFFF); if (MidCell(a, b) >= 0 || !IsWalk(a) || !IsWalk(b)) continue;
+            if (SpanLinks.Contains(key))   // een brug over een dal
+            {
+                if (a > b) (a, b) = (b, a);
+                var q = MakeSpan(a, b, G(a), G(b), SpanHW(a)); spans.Add(q);
+                sb.Append('s').Append(a).Append('-').Append(b).Append(':').Append(G(a).ToString("F2")).Append(',').Append(G(b).ToString("F2")).Append(',').Append(q.hw).Append('|');
+                foreach (int c in BoreRow(a, b)) foreach (int j in Planet.Cells[c].nb) foreach (int x in new[] { c, j })
+                {
+                    if (!spanNear.TryGetValue(x, out var l)) spanNear[x] = l = new List<int>(1);
+                    if (!l.Contains(spans.Count - 1)) l.Add(spans.Count - 1);
+                }
+                continue;
+            }
             BoreFrame(a, b, out var p0, out var p1, out float k); Vector3 dA = Planet.Cells[a].dir, e = Tan(Planet.Cells[b].dir - dA, dA);
             // de mantel, zoals Mantle (ten opzichte van het dek), 10 cm kleiner
             float fl = -LevelH, top = -DeckT, yB = fl - 2.17f, yO = top + 2.17f, co = (yO - yB) * 0.5f * 0.577f, ym = (yB + yO) * 0.5f;
@@ -170,7 +219,7 @@ public static partial class PlanetCity
                     }
         }
         string sig = sb.ToString(); if (sig == boreSig) return; boreSig = sig;
-        foreach (int c in old) Touch(c); foreach (int c in boreNear.Keys) Touch(c);   // een tunnel kwam, ging of veranderde: het terrein erboven opnieuw
+        foreach (int c in old) Touch(c); foreach (int c in boreNear.Keys) Touch(c); foreach (int c in spanNear.Keys) Touch(c);   // een tunnel kwam, ging of veranderde: het terrein erboven opnieuw
     }
     // de vakken op de rechte lijn van a naar b (a en b erbij)
     static List<int> BoreRow(int a, int b)
@@ -202,10 +251,19 @@ public static partial class PlanetCity
         }
     }
     // In een tunnel (voor wie loopt, PlanetWalker): staat wereldpunt p in een koker onder het plafond, dan de hoogte van de vloer daar
+    // (en op een brug over een dal: de hoogte van het dek; daar ook geen bermbomen of lantaarns, PlanetRoads)
     public static bool InBore(Vector3 p, out float floor)
     {
-        floor = 0f; if (boreNear.Count == 0 || !boreNear.TryGetValue(Planet.Nearest(p), out var bl)) return false;
-        float r = p.magnitude; Vector3 d = p / r; bool hit = false;
+        floor = 0f; if (boreNear.Count == 0 && spanNear.Count == 0) return false;
+        int near = Planet.Nearest(p); float r = p.magnitude; Vector3 d = p / r; bool hit = false;
+        if (spanNear.TryGetValue(near, out var sl))
+            foreach (int si in sl)
+            {
+                var q = spans[si]; SpanLocal(q, d, out float s, out float x); if (s < q.s0 - 1f || s > q.s1 + 1f || Mathf.Abs(x) > q.hw + 0.35f) continue;
+                float deck = Mathf.Lerp(q.ha, q.hb, s / q.L) + AY; if (r - Planet.R < deck - 3f) continue;   // eronder, in het dal: het maaiveld
+                if (!hit || deck > floor) floor = deck; hit = true;
+            }
+        if (!boreNear.TryGetValue(near, out var bl)) return hit;
         foreach (int bi in bl)
         {
             var q = bores[bi]; Vector3 v = d * (Planet.R / Vector3.Dot(d, q.dA)) - q.dA * Planet.R; float s = Vector3.Dot(v, q.e), x = Vector3.Dot(v, q.n);
@@ -241,5 +299,89 @@ public static partial class PlanetCity
             if ((g[k] <= 0f) != (g[w] <= 0f)) o.Add(Vector3.Lerp(poly[k], poly[w], g[k] / (g[k] - g[w])));
         }
         return o;
+    }
+
+    // ---------- bruggen over een dal ----------
+    // langs de grote cirkel van a naar b: s (m vanaf het hart van a), x (m opzij, langs n); het dek ligt op lerp(ha, hb, s / L)
+    struct SpanC { public int a, b; public Vector3 dA, eA, n; public float L, ha, hb, hw, s0, s1; }
+    static readonly List<SpanC> spans = new List<SpanC>();
+    static readonly Dictionary<int, List<int>> spanNear = new Dictionary<int, List<int>>();   // vak → de bruggen erboven
+    // halve breedte van de weg met stoep (of het pad) op de brug; de borstwering staat daar
+    static float SpanHW(int a) { if (!IsRoad(a)) return PadHW((byte)(IsBike(a) ? 1 : 0)) + 0.6f; Dims(StyleOf(a), out _, out float sw); return sw; }
+    static SpanC MakeSpan(int a, int b, float ha, float hb, float hw)
+    {
+        Vector3 dA = Planet.Cells[a].dir, dB = Planet.Cells[b].dir, n = Vector3.Cross(dA, dB).normalized;
+        float L = Vector3.Angle(dA, dB) * Mathf.Deg2Rad * Planet.R;
+        return new SpanC { a = a, b = b, dA = dA, eA = Vector3.Cross(n, dA).normalized, n = n, L = L, ha = ha, hb = hb, hw = hw, s0 = FlatL * 0.55f, s1 = L - FlatL * 0.55f };
+    }
+    // ligt wereldpunt p boven het dek van een brug over een dal (tussen de landhoofden)? Daar zakt de zijkant van de stoep niet tot in het dal.
+    static bool OverSpan(Vector3 p)
+    {
+        if (spanNear.Count == 0 || !spanNear.TryGetValue(Planet.Nearest(p), out var sl)) return false; Vector3 d = p.normalized;
+        foreach (int si in sl) { var q = spans[si]; SpanLocal(q, d, out float s, out float x); if (s > q.s0 - 0.5f && s < q.s1 + 0.5f && Mathf.Abs(x) < q.hw + 1f) return true; }
+        return false;
+    }
+    static void SpanLocal(SpanC q, Vector3 d, out float s, out float x)
+    {
+        s = Mathf.Atan2(Vector3.Dot(d, q.eA), Vector3.Dot(d, q.dA)) * Planet.R; x = Vector3.Dot(d, q.n) * Planet.R;
+    }
+    static Vector3 SpanP(SpanC q, float s, float x, float y)
+    {
+        float t = s / Planet.R; Vector3 d = q.dA * Mathf.Cos(t) + q.eA * Mathf.Sin(t);
+        return (d * Planet.R + q.n * x).normalized * (Planet.R + Mathf.Lerp(q.ha, q.hb, s / q.L) + y);
+    }
+    // Het dek (onderkant 1,3 m onder de weg), de borstwering (1,05 m boven de weg, 35 cm dik), een landhoofd aan elk eind tot in de
+    // grond en zeshoekige pijlers om de 24 m tot op het maaiveld (twee naast elkaar onder een brede weg). ghost: het voorbeeld tijdens
+    // het slepen, met de weg erop (in de lijn ontbreekt dat stuk) en alles van beide kanten zichtbaar.
+    static void SpanMesh(System.Func<string, MeshBuilder> M, SpanC q, Vector3 origin, bool ghost)
+    {
+        float ow = q.hw + 0.35f, yb = -1.3f, yp = 1.05f, s0 = q.s0, s1 = q.s1;
+        Vector3 P(float s, float x, float y) => SpanP(q, s, x, y) - origin;
+        void Q(string mat, Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 nrm) { M(mat).Quad(a, b, c, d, nrm); if (ghost) M(mat).Quad(a, b, c, d, -nrm); }
+        Vector3 Up(float s) => SpanP(q, s, 0f, 0f).normalized;
+        Vector3 Along(float s) { Vector3 u = Up(s); Vector3 t = SpanP(q, s + 0.5f, 0f, 0f) - SpanP(q, s - 0.5f, 0f, 0f); return (t - u * Vector3.Dot(t, u)).normalized; }
+        int n = Mathf.Max(1, Mathf.CeilToInt((s1 - s0) / 6f));
+        for (int k = 0; k < n; k++)
+        {
+            float sa = Mathf.Lerp(s0, s1, k / (float)n), sb = Mathf.Lerp(s0, s1, (k + 1) / (float)n); Vector3 up = Up((sa + sb) * 0.5f);
+            Q("steen", P(sa, -ow, yb), P(sb, -ow, yb), P(sb, ow, yb), P(sa, ow, yb), -up);   // onderkant
+            if (ghost) Q("asfalt", P(sa, -q.hw, AY), P(sb, -q.hw, AY), P(sb, q.hw, AY), P(sa, q.hw, AY), up);
+            for (int sg = -1; sg <= 1; sg += 2)
+            {
+                Vector3 side = q.n * sg;
+                Q("steen", P(sa, sg * ow, yb), P(sb, sg * ow, yb), P(sb, sg * ow, yp), P(sa, sg * ow, yp), side);                      // buitenkant
+                Q("steen", P(sa, sg * q.hw, yp), P(sb, sg * q.hw, yp), P(sb, sg * ow, yp), P(sa, sg * ow, yp), up);                    // bovenop de borstwering
+                Q("steen", P(sa, sg * q.hw, SY - 0.05f), P(sb, sg * q.hw, SY - 0.05f), P(sb, sg * q.hw, yp), P(sa, sg * q.hw, yp), -side);   // binnenkant
+            }
+        }
+        // landhoofden: een blok van 2 m dik aan elk eind, van het dek tot een halve meter in de grond
+        foreach (var (se, dir) in new[] { (s0, -1f), (s1, 1f) })
+        {
+            float si = se + dir * 2f, sm = (se + si) * 0.5f;   // si: de kant naar het landhoofdvak
+            float foot = Mathf.Min(TerrainAt(SpanP(q, se, 0f, 0f).normalized), TerrainAt(SpanP(q, sm, 0f, 0f).normalized)) - Mathf.Lerp(q.ha, q.hb, se / q.L) - 0.5f;
+            foot = Mathf.Min(foot, yb - 0.5f); Vector3 al = Along(se) * -dir, up = Up(se);   // al: naar het dal
+            Q("steen", P(se, -ow, foot), P(se, ow, foot), P(se, ow, SY), P(se, -ow, SY), al);   // de voorkant, naar het dal
+            for (int sg = -1; sg <= 1; sg += 2) Q("steen", P(se, sg * ow, foot), P(si, sg * ow, foot), P(si, sg * ow, yp), P(se, sg * ow, yp), q.n * sg);
+            for (int sg = -1; sg <= 1; sg += 2) Q("steen", P(se, sg * q.hw, yp), P(si, sg * q.hw, yp), P(si, sg * ow, yp), P(se, sg * ow, yp), up);
+            Q("steen", P(se, -ow, yp), P(se, -q.hw, yp), P(se, -q.hw, SY), P(se, -ow, SY), al); Q("steen", P(se, q.hw, yp), P(se, ow, yp), P(se, ow, SY), P(se, q.hw, SY), al);
+        }
+        // pijlers
+        int np = Mathf.Max(1, Mathf.RoundToInt((s1 - s0) / 24f));
+        for (int k = 1; k < np; k++)
+        {
+            float s = Mathf.Lerp(s0, s1, k / (float)np), h = Mathf.Lerp(q.ha, q.hb, s / q.L);
+            var xs = q.hw > 7f ? new[] { -q.hw * 0.45f, q.hw * 0.45f } : new[] { 0f }; float r = xs.Length > 1 ? 1.1f : 1.4f;
+            foreach (float x in xs)
+            {
+                float foot = TerrainAt(SpanP(q, s, x, 0f).normalized) - h - 0.6f; if (foot > yb - 0.3f) continue;   // het maaiveld komt tot onder het dek
+                Vector3 b = P(s, x, foot), up = Up(s); Prism3D(M("steen"), b, up, r, r, yb - foot + 0.05f);
+            }
+        }
+    }
+    // het voorbeeld van een brug over een dal tijdens het slepen (BorePlan met span)
+    public static void SpanGhost(MeshBuilder mb, int a, int b, float ha, float hb, string type, Vector3 origin)
+    {
+        float hw; if (type == "weg") { Dims(DragStyle, out _, out hw); } else hw = PadHW((byte)(DragBike ? 1 : 0)) + 0.6f;
+        SpanMesh(_ => mb, MakeSpan(a, b, ha, hb, hw), origin, true);
     }
 }

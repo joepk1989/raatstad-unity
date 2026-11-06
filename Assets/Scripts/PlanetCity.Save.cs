@@ -5,7 +5,7 @@ using UnityEngine;
 
 // Opslaan en laden: drie slots (planeet1/2/3.json in persistentDataPath), Snapshot en Restore ook voor undo.
 [Serializable] public class PCellSave { public int i; public string[] items; }
-[Serializable] public class PSaveData { public int m; public float r; public List<PCellSave> cells = new List<PCellSave>(); public List<int> links = new List<int>(); public List<int> style = new List<int>(), under = new List<int>(), oneway = new List<int>(), terr = new List<int>(), low = new List<int>(), tunnel = new List<int>(), lower = new List<int>(), precarve = new List<int>(), prelevel = new List<int>(), corner = new List<int>(), center = new List<int>(), bike = new List<int>(), rot = new List<int>(), scorch = new List<int>(); public int startVer, startCell = -1; }   // startVer: de versie van de startstad als de stad nog de ongewijzigde startstad is (anders 0)   // corner: per hoekpunt drie vakken en de verschuiving in cm   // paren: vak/stijl, vak/onder (1 meer, 2 water, 3 kuil, 4 pad, 5 weg), van/naar, vak/terreinhoogte in cm
+[Serializable] public class PSaveData { public int m; public float r; public List<PCellSave> cells = new List<PCellSave>(); public List<int> links = new List<int>(); public List<int> style = new List<int>(), under = new List<int>(), oneway = new List<int>(), terr = new List<int>(), low = new List<int>(), tunnel = new List<int>(), span = new List<int>(), lower = new List<int>(), precarve = new List<int>(), prelevel = new List<int>(), corner = new List<int>(), center = new List<int>(), bike = new List<int>(), rot = new List<int>(), scorch = new List<int>(); public int startVer, startCell = -1; }   // startVer: de versie van de startstad als de stad nog de ongewijzigde startstad is (anders 0)   // corner: per hoekpunt drie vakken en de verschuiving in cm   // paren: vak/stijl, vak/onder (1 meer, 2 water, 3 kuil, 4 pad, 5 weg), van/naar, vak/terreinhoogte in cm
 public static partial class PlanetCity
 {
     static string FilePath => Path.Combine(Application.persistentDataPath, "planeet" + Slot + ".json");
@@ -27,6 +27,7 @@ public static partial class PlanetCity
             foreach (var kv in Style) if (IsRoad(kv.Key)) { sd.style.Add(kv.Key); sd.style.Add(kv.Value); }
             foreach (var kv in Under) { sd.under.Add(kv.Key); sd.under.Add(kv.Value == "meer" ? 1 : kv.Value == "water" ? 2 : kv.Value == "pad" ? 4 : kv.Value == "weg" ? 5 : 3); }
             foreach (long k in TunnelLinks) { sd.tunnel.Add((int)(k >> 20)); sd.tunnel.Add((int)(k & 0xFFFFF)); }
+            foreach (long k in SpanLinks) if (TunnelLinks.Contains(k)) { sd.span.Add((int)(k >> 20)); sd.span.Add((int)(k & 0xFFFFF)); }   // welke lange verbindingen een brug over een dal zijn
             foreach (long k in LowerLinks) { sd.lower.Add((int)(k >> 20)); sd.lower.Add((int)(k & 0xFFFFF)); }
             foreach (var kv in preCarve) { sd.precarve.Add(kv.Key); sd.precarve.Add(Mathf.RoundToInt(kv.Value * 100f)); }
             foreach (var kv in preLevel) { sd.prelevel.Add(kv.Key); sd.prelevel.Add(Mathf.RoundToInt(kv.Value * 100f)); }
@@ -71,6 +72,7 @@ public static partial class PlanetCity
             if (sd.under != null) for (int k = 0; k + 1 < sd.under.Count; k += 2) Under[sd.under[k]] = sd.under[k + 1] == 1 ? "meer" : sd.under[k + 1] == 2 ? "water" : sd.under[k + 1] == 4 ? "pad" : sd.under[k + 1] == 5 ? "weg" : "kuil";
             if (sd.low != null) for (int k = 0; k + 1 < sd.low.Count; k += 2) Low[sd.low[k]] = sd.low[k + 1] / 100f;
             if (sd.tunnel != null) for (int k = 0; k + 1 < sd.tunnel.Count; k += 2) LinkTunnel(sd.tunnel[k], sd.tunnel[k + 1]);
+            SpanLinks.Clear(); if (sd.span != null) for (int k = 0; k + 1 < sd.span.Count; k += 2) SpanLinks.Add(Key(sd.span[k], sd.span[k + 1]));
             if (sd.lower != null) for (int k = 0; k + 1 < sd.lower.Count; k += 2) LowerLinks.Add(Key(sd.lower[k], sd.lower[k + 1]));
             if (sd.precarve != null) for (int k = 0; k + 1 < sd.precarve.Count; k += 2) preCarve[sd.precarve[k]] = sd.precarve[k + 1] / 100f;
             if (sd.prelevel != null) for (int k = 0; k + 1 < sd.prelevel.Count; k += 2) preLevel[sd.prelevel[k]] = sd.prelevel[k + 1] / 100f;

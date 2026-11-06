@@ -29,6 +29,7 @@ public class WegVoorbeeld : MonoBehaviour
         for (int k = 0; k < 600 && (pb = FindAnyObjectByType<PlanetBuilder>()) == null; k++) yield return null;
         yield return null; yield return null;
         cam = Camera.main; if (pb != null) pb.enabled = false;
+        if (pb != null) foreach (string f in new[] { "home", "welcome" }) { var fi = typeof(PlanetBuilder).GetField(f, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public); if (fi != null && fi.FieldType == typeof(bool)) fi.SetValue(pb, false); }   // geen startscherm: het voorbeeld bouwt zelf
         if (mode == "meten") { yield return MeetHier(); yield break; }
         if (mode == "autos") { yield return Autos(); yield break; }
         if (mode == "kijk")   // wat er standaard geladen wordt: slot, startstad, en het beeld van de camera bij het begin
@@ -51,6 +52,11 @@ public class WegVoorbeeld : MonoBehaviour
         if (mode == "rotonde") { yield return Roundabouts(home); yield break; }
         if (mode == "schuin") { yield return Diagonals(home); yield break; }
         if (mode == "sleep") { yield return SleepTest(home); yield break; }
+        if (mode == "hoek") { yield return Hoeken(home); yield break; }
+        if (mode == "terrein") { yield return TerreinTest(home); yield break; }
+        if (mode == "dal") { yield return DalTest(home); yield break; }
+        if (mode == "aiterrein") { yield return AiTerrein(); yield break; }
+        if (mode == "aisteden") { yield return AiSteden(); yield break; }
         if (mode == "verkeer") { yield return Verkeer(home); yield break; }
         if (mode == "stad" || mode == "stadmeten") { yield return Teststad(home, mode == "stadmeten"); yield break; }
         if (mode == "start" || mode == "startmeten") { yield return Startstad(); if (mode == "startmeten") { if (pb != null) pb.enabled = false; yield return MeetHier(); } yield break; }
@@ -312,6 +318,196 @@ public class WegVoorbeeld : MonoBehaviour
         foreach (var (nm, cc) in new[] { ("sleep_recht", c[0]), ("sleep_schuin", c[1]), ("sleep_kruising", c[2]), ("sleep_niveau", c[4]), ("sleep_rotonde", c[7]), ("sleep_onder", Go(a9, 0f, 50f)) }) yield return Shot(nm, cc, Dh(cc, 0.3f), 70f, 70f);
         yield return Shot("sleep_rijen_1", t0, Dh(t0, 0f), 45f, 89f); yield return Shot("sleep_rijen_2", t2, Dh(t2, 0f), 45f, 89f); yield return Shot("sleep_rijen_3", t3, Dh(t3, 0f), 45f, 89f);
         File.WriteAllText(Path.Combine(Dir, "sleep.txt"), "fouten: " + sleepFouten + "\n" + (errs.Length > 0 ? "CONSOLE:\n" + errs + "\n" : "") + sl);
+        File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true;
+    }
+    // scherpe hoeken: een schuine weg (30°) die uit een kruispunt van een rechte weg komt, als gewone weg en als laan, en paden die
+    // schuin op een weg of kruising uitkomen
+    // Terreintest: een heuvelachtige proefstad (golvend terrein tot 10 m, een rooster van straten in drie richtingen plus schuine wegen,
+    // huizen op elk leeg vak ernaast), dan per straal van bovenaf: steekt het terrein ergens boven het wegdek uit (fout A), of valt een
+    // straal door de grond heen (een gat tussen terreinstukken, fout B)? De ergste plekken op de foto.
+    IEnumerator TerreinTest(int home)
+    {
+        float D30 = Mathf.PI / 6f, D60 = Mathf.PI / 3f; Hc = home; bouw = new System.Text.StringBuilder();
+        var area = new List<int>(Nearby(home, 200f));
+        foreach (int i in area)
+        {
+            Vector3 v = (Planet.Cells[i].dir - Planet.Cells[home].dir) * Planet.R; float x = Vector3.Dot(v, Dh(home, 0f)), y = Vector3.Dot(v, Dh(home, Mathf.PI / 2f));
+            PlanetCity.SetTerr(i, Mathf.Round((5f + 3f * Mathf.Sin(x / 37f) + 2.5f * Mathf.Cos(y / 29f + 0.7f) + 1.5f * Mathf.Sin((x + y) / 17f)) * 4f) / 4f);
+        }
+        foreach (float ang in new[] { 0f, D60, 2f * D60 }) for (int k = -3; k <= 3; k++) { int c = Go(home, ang + Mathf.PI / 2f, k * 47f); Weg("rooster " + k, Go(c, ang, -150f), Go(c, ang, 150f), (byte)(k == 0 ? 2 : 0)); }
+        foreach (float ang in new[] { D30, D30 + D60 }) Weg("schuin", Go(home, ang, -160f), Go(home, ang, 160f), 0);
+        PlanetCity.DragBike = true; PadH("fietspad", Go(home, -D30, -150f), Go(home, -D30, 150f)); PlanetCity.DragBike = false;
+        var rnd = new System.Random(3);
+        foreach (int i in area) if (!PlanetCity.Cells.ContainsKey(i) && Vector3.Distance(Planet.Cells[i].dir, Planet.Cells[home].dir) * Planet.R < 170f) { int r = rnd.Next(10); PlanetCity.Place(i, r < 6 ? "woning" : r < 8 ? "park" : r < 9 ? "winkel" : "kantoor"); }
+        PlanetCity.Rebuild(); PlanetCity.Rebuild(); yield return null; yield return null; yield return null;
+        yield return Scan(home, 165f, "terrein");
+        File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true;
+    }
+    IEnumerator Scan(int home, float R, string name)
+    {
+        // scannen: punten om de 0,7 m over het hele gebied
+        var foutA = new List<(Vector3 p, float d)>(); var foutB = new List<Vector3>(); int nA = 0, nRoad = 0, nGround = 0;
+        Vector3 c0 = Planet.Cells[home].dir, e = Dh(home, 0f), n = Vector3.Cross(c0, e).normalized; const float step = 0.7f;
+        for (float x = -R; x <= R; x += step) for (float y = -R; y <= R; y += step)
+        {
+            if (x * x + y * y > R * R) continue;
+            Vector3 dir = (c0 * Planet.R + e * x + n * y).normalized; int cell = Planet.Nearest(dir * Planet.R);
+            if (PlanetCity.Under.ContainsKey(cell) || PlanetCity.IsHalf(cell) && false) continue;
+            Vector3 top = dir * (Planet.R + 60f);
+            bool road = Physics.Raycast(top, -dir, out RaycastHit hr, 80f, 1 << Layers.Weg, QueryTriggerInteraction.Ignore);
+            bool ground = Physics.Raycast(top, -dir, out RaycastHit hg, 80f, (1 << Layers.Bodem) | (1 << Layers.Water), QueryTriggerInteraction.Ignore);
+            float hRoad = road ? hr.point.magnitude - Planet.R : 0f, hGround = ground ? hg.point.magnitude - Planet.R : 0f;
+            if (road) { nRoad++; if (ground && hGround > hRoad + 0.03f && hGround < hRoad + 4f) { nA++; foutA.Add((dir, hGround - hRoad)); } }   // (meer dan 4 m erboven: een tunnel of brug)
+            if (!road)   // ook schuin (30° uit vier richtingen): een kier in een wand zie je alleen van opzij
+            {
+                nGround++; int all = (1 << Layers.Bodem) | (1 << Layers.Water) | (1 << Layers.Gebouw) | (1 << Layers.Weg); bool hole = !Physics.Raycast(top, -dir, 80f, all, QueryTriggerInteraction.Ignore);
+                if (!hole && ground) for (int q = 0; q < 4 && !hole; q++)
+                {
+                    Vector3 side = (q == 0 ? e : q == 1 ? -e : q == 2 ? n : -n), from = hg.point + dir * 25f + side * 14.4f;   // naar het geraakte punt toe, onder 60° met de grond
+                    if (!Physics.Raycast(from, (hg.point - from).normalized, out RaycastHit hs, 35f, all, QueryTriggerInteraction.Ignore)) hole = true;
+                    else if (Vector3.Distance(hs.point, hg.point) > 0.6f && (hs.point - from).magnitude > (hg.point - from).magnitude + 0.3f) hole = true;   // de straal ging verder dan het punt: erdoorheen
+                }
+                if (hole) foutB.Add(dir);
+            }
+        }
+        bouw.Append("gescand: ").Append(nRoad).Append(" punten op de weg, ").Append(nGround).AppendLine(" ernaast");
+        bouw.Append("A terrein boven het wegdek: ").Append(nA).Append(" punten (").Append(nRoad > 0 ? (100f * nA / nRoad).ToString("0.00") : "0").AppendLine("%)");
+        bouw.Append("B gaten in het terrein: ").Append(foutB.Count).AppendLine(" punten");
+        // groeperen per vak, ergste eerst
+        var perA = new Dictionary<int, (int n, float max, Vector3 p)>(); foreach (var f in foutA) { int c = Planet.Nearest(f.p * Planet.R); perA.TryGetValue(c, out var t); perA[c] = (t.n + 1, Mathf.Max(t.max, f.d), t.n == 0 ? f.p : t.p); }
+        var perB = new Dictionary<int, (int n, Vector3 p)>(); foreach (var f in foutB) { int c = Planet.Nearest(f * Planet.R); perB.TryGetValue(c, out var t); perB[c] = (t.n + 1, t.n == 0 ? f : t.p); }
+        var la = new List<KeyValuePair<int, (int n, float max, Vector3 p)>>(perA); la.Sort((p1, p2) => (p2.Value.n * p2.Value.max).CompareTo(p1.Value.n * p1.Value.max));
+        var lb = new List<KeyValuePair<int, (int n, Vector3 p)>>(perB); lb.Sort((p1, p2) => p2.Value.n.CompareTo(p1.Value.n));
+        for (int k = 0; k < Mathf.Min(3, la.Count); k++) { var pA = la[k].Value.p; Vector3 tp = pA * (Planet.R + 60f); Physics.Raycast(tp, -pA, out RaycastHit h1, 80f, 1 << Layers.Weg); Physics.Raycast(tp, -pA, out RaycastHit h2, 80f, 1 << Layers.Bodem); bouw.Append("  punt ").Append(k + 1).Append(": weg ").Append((h1.point.magnitude - Planet.R).ToString("0.00")).Append(" (").Append(h1.collider != null ? h1.collider.transform.parent?.name + "/" + h1.collider.name : "-").Append("), grond ").Append((h2.point.magnitude - Planet.R).ToString("0.00")).Append("; ").AppendLine(PlanetCity.GroundInfo(pA)); }
+        foreach (var kv in la.GetRange(0, Mathf.Min(12, la.Count))) bouw.Append("  A vak ").Append(kv.Key).Append(": ").Append(kv.Value.n).Append(" punten, tot ").Append(kv.Value.max.ToString("0.00")).Append(" m; ").Append(Desc(kv.Key)).AppendLine();
+        foreach (var kv in lb.GetRange(0, Mathf.Min(12, lb.Count))) bouw.Append("  B vak ").Append(kv.Key).Append(": ").Append(kv.Value.n).Append(" punten; ").Append(Desc(kv.Key)).AppendLine();
+        File.WriteAllText(Path.Combine(Dir, name + ".txt"), bouw.ToString());
+        yield return Shot(name + "_overzicht", home, Dh(home, 0.3f), R * 1.6f, 60f);
+        for (int k = 0; k < Mathf.Min(5, la.Count); k++) yield return Shot(name + "_A" + (k + 1), la[k].Key, Dh(la[k].Key, 0.7f), 26f, 40f);
+        for (int k = 0; k < Mathf.Min(4, lb.Count); k++) yield return Shot(name + "_B" + (k + 1), lb[k].Key, Dh(lb[k].Key, 0.7f), 24f, 55f);
+    }
+    // de grootste steden die de AI-bouwer bewaarde (ai-runs, per bouwstijl de grootste) laden en scannen
+    IEnumerator AiSteden()
+    {
+        string dir = Path.Combine(Application.persistentDataPath, "ai-runs"); var files = new List<FileInfo>(new DirectoryInfo(dir).GetFiles("*.json"));
+        files.Sort((x1, x2) => x2.Length.CompareTo(x1.Length)); var pick = new List<FileInfo>(); var styles = new HashSet<string>();
+        foreach (var f in files) { string st = f.Name.Split('_').Length > 2 ? f.Name.Split('_')[2] : f.Name; if (styles.Add(st)) pick.Add(f); if (pick.Count >= 5) break; }
+        var sum = new System.Text.StringBuilder();
+        for (int q = 0; q < pick.Count; q++)
+        {
+            PlanetCity.ClearAll(); if (!PlanetCity.Restore(File.ReadAllText(pick[q].FullName))) { sum.Append(pick[q].Name).AppendLine(": niet te laden"); continue; }
+            PlanetCity.TouchAll(); PlanetCity.Rebuild(); PlanetCity.RebuildGrid(); yield return null; yield return null;
+            Vector3 m = Vector3.zero; int nr = 0; foreach (var kv in PlanetCity.Cells) if (PlanetCity.IsRoad(kv.Key)) { m += Planet.Cells[kv.Key].dir; nr++; }
+            int c = Planet.Nearest(m.normalized * Planet.R); Hc = c; bouw = new System.Text.StringBuilder(pick[q].Name + "\n");
+            yield return Scan(c, 230f, "stad" + (q + 1));
+            var rl = bouw.ToString().Split('\n');
+            sum.Append("stad").Append(q + 1).Append(" ").Append(pick[q].Name).Append(": ").Append(nr).Append(" wegvakken; ").AppendLine((rl.Length > 3 ? rl[2] + " | " + rl[3] : ""));
+            File.WriteAllText(Path.Combine(Dir, "aisteden.txt"), sum.ToString());
+        }
+        File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true;
+    }
+    // de AI-bouwer laten bouwen op de heuvel uit zijn testopstelling (AiTest), dan scannen
+    IEnumerator AiTerrein()
+    {
+        var S0 = Planet.Cells[Planet.South]; Vector3 d0 = S0.east * Mathf.Cos(1f) + S0.north * Mathf.Sin(1f);
+        int start = Planet.Nearest((S0.dir * Mathf.Cos(170f / Planet.R) + d0 * Mathf.Sin(170f / Planet.R)).normalized * Planet.R); var S = Planet.Cells[start]; Hc = start; bouw = new System.Text.StringBuilder();
+        for (int i = 0; i < Planet.Cells.Length; i++)
+        {
+            Vector3 w = Planet.Cells[i].dir * Planet.R - S.dir * Planet.R; if (w.magnitude > 400f) continue;
+            float x = Vector3.Dot(w, S.east), y = Vector3.Dot(w, S.north);
+            float hill = Mathf.Max(0f, 22f - 0.25f * Vector2.Distance(new Vector2(x, y), new Vector2(110f, 40f))), lake = Mathf.Max(0f, 5f - 0.12f * Vector2.Distance(new Vector2(x, y), new Vector2(-90f, -70f)));
+            float h = hill - lake + Mathf.PerlinNoise(x * 0.01f + 3f, y * 0.01f) * 3f; if (Mathf.Abs(h) > 0.3f) PlanetCity.SetTerr(i, Mathf.Round(h * 4f) / 4f);
+        }
+        PlanetCity.Rebuild(); PlanetCity.RebuildGrid(); yield return null;
+        var F = (System.Func<string, System.Reflection.FieldInfo>)(nm => typeof(PlanetBuilder).GetField(nm, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance));
+        pb.enabled = true; ((List<string>)F("undo").GetValue(pb)).Clear();
+        string why = PlanetAI.Begin(start, 5, 0); if (why != null) { File.WriteAllText(Path.Combine(Dir, "aiterrein.txt"), "NIET: " + why); File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); yield break; }
+        F("aiOn").SetValue(pb, true); F("aiPaused").SetValue(pb, false); F("aiTempo").SetValue(pb, 3); F("aiPinCell").SetValue(pb, start); F("aiNext").SetValue(pb, Time.time); F("aiWhat").SetValue(pb, "test"); F("aiBeauty0").SetValue(pb, 0); F("aiStartT").SetValue(pb, Time.time); F("aiUndoN").SetValue(pb, 0); F("aiFollow").SetValue(pb, false);
+        float t0 = Time.time; while (Time.time - t0 < 90f && !(bool)F("aiPaused").GetValue(pb)) yield return null;
+        F("aiPaused").SetValue(pb, true); for (int k = 0; k < 120 && (bool)F("rebuilding").GetValue(pb); k++) yield return null;
+        pb.enabled = false; PlanetCity.Rebuild(); yield return null; yield return null;
+        bouw.Append("AI: ").Append(PlanetAI.Moves).AppendLine(" zetten");
+        yield return Scan(start, 190f, "aiterrein");
+        { int c = 13383; foreach (int j in Planet.Cells[c].nb) { yield return Shot("detail_" + j + "_boven", j, Dh(j, 0f), 22f, 89f); } yield return Shot("detail_laag", c, Dh(c, 2.6f), 30f, 20f); yield return Shot("detail_laag2", c, Dh(c, 0.5f), 30f, 20f); }
+        { var hits = new System.Text.StringBuilder(); var c = Planet.Cells[13383]; foreach (int j in c.nb) { var cj = Planet.Cells[j]; for (int k = 0; k < cj.corners.Length; k++) { Vector3 d = (cj.corners[k] * 0.7f + cj.dir * 0.3f).normalized, top = d * (Planet.R + 60f); var all = Physics.RaycastAll(top, -d, 80f, ~0, QueryTriggerInteraction.Ignore); System.Array.Sort(all, (x1, x2) => x1.distance.CompareTo(x2.distance)); hits.Append(j).Append('/').Append(k).Append(": "); foreach (var h in all) hits.Append(h.collider.name).Append('@').Append((h.point.magnitude - Planet.R).ToString("0.00")).Append(' '); hits.AppendLine(); } } File.WriteAllText(Path.Combine(Dir, "detail.txt"), hits.ToString()); }
+        PlanetCity.RoadField = false; PlanetCity.TouchAll(); PlanetCity.Rebuild(); yield return null; yield return null; bouw = new System.Text.StringBuilder("ZONDER gewone wegen in de hoogtefunctie\n");
+        yield return Scan(start, 190f, "aiterrein_uit"); PlanetCity.RoadField = true; PlanetCity.TouchAll(); PlanetCity.Rebuild();
+        File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); pb.enabled = true;
+    }
+    // Daltest: een dal van zo'n 13 m diep met een beek, daarover een weg (recht), een fietspad en een weg die het dal schuin (90°) kruist;
+    // wordt elk een brug over het dal (SpanLinks), klopt de graaf, en wat zegt het voorbeeld vooraf (BorePlan)?
+    IEnumerator DalTest(int home)
+    {
+        Hc = home; var log = new System.Text.StringBuilder(); float D90 = Mathf.PI / 2f;
+        foreach (int i in new List<int>(Nearby(home, 260f)))
+        {
+            Vector3 v = (Planet.Cells[i].dir - Planet.Cells[home].dir) * Planet.R; float y = Vector3.Dot(v, Dh(home, 0f)), x = Vector3.Dot(v, Dh(home, Mathf.PI / 2f));
+            float w = x > 0f ? 32f : 20f, dd = x > 0f ? 14f : 10f;   // aan de ene kant een breed dal, aan de andere een smal (zoals een beekdal)
+            PlanetCity.SetTerr(i, Mathf.Round((9f - dd * Mathf.Exp(-y * y / (w * w))) * 4f) / 4f);
+        }
+        var lines = new List<(string nm, int a, int b, string t, bool bike)> {
+            ("weg recht", Go(home, 0f, -110f), Go(home, 0f, 110f), "weg", false),
+            ("fietspad", Go(Go(home, D90, 70f), 0f, -110f), Go(Go(home, D90, 70f), 0f, 110f), "pad", true),
+            ("weg schuin", Go(Go(home, D90, -90f), Mathf.PI / 6f, -120f), Go(Go(home, D90, -90f), Mathf.PI / 6f, 120f), "weg", false),
+            ("weg smal dal", Go(Go(home, D90, -170f), 0f, -90f), Go(Go(home, D90, -170f), 0f, 90f), "weg", false) };
+        foreach (var l in lines)
+        {
+            PlanetCity.DragBike = l.bike; var plan = PlanetCity.LinePlan(l.a, l.b);
+            var pre = PlanetCity.BorePlan(plan, l.t); string ps = ""; foreach (var t in pre) ps += (t.span ? "brug " : "tunnel ") + t.a + "-" + t.b + " ";
+            PlanetCity.LastNote = ""; int ok = Drag(l.a, l.b, l.t); int nb = PlanetCity.BoreLine(plan); PlanetCity.DragBike = false;
+            int sp = 0; foreach (long k in PlanetCity.TunnelLinks) if (PlanetCity.IsSpan((int)(k >> 20), (int)(k & 0xFFFFF))) sp++;
+            log.Append(l.nm).Append(": ").Append(plan.Count).Append(" vakken, gelegd ").Append(ok).Append(", voorbeeld [").Append(ps).Append("], lang ").Append(nb).Append(", bruggen totaal ").Append(sp).Append(", ").AppendLine(PlanetCity.LastNote);
+        }
+        foreach (string p in PlanetCity.CheckGraph()) log.Append("  GRAAF ").AppendLine(p);
+        PlanetCity.Rebuild(); PlanetCity.Rebuild(); yield return null; yield return null; yield return null;
+        // de hoogte van het wegdek midden op elke brug (SurfaceH vanaf een landhoofd) tegen het dek
+        foreach (long k in PlanetCity.TunnelLinks)
+        {
+            int a = (int)(k >> 20), b = (int)(k & 0xFFFFF); if (!PlanetCity.IsSpan(a, b)) continue;
+            Vector3 mid = (Planet.Cells[a].dir + Planet.Cells[b].dir).normalized * Planet.R; PlanetCity.InBore(mid * 1.02f, out float deck);
+            log.Append("  brug ").Append(a).Append('-').Append(b).Append(": G ").Append(PlanetCity.G(a).ToString("0.0")).Append(" / ").Append(PlanetCity.G(b).ToString("0.0"))
+               .Append(", midden SurfaceH(a) ").Append(PlanetCity.SurfaceH(a, mid).ToString("0.00")).Append(" SurfaceH(b) ").Append(PlanetCity.SurfaceH(b, mid).ToString("0.00"))
+               .Append(", dek ").Append(deck.ToString("0.00")).Append(", maaiveld ").Append(PlanetCity.TerrainAt(mid.normalized).ToString("0.00")).AppendLine();
+            log.Append("    midden: ").AppendLine(PlanetCity.GroundInfo(mid.normalized));
+            for (int q = 1; q < 8; q++) { Vector3 pq = Vector3.Slerp(Planet.Cells[a].dir, Planet.Cells[b].dir, q / 8f); int cq = Planet.Nearest(pq * Planet.R); log.Append("    ").Append(q).Append("/8 vak ").Append(cq).Append(" G ").Append(PlanetCity.G(cq).ToString("0.00")).Append(" maaiveld ").Append(PlanetCity.TerrainAt(pq).ToString("0.00")).Append(" ").AppendLine(Desc(cq)); }
+        }
+
+        File.WriteAllText(Path.Combine(Dir, "dal.txt"), log.ToString());
+        yield return Shot("dal_zij", Go(home, D90, 140f), Dh(home, -D90), 60f, 12f);
+        yield return Shot("dal_dichtbij", Go(home, 0f, 30f), Dh(home, -D90 + 0.5f), 35f, 10f);
+        yield return Shot("dal_boven", home, Dh(home, 0.4f), 170f, 50f);
+        yield return Shot("dal_schuin", Go(home, D90, -90f), Dh(home, D90 + 0.5f), 70f, 18f);
+        File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true;
+    }
+    static string Desc(int c)
+    {
+        string own = PlanetCity.Cells.TryGetValue(c, out var l) ? string.Join("+", l) : "leeg"; var nb = new System.Text.StringBuilder();
+        foreach (int j in Planet.Cells[c].nb) nb.Append(PlanetCity.Cells.TryGetValue(j, out var lj) ? lj[0] : "-").Append(' ');
+        return own + " (G " + PlanetCity.G(c).ToString("0.0") + ", partners " + PlanetCity.Partners(c).Count + ", buren " + nb + ")";
+    }
+    IEnumerator Hoeken(int home)
+    {
+        float D30 = Mathf.PI / 6f, D60 = Mathf.PI / 3f; Hc = home; bouw = new System.Text.StringBuilder();
+        int h1 = home, h2 = Go(home, 0f, 170f), h3 = Go(home, Mathf.PI, 170f), h4 = Go(home, Mathf.PI / 2f, 170f), h5 = Go(home, -Mathf.PI / 2f, 170f);
+        Weg("h1 recht", Go(h1, 0f, -60f), Go(h1, 0f, 60f), 0); Weg("h1 schuin", h1, Go(h1, D30, 70f), 0);
+        Weg("h2 recht", Go(h2, 0f, -60f), Go(h2, 0f, 60f), 0); Weg("h2 laan schuin", h2, Go(h2, D30 + Mathf.PI, 70f), 2);
+        Weg("h3 schuin door", Go(h3, D30, -60f), Go(h3, D30, 60f), 0); Weg("h3 recht", h3, Go(h3, 0f, 60f), 0);
+        Weg("h4 recht", Go(h4, 0f, -60f), Go(h4, 0f, 60f), 0); Weg("h4 zij", h4, Go(h4, D60 * 2f, 60f), 0); PadH("h4 pad schuin naar de kruising", Go(h4, -D30 - D60, 55f), h4);
+        Weg("h5 recht", Go(h5, 0f, -60f), Go(h5, 0f, 60f), 0); PadH("h5 pad schuin op de weg", Go(h5, -D30 - D60, 55f), h5); PlanetCity.DragBike = true; PadH("h5 fietspad schuin", Go(Go(h5, 0f, 40f), D30 + D60, 55f), Go(h5, 0f, 40f)); PlanetCity.DragBike = false;
+        int h6 = Go(home, Mathf.PI * 0.75f, 330f), h7 = Go(home, -Mathf.PI * 0.75f, 330f);
+        Weg("h6 recht", Go(h6, 0f, -60f), Go(h6, 0f, 60f), 0); Weg("h6 zij 60", h6, Go(h6, D60, 60f), 0); PadH("h6 pad tussen de armen (30)", Go(h6, D30, 55f), h6); PadH("h6 pad tussen de armen (120)", Go(h6, D60 * 2f, 55f), h6);
+        Weg("h7 recht", Go(h7, 0f, -60f), Go(h7, 0f, 60f), 0); Weg("h7 zij 120", h7, Go(h7, D60 * 2f, 60f), 0); PlanetCity.DragBike = true; PadH("h7 fietspad tussen de armen (60)", Go(h7, D60, 55f), h7); PlanetCity.DragBike = false; PadH("h7 pad schuin (-30)", Go(h7, -D30, 55f), h7);
+        // op een helling (6 m op 100 m) met huizen eromheen: een T, een spitse splitsing en een bocht
+        int h8 = Go(home, Mathf.PI * 0.25f, 480f), h9 = Go(h8, 0f, 150f), h10 = Go(h8, Mathf.PI, 150f);
+        foreach (int i in new List<int>(Nearby(h8, 260f))) { float x = Vector3.Dot((Planet.Cells[i].dir - Planet.Cells[h8].dir) * Planet.R, Dh(h8, Mathf.PI / 2f)); PlanetCity.SetTerr(i, Mathf.Clamp(6f + x * 0.06f, 0f, 20f)); }
+        Weg("h8 recht a", h8, Go(h8, 0f, 60f), 0); Weg("h8 recht b", h8, Go(h8, Mathf.PI, 60f), 0); Weg("h8 zij", h8, Go(h8, Mathf.PI / 2f, 60f), 0);
+        Weg("h9 recht a", h9, Go(h9, 0f, 60f), 0); Weg("h9 recht b", h9, Go(h9, Mathf.PI, 60f), 0); Weg("h9 schuin", h9, Go(h9, D30, 70f), 0);
+        Weg("h10 a", Go(h10, Mathf.PI, 60f), h10, 0); Weg("h10 b", h10, Go(h10, D60 * 2f, 60f), 0);   // een bocht van 60°
+        foreach (int c in new[] { h8, h9, h10 }) foreach (int i in new List<int>(Nearby(c, 30f))) if (!PlanetCity.Cells.ContainsKey(i)) PlanetCity.Place(i, "woning");
+        PlanetCity.Rebuild(); PlanetCity.Rebuild(); yield return null; yield return null;
+        foreach (bool rf in new[] { false, true, false, true }) { PlanetCity.RoadField = rf; var sw = System.Diagnostics.Stopwatch.StartNew(); PlanetCity.TouchAll(); PlanetCity.Rebuild(); bouw.Append("alles opnieuw tekenen (wegen in de hoogtefunctie ").Append(rf ? "aan" : "uit").Append("): ").Append(sw.ElapsedMilliseconds).AppendLine(" ms"); }
+        File.WriteAllText(Path.Combine(Dir, "bouw.txt"), bouw.ToString());
+        foreach (var (nm, c) in new[] { ("hoek_8", h8), ("hoek_9", h9), ("hoek_10", h10), ("hoek_6", h6), ("hoek_7", h7), ("hoek_1", h1), ("hoek_2", h2), ("hoek_3", h3), ("hoek_4", h4), ("hoek_5", h5), ("hoek_5b", Go(h5, 0f, 40f)) }) { yield return Shot(nm + "_boven", c, Dh(c, 0f), 40f, 89f); yield return Shot(nm + "_schuin", c, Dh(c, 0.6f), 30f, 40f); }
         File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true;
     }
     IEnumerator Diagonals(int home)

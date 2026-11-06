@@ -37,9 +37,24 @@ public static partial class PlanetCity
     {
         if (IsRoad(n))   // tot onder de rand van de stoep (bij een schuine aansluiting verder: gedeeld door de sinus van de hoek met de weg)
         {
-            if (UnderLink(n, j)) return CellDist(n, j) * 0.5f; if (IsRot(n)) return RotRo + RotWalk - 0.3f; Dims(StyleOf(n), out _, out float s);
-            Vector3 rd = UpperRoadDir(n), c = Planet.Cells[n].dir; float sin = rd == Vector3.zero ? 1f : Vector3.Cross(rd.normalized, Tan(Planet.Cells[j].dir - c, c)).magnitude;
-            return Mathf.Min((s - 0.3f) / Mathf.Max(0.35f, sin), CellDist(n, j) * 0.6f);
+            if (UnderLink(n, j)) return CellDist(n, j) * 0.5f; if (IsRot(n)) return RotRo + RotWalk - 0.3f;
+            // Tegen alle armen van het wegvak: het pad houdt op waar het de strook van elke arm (asfalt plus stoeprand plus 0,6 m) uit is,
+            // dus net op de stoep (die ligt hoger en dekt het eind af), ook tussen twee armen van een kruising en bij een ronde kop
+            Vector3 c = NodeDir(n), u = Tan(Planet.Cells[j].dir - c, c); float x = 0f; var arms = RoadNb(n);
+            if (arms.Count == 0) { Dims(StyleOf(n), out float a0, out _); return Mathf.Min(a0 + 2.1f + KW + 0.6f, CellDist(n, j) * 0.6f); }   // los wegvak: een rond pleintje
+            var ad = new List<Vector3>(); var al = new List<float>();
+            foreach (int k in arms)
+            {
+                Dims(ArmStyle(n, k), out float wa, out _); float L = wa + KW + 0.6f; Vector3 dk = Tan(NodeDir(k) - c, c); ad.Add(dk); al.Add(L);
+                float cs = Vector3.Dot(u, dk), sn = Vector3.Cross(u, dk).magnitude;
+                float xk = cs > 0f ? L / Mathf.Max(0.3f, sn) : arms.Count == 1 ? L + (StyleOf(n) == 0 ? 2.1f : 0.3f) : L;   // voor de arm: tot buiten zijn strook; erachter: rond het hart (de ronde kop van een doodlopend eind is groter)
+                x = Mathf.Max(x, xk);
+            }
+            // ook de twee hoeken van het eind (een breed fietspad is 6,4 m): verder tot die allebei buiten de stroken liggen
+            float cap = CellDist(n, j) * 0.6f, hw = PadHW((byte)(IsBike(j) ? 1 : 0)); Vector3 v = Vector3.Cross(c, u).normalized;
+            System.Func<Vector3, bool> inside = q => { for (int k = 0; k < ad.Count; k++) { float along = Vector3.Dot(q, ad[k]); if (along > 0f ? Vector3.Cross(q, ad[k]).magnitude < al[k] : q.magnitude < al[k]) return true; } return false; };
+            while (x < cap && (inside(u * x + v * hw) || inside(u * x - v * hw))) x += 0.25f;
+            return Mathf.Min(x, cap);
         }
         return PathNb(n).Count == 1 ? Mathf.Min(1f, CellDist(n, j) * 0.3f) : Mathf.Min(7.5f, CellDist(n, j) * 0.48f);
     }

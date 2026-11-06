@@ -11,6 +11,7 @@ static class WegVoorbeeldMenu
     [MenuItem("Raatstad/Wegvoorbeeld/Rotondes")] static void Roundabouts() => Ask("rotonde");
     [MenuItem("Raatstad/Wegvoorbeeld/Schuine wegen")] static void Diagonals() => Ask("schuin");
     [MenuItem("Raatstad/Wegvoorbeeld/Sleeptest")] static void Drags() => Ask("sleep");
+    [MenuItem("Raatstad/Wegvoorbeeld/Terreintest")] static void Ground() => Ask("terrein");
     [MenuItem("Raatstad/Wegvoorbeeld/Verkeer")] static void Traffic() => Ask("verkeer");
     [MenuItem("Raatstad/Teststad/Bouwen")] static void Town() => Ask("stad");
     [MenuItem("Raatstad/Teststad/Bouwen en verkeer meten")] static void TownMeasure() => Ask("stadmeten");

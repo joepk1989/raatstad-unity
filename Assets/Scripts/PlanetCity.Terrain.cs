@@ -140,10 +140,32 @@ public static partial class PlanetCity
         return false;
     }
     static bool PlainWalk(int x) => IsWalk(x) && !Underpass(x) && !levelled.Contains(x) && !carved.Contains(x) && !preCarve.ContainsKey(x) && !Quay(x);
-    public static float OwnCorner(int i, int k) => FlatGround(i) ? G(i) : fieldCells.Contains(i) && NearSeg(Planet.Cells[i].corners[k]) ? GroundField(Planet.Cells[i].corners[k], CornerBase(i, k)) : CornerH(i, k);   // zoals het vak zelf getekend wordt: een bebouwd vak plat (met een sokkel tot op het talud)
+    public static float OwnCorner(int i, int k) => FlatGround(i) ? G(i) : fieldCells.Contains(i) && NearSeg(Planet.Cells[i].corners[k]) ? GroundField(Planet.Cells[i].corners[k], FieldBase(i, k)) : CornerH(i, k);
+    // het gewone terrein onder hoekpunt k zonder de wegen: een bebouwd vak (ook waar een weg in steekt) houdt zijn eigen hoogte
+    static float FieldBase(int i, int k) => Plateau(i) ? G(i) : CornerBase(i, k);
+    // Steekt een weg (asfalt en stoep, in een bocht, op een kruispunt of een spits eiland) in dit bebouwde vak? Dan ligt het binnen die
+    // strook op weghoogte en loopt het daarbuiten onder het talud terug naar het plateau (geen sokkel of terrein door de weg).
+    static readonly Dictionary<int, (int ver, bool v)> stripCache = new Dictionary<int, (int, bool)>();
+    static bool StripCut(int i)
+    {
+        if (!fieldCells.Contains(i) || !Plateau(i)) return false;
+        if (stripCache.TryGetValue(i, out var sc) && sc.ver == fieldVer) return sc.v;
+        var c = Planet.Cells[i]; int m = c.corners.Length; bool hit = false;
+        for (int k = 0; k < m * 2 && !hit; k++)
+        {
+            Vector3 dir = k < m ? c.corners[k] : (c.corners[k - m] + c.corners[(k - m + 1) % m] + c.dir * 0.5f).normalized, w = dir * Planet.R;   // de hoeken en punten net binnen de randen
+            foreach (var q in segsUse)   // (tijdens het tekenen alleen de stukken in de buurt)
+            {
+                Vector3 ab = q.b - q.a; float l2 = ab.sqrMagnitude; if (l2 < 1e-4f) continue; float u = Mathf.Clamp01(Vector3.Dot(w - q.a, ab) / l2);
+                Vector3 dv = w - (q.a + ab * u); dv -= dir * Vector3.Dot(dv, dir); if (dv.magnitude < q.hw - 1.7f) { hit = true; break; }   // hw is de stoep plus 1,5 m
+            }
+            if (!hit) foreach (var q in capsUse) if (CapDist(q, w) < q.hw - 1.7f) { hit = true; break; }
+        }
+        stripCache[i] = (fieldVer, hit); return hit;
+    }   // zoals het vak zelf getekend wordt: een bebouwd vak plat (met een sokkel tot op het talud)
     public static float MinCornerNoCut(int i) { Topo(); float m = G(i); for (int k = 0; k < Planet.Cells[i].corners.Length; k++) { int a = cnA[i][k], b = cnB[i][k]; if (!carved.Contains(a)) m = Mathf.Min(m, G(a)); if (!carved.Contains(b)) m = Mathf.Min(m, G(b)); } return m; }
     // een vlak plateau op de eigen hoogte (bebouwd), behalve een half wegvak dat in een geul ligt
-    static bool FlatGround(int i) => Plateau(i) && !InCut(i) && !((IsHalf(i) || SlopePark(i)) && Cells[i].Count == 1 && fieldCells.Contains(i) && NearSeg(Planet.Cells[i].dir));   // een half wegvak of een park langs een weg op een niveau volgt de hoogtefunctie
+    static bool FlatGround(int i) => Plateau(i) && !InCut(i) && !StripCut(i) && !((IsHalf(i) || SlopePark(i)) && Cells[i].Count == 1 && fieldCells.Contains(i) && NearSeg(Planet.Cells[i].dir));   // een half wegvak of een park langs een weg op een niveau volgt de hoogtefunctie
     // een park (bomen) op een vak waar het talud van een weg op een niveau doorheen loopt: geen plateau, de bomen staan op het talud
     static bool SlopePark(int i) => Cells.TryGetValue(i, out var l) && l.Count == 1 && l[0] == "park" && fieldCells.Contains(i) && NearSeg(Planet.Cells[i].dir);
     static bool InCut(int i) => cuts.Count > 0 && IsHalf(i) && Carve(Planet.Cells[i].dir) < G(i) - 0.5f;
@@ -349,6 +371,9 @@ public static partial class PlanetCity
             float nh = lowRoad <= hr - LevelH + 0.1f ? Mathf.Min(h, hr + rise) : Mathf.Clamp(h, hr - rise, hr + rise);
             if (Mathf.Abs(nh - h) > 1e-4f) { h = nh; slope = rise > 0f; }
         }
+        // op een weg zelf (binnen zijn strook) nooit hoger dan die weg: anders legt het talud of de kop van een hogere weg ernaast een
+        // plaat gras over het asfalt (waar twee stroken elkaar raken wint de laagste weg, net als onder een brug)
+        if (onLevelH < float.MaxValue && h > onLevelH - 0.05f) h = onLevelH - 0.05f;
         if (carved.Count > 0 && cuts.Count > 0) h = Mathf.Min(h, Carve(dir));
         return h;
     }

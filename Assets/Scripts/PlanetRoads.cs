@@ -49,7 +49,24 @@ public static partial class PlanetCity
     }
     // het hart van een wegknoop op de bol (eenheidsvector): het vakmidden, of het midden van de rand bij zo'n schuine kruising
     public static Vector3 NodeDir(int i) => edgeMate.TryGetValue(i, out int h) ? (Planet.Cells[i].dir + Planet.Cells[h].dir).normalized : Planet.Cells[i].dir;
-    static float NodeTrim(int n, int j, int deg) => IsRot(n) ? RotTrim(n, j) : Mathf.Min(deg == 1 ? 7.0f : 7.5f, CellDist(n, j) * 0.48f);
+    static float NodeTrim(int n, int j, int deg) => IsRot(n) ? RotTrim(n, j) : Mathf.Max(Mathf.Min(deg == 1 ? 7.0f : 7.5f, CellDist(n, j) * 0.48f), AcuteTrim(n, j));
+    // Twee armen die onder een spitse hoek (minder dan 50°, op het raster 30°: een rechte en een schuine weg) uit dezelfde knoop komen:
+    // hun stoepen liggen dan tot ver buiten het kruisingsvak over elkaar en over het asfalt van de ander. De knoop loopt dan door tot
+    // waar de twee stoepen loskomen; daartussen tekent hij één spits eiland met een ronde neus (de stoephoek van RoadNode).
+    static float AcuteTrim(int n, int j)
+    {
+        var nb = RoadNb(n); if (nb.Count < 2) return 0f;
+        Vector3 c = NodeDir(n), dj = NodeDir(j) - c; dj -= c * Vector3.Dot(dj, c); float best = 0f;
+        Dims(ArmStyle(n, j), out _, out float sj);
+        foreach (int k in nb)
+        {
+            if (k == j) continue; Vector3 dk = NodeDir(k) - c; dk -= c * Vector3.Dot(dk, c);
+            float phi = Vector3.Angle(dj, dk); if (phi >= 50f) continue;
+            Dims(ArmStyle(n, k), out _, out float sk);
+            best = Mathf.Max(best, (sj + sk + 0.3f) / Mathf.Sin(phi * Mathf.Deg2Rad));
+        }
+        return Mathf.Min(best, 22f);
+    }
 
     // Een knoop: geen twee wegburen, een knik, of een overgang naar een smallere weg (het bredere vak wordt de knoop en tekent
     // de overgang, zodat elke lijn één breedte heeft)
@@ -222,7 +239,7 @@ public static partial class PlanetCity
             if (k > 0) S[k] = S[k - 1] + Vector3.Distance(pts[k].p, pts[k - 1].p);
             bool overTube = false; foreach (var cx in crossAt) if ((pts[k].p - cx).sqrMagnitude < 8f * 8f) overTube = true;   // boven de koker van een brug
             bool nearPortal = false; foreach (var q in cuts) if ((pts[k].p - q.p).sqrMagnitude < 14f * 14f) nearPortal = true;   // vlak bij een portaal: de zijkant tot in de geul (anders een kier)
-            low[k] = Underpass(pts[k].cell) || overTube ? SKB : Mathf.Min(SKB, (nearPortal ? MinCorner(pts[k].cell) : MinCornerNoCut(pts[k].cell)) - pts[k].h - 0.35f);   // onderkant van de zijkant: tot onder het maaiveld (niet in de opening van een onderdoorgang)
+            low[k] = Underpass(pts[k].cell) || overTube || OverSpan(pts[k].p) ? SKB : Mathf.Min(SKB, (nearPortal ? MinCorner(pts[k].cell) : MinCornerNoCut(pts[k].cell)) - pts[k].h - 0.35f);   // onderkant van de zijkant: tot onder het maaiveld (niet in de opening van een onderdoorgang)
         }
         System.Func<int, float, float, Vector3> W = (k, off, y) => (pts[k].p + side[k] * off).normalized * (Planet.R + pts[k].h + y);
         for (int k = 0; k + 1 < N; k++)

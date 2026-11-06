@@ -10,6 +10,7 @@ public static partial class PlanetCity
     struct Cut { public Vector3 p, o, t; public float floor, ground, hw, skew, flat, ramp, end; public bool fill; }   // fill: een dijk onder een hoger gelegde weg (floor is dan de kruin)   // skew: het portaalvlak loopt scheef (evenwijdig aan de weg erover); flat, ramp, end: 0 is FlatL, RampL, tot voorbij de helling
     static readonly List<Cut> cuts = new List<Cut>();
     static readonly HashSet<int> carved = new HashSet<int>();
+    public static bool RoadField = true;   // gewone wegen op een helling in de hoogtefunctie (uit: alleen wegen op een niveau, zoals vroeger)
     public static readonly Dictionary<int, float> preCarve = new Dictionary<int, float>();   // de hoogte van een vak voordat een geul het omlaag zette
     public static readonly Dictionary<int, float> preLevel = new Dictionary<int, float>();   // de hoogte van het terrein voordat een weg of pad op een niveau het verzette (komt terug bij weghalen)
     // een weg of pad verzet het terrein van zijn vak: de oude hoogte onthouden (de eerste keer) en de nieuwe zetten
@@ -259,6 +260,28 @@ public static partial class PlanetCity
                 AddWalkSeg(segs, new Seg { a = ad * Planet.R, b = Planet.Cells[b].dir * Planet.R, ha = G(a), hb = LevelFor(b, a), hw = hw, ia = a, ib = b });
             }
         }
+        // Gewone wegen (niet op een niveau) waar het terrein ernaast niet vlak is: ook in de hoogtefunctie, zoals in Cities: Skylines 2.
+        // Een weg is breder dan zijn vakken (de stoep in een bocht, een kruispunt, een spits eiland); zonder dit stak daar het terrein of
+        // de sokkel van een huis ernaast door de weg heen. Op vlakke grond verandert er niets (en kost het niets).
+        bool Uneven(int a)
+        {
+            float ga = G(a);
+            foreach (int x in Planet.Cells[a].nb) { if (Mathf.Abs(G(x) - ga) > 0.2f) return true; foreach (int y in Planet.Cells[x].nb) if (Mathf.Abs(G(y) - ga) > 0.2f) return true; }
+            return false;
+        }
+        bool PlainRoad(int a) => IsRoad(a) && !levelled.Contains(a) && !Underpass(a) && !carved.Contains(a) && !preCarve.ContainsKey(a) && !IsRot(a);
+        var uneven = new HashSet<int>(); if (RoadField) foreach (var kv in Cells) if (PlainRoad(kv.Key) && Uneven(kv.Key)) uneven.Add(kv.Key);
+        foreach (int a in uneven)
+        {
+            Vector3 ad = Planet.Cells[a].dir; float hw = WalkHW(a); int na = 0;
+            foreach (int b in Partners(a))
+            {
+                if (!IsRoad(b)) continue; na++;
+                if (!PlainRoad(b) || IsBore(a, b) || TunnelLinks.Contains(Key(a, b)) || (uneven.Contains(b) && b < a)) continue;
+                AddWalkSeg(segs, new Seg { a = ad * Planet.R, b = Planet.Cells[b].dir * Planet.R, ha = G(a), hb = G(b), hw = hw, capA = Capped(a), capB = uneven.Contains(b) && Capped(b), ia = a, ib = b });
+            }
+            if (Capped(a)) AddCap(a, G(a), na <= 1 ? hw + HeadExtra(a) : hw);
+        }
         // gewone wegen en paden (niet op een niveau) in de buurt: onder zo'n weg ligt de grond op de hoogte van die weg, wat het talud
         // ernaast ook doet (zoals Cities: Skylines 2), anders loopt een talud bij een kruispunt over de weg heen
         FillFieldCells();
@@ -272,6 +295,7 @@ public static partial class PlanetCity
                 foreach (int b in Partners(a))
                 {
                     if (!IsWalk(b) || levelled.Contains(b) || IsBore(a, b) || !seen.Add(Key(a, b))) continue;
+                    if (uneven.Contains(a) && IsRoad(b) && PlainRoad(b)) continue;   // die zit al in de hoogtefunctie
                     float fw = IsRoad(a) ? FlatHW(a) : Bike.Contains(a) ? 3.4f : 1.6f;   // een fiets- en voetpad is breder
                     AddWalkSeg(flats, new Seg { a = Planet.Cells[a].dir * Planet.R, b = Planet.Cells[b].dir * Planet.R, ha = G(a), hb = LevelFor(b, a), hw = fw, ia = a, ib = b });
                 }

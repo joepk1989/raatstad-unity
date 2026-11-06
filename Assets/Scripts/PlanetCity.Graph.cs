@@ -10,7 +10,7 @@ public static partial class PlanetCity
     static readonly Dictionary<int, List<int>> partners = new Dictionary<int, List<int>>();
     static readonly List<int> none = new List<int>();
     static long Key(int i, int j) => i < j ? ((long)i << 20) | (uint)j : ((long)j << 20) | (uint)i;
-    public static void ClearLinks() { Links.Clear(); partners.Clear(); Style.Clear(); Bike.Clear(); Rot.Clear(); Under.Clear(); Low.Clear(); OneWay.Clear(); TunnelLinks.Clear(); LowerLinks.Clear(); preCarve.Clear(); preLevel.Clear(); }
+    public static void ClearLinks() { Links.Clear(); partners.Clear(); Style.Clear(); Bike.Clear(); Rot.Clear(); Under.Clear(); Low.Clear(); OneWay.Clear(); TunnelLinks.Clear(); SpanLinks.Clear(); LowerLinks.Clear(); preCarve.Clear(); preLevel.Clear(); }
     public static bool Linked(int i, int j) => Links.Contains(Key(i, j));
     // Per wegvak: stijl (1 = brede weg, 2 = laan; ontbreekt = gewone weg), brug (wat eronder ligt: meer, water of kuil) en
     // eenrichtingsverkeer per verbinding (alleen van i naar j)

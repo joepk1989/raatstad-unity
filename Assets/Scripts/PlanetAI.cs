@@ -66,7 +66,7 @@ public static partial class PlanetAI
         _ => new Prefs { floors = new[] { 3, 3, 2, 2, 1 }, park = 0.4f, shop = 0.15f, path = 0.25f, office = 0.3f, ring = 0, main = 2, canal = false, molen = 150, toren = 150, meer = 100, rot = 60 },
     };
 
-    public const string Version = "3 (4 nov 2026)";   // ophogen bij een nieuwe versie van de planner, voor het scoreboek (ai-scores.txt)
+    public const string Version = "3.1 (4 nov 2026)";   // ophogen bij een nieuwe versie van de planner, voor het scoreboek (ai-scores.txt)
     public static int Start = -1;
     public static readonly HashSet<int> Owned = new HashSet<int>();   // de vakken die de AI bebouwde
     public static int Moves, Rejected;
@@ -288,8 +288,22 @@ public static partial class PlanetAI
     {
         float dg = 0f; for (int k = 1; k < line.Count; k++) dg += Mathf.Abs(PlanetCity.G(line[k]) - PlanetCity.G(line[k - 1]));
         int open = Opens(line); if (open == 0 && !joins) return null;
+        if (SharpBend(line)) return null;
         if (line.Exists(Bridgeable)) what += ", met een brug over het water";
         return new Move { kind = "lijn", type = "weg", line = line, what = what, joins = joins, rule = bonus + 0.3f * open + (joins ? 2.2f : 0f) - 0.25f * Mathf.Max(0, line.Count - 6) - 0.3f * dg + (float)rnd.NextDouble() * 0.3f };
+    }
+    // Maakt deze straat ergens een bocht van 120° (een vak met precies twee straten die bijna terug lopen, zoals een doodlopend eind dat
+    // scherp afbuigt of op een ander doodlopend eind aansluit)? Zo'n zigzag rijdt niet en is lelijk; een kruispunt mag wel.
+    static bool SharpBend(List<int> path)
+    {
+        for (int k = 0; k < path.Count; k++)
+        {
+            int c = path[k]; if (PlanetCity.IsRot(c)) continue; var nb = new List<int>();
+            if (k > 0) nb.Add(path[k - 1]); if (k < path.Count - 1) nb.Add(path[k + 1]);
+            foreach (int j in PlanetCity.Partners(c)) if (PlanetCity.IsRoad(j) && !nb.Contains(j)) nb.Add(j);
+            if (nb.Count == 2 && Vector3.Dot(Tangent(nb[0], c), Tangent(c, nb[1])) < 0.3f) return true;
+        }
+        return false;
     }
     // een steegje: hoeveel huizen het langsloopt, en of het ergens heen gaat (een park, plein, pad of straat aan het eind)
     static Move PathMove(List<int> line, bool joins, bool bike, string what, float bonus)
@@ -308,6 +322,7 @@ public static partial class PlanetAI
     {
         var cost = new Dictionary<int, float> { { a, 0f } }; var prev = new Dictionary<int, int> { { a, -1 } }; var open = new SortedSet<(float, int)> { (0f, a) };
         int end = -1; float endCost = float.MaxValue;
+        int start = -1; { var sp = PlanetCity.Partners(a); int nr = 0; foreach (int j in sp) if (PlanetCity.IsRoad(j)) { nr++; start = j; } if (nr != 1) start = -1; }
         while (open.Count > 0)
         {
             var (cc, c) = open.Min; open.Remove(open.Min); if (cc > cost[c] || cc > limit || cc >= endCost) break;
@@ -322,7 +337,8 @@ public static partial class PlanetAI
                 else if (Bridgeable(j) && !Bridgeable(c)) step = 3f;   // een brug over de gracht of een meertje (nooit twee watervakken achter elkaar)   // een eigen straat kruisen
                 else continue;
                 float dg = Mathf.Abs(PlanetCity.G(j) - PlanetCity.G(c)); if (dg > 2.6f) continue; step += dg * 0.3f;
-                int p = prev[c]; if (p >= 0) { float dot = Vector3.Dot(Tangent(p, c), Tangent(c, j)); step += dot > 0.95f ? 0f : dot > 0.3f ? 0.6f : 4f; }
+                int p = prev[c]; if (p < 0) p = start;   // bij het begin: de straat die er al ligt (een doodlopend eind buigt niet scherp af)
+                if (p >= 0) { float dot = Vector3.Dot(Tangent(p, c), Tangent(c, j)); if (dot < 0.3f) continue; step += dot > 0.95f ? 0f : 0.6f; }   // geen bocht van 120° (een zigzag)
                 float nc = cc + step;
                 if (g) { if (nc < endCost) { endCost = nc; end = j; prev[j] = c; } continue; }
                 if (cost.TryGetValue(j, out float old) && old <= nc) continue;
@@ -380,7 +396,7 @@ public static partial class PlanetAI
             {
                 if (p.type != "weg" || p.cells != null) continue;   // een pad of een stuk route dat niet kan: vervalt
                 int a = line[0], b = line[line.Count - 1]; if (!(Free(a) || GroundRoad(a) || Arm(a))) continue;
-                var path = Route(a, new HashSet<int> { b }, line.Count * 2.5f + 6f); if (path == null) continue;   // een omweg om het obstakel heen
+                var path = Route(a, new HashSet<int> { b }, line.Count * 2.5f + 6f); if (path == null || SharpBend(path)) continue;   // een omweg om het obstakel heen
                 var runs = Runs(path, "weg", p.style, p.what + " (omweg)"); for (int i = runs.Count - 1; i >= 0; i--) Plan(runs[i], true);
                 continue;
             }
@@ -599,7 +615,7 @@ public static partial class PlanetAI
             if (RotRing(e)) foreach (int j in Planet.Cells[PlanetCity.RotOf(e)].nb) g2.Remove(j);   // een arm niet terug naar zijn eigen rotonde
             var path = Route(e, g2, 14f);
             if (path != null && path.Count >= 3 && RotRing(path[path.Count - 1])) path.Add(PlanetCity.RotOf(path[path.Count - 1]));   // tot het midden van de rotonde, zoals een speler sleept
-            if (path != null && path.Count >= 3)
+            if (path != null && path.Count >= 3 && !SharpBend(path))
             {
                 var runs = Runs(path, "weg", 0, "sluit de straat aan (vervolg)");
                 var m = new Move { kind = "lijn", type = "weg", line = runs[0].cells, joins = runs.Count == 1, what = runs.Count == 1 ? "sluit de doodlopende straat aan op een andere straat" : "sluit de doodlopende straat aan, met een bocht", rule = Mathf.Max(roadWant, 0f) + 2.2f + deadBoost - 0.12f * path.Count + (float)rnd.NextDouble() * 0.3f };

@@ -173,7 +173,7 @@ public static partial class PlanetCity
                     // bij een geul of dijk: het maaiveld zonder geul als vlak, de geul of dijk komt er precies in (ExactGround)
                     if (fieldCells.Contains(i) && !plat && NearSeg(c.dir, c.radius))   // ook als een weg alleen de rand van het vak raakt (een schuine onderdoorgang)
                     {
-                        var hb0 = new float[m]; float hcb0 = 0f; for (int k = 0; k < m; k++) { hb0[k] = CornerBase(i, k); hcb0 += hb0[k]; } hcb0 = (levelled.Contains(i) ? hcb0 / m : g) + CenterOfs1(i);   // het gewone terrein, zonder de weg
+                        var hb0 = new float[m]; float hcb0 = 0f; for (int k = 0; k < m; k++) { hb0[k] = FieldBase(i, k); hcb0 += hb0[k]; } hcb0 = (levelled.Contains(i) ? hcb0 / m : g) + CenterOfs1(i);   // het gewone terrein, zonder de weg (een bebouwd vak: zijn plateau)
                         // hetzelfde als de vorige keer (zelfde hoogtes en dezelfde wegen in de buurt): de onthouden driehoekjes, niet opnieuw snijden
                         long key = FieldKey(i, hcb0, hb0, special);
                         if (groundCache.TryGetValue(i, out var gc) && gc.key == key) { foreach (var t in gc.tris) Put(t.tag, t.a, t.b, t.c); continue; }
@@ -210,7 +210,8 @@ public static partial class PlanetCity
                     skewRoad = Vector2.zero;
                 }
                 // sokkel: een plateau boven het maaiveld krijgt stenen wanden tot op het maaiveld ernaast (tussen twee plateaus: een keermuur)
-                if ((plat || cut) && !Quay(i))   // een gracht heeft kademuren in plaats van een sokkel (PlanetNature.cs)
+                bool strip = !plat && !cut && StripCut(i);   // een bebouwd vak waar een weg in steekt: ook een sokkel, met als bovenkant de grond van het vak (op de weg zelf lager)
+                if ((plat || cut || strip) && !Quay(i))   // een gracht heeft kademuren in plaats van een sokkel (PlanetNature.cs)
                     for (int k = 0; k < m; k++)
                     {
                         int j = edN[i][k]; if (FlatGround(j) && G(j) >= g - 0.01f) continue;   // alleen naast een echt vlak buurvak geen wand (een half wegvak in een talud is dat niet)
@@ -243,7 +244,9 @@ public static partial class PlanetCity
                                 float t0 = t / (float)N, t1 = (t + 1) / (float)N; Vector3 pa = Vector3.Lerp(a, b, t0).normalized, pb = Vector3.Lerp(a, b, t1).normalized;
                                 float fa = Mathf.Min(Mathf.Lerp(ga, gb, t0), GroundField(pa, Mathf.Lerp(ba, bb, t0))), fb = Mathf.Min(Mathf.Lerp(ga, gb, t1), GroundField(pb, Mathf.Lerp(ba, bb, t1)));
                                 float lo2 = Mathf.Min(fa, fb) - 0.4f;   // iets onder de grond: geen kier waar het talud tussen twee meetpunten knikt if (g - lo2 < 0.01f) continue;
-                                TB("sokkel").Quad(pa * RG, pb * RG, pb * (Planet.R + lo2), pa * (Planet.R + lo2), (a + b) * 0.5f - c.dir);
+                                float ta = strip ? GroundField(pa, g) : g, tb = strip ? GroundField(pb, g) : g;   // de bovenkant: het plateau, of waar de weg in het vak steekt de grond daar
+                                if (Mathf.Max(ta, tb) - lo2 < 0.45f) continue;
+                                TB("sokkel").Quad(pa * (Planet.R + ta), pb * (Planet.R + tb), pb * (Planet.R + lo2), pa * (Planet.R + lo2), (a + b) * 0.5f - c.dir);
                             }
                             continue;
                         }
