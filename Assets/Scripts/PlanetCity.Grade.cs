@@ -144,7 +144,10 @@ public static partial class PlanetCity
         var idx = new Dictionary<int, int>(); var cells = new List<int>();
         foreach (var kv in Cells) if (IsWalk(kv.Key)) { idx[kv.Key] = cells.Count; cells.Add(kv.Key); }
         int n = cells.Count; if (n == 0) return "geen wegen"; var h = new float[n]; var fix = new bool[n];
+        // vast: onder of naast een brug (de hoogte komt uit de brug), en een kruispunt (dat blijft op het terrein: anders komt het in de
+        // berg te liggen en eindigen drie tunnels met hun portalen op elkaar; de armen krijgen de tunnels en bruggen)
         for (int k = 0; k < n; k++) { int c = cells[k]; h[k] = Terrain(c); if (Underpass(c)) fix[k] = true; foreach (int j in Planet.Cells[c].nb) if (Underpass(j)) fix[k] = true; }
+        var junction = new bool[n]; for (int k = 0; k < n; k++) junction[k] = Partners(cells[k]).Count >= 3;
         var links = new List<(int a, int b, float d)>(); var seen = new HashSet<long>();
         foreach (int c in cells) foreach (int p in Partners(c))
         {
@@ -161,6 +164,9 @@ public static partial class PlanetCity
                 if (fix[l.a] && fix[l.b]) continue;
                 if (fix[l.a]) h[l.b] -= over; else if (fix[l.b]) h[l.a] += over; else { h[l.a] += over * 0.5f; h[l.b] -= over * 0.5f; }
             }
+            // (geprobeerd: een kruispunt bij het terrein houden, hooguit 9 m eronder of 6 m erboven, zodat het niet in de berg komt te liggen
+            // met drie portalen op elkaar; dat gaf 45 te steile stukken tussen kruispunten die dicht bij elkaar liggen. Nu: een kruispunt
+            // in de berg is een ondergronds kruispunt, dat hoort als één koker met een splitsing getekend te worden, stap 4c)
             if (!any) break;
         }
         RoadH.Clear(); for (int k = 0; k < n; k++) RoadH[cells[k]] = h[k];
@@ -182,7 +188,8 @@ public static partial class PlanetCity
         // het terrein blijft; de wegvakken lezen hun hoogte uit RoadH (G), de hoogtefunctie legt het wegdek en het talud erop
         foreach (int c in new List<int>(RoadH.Keys)) if (!IsWalk(c)) RoadH.Remove(c);   // (de vakken in een tunnel of onder een brug zijn weer terrein)
         foreach (var kv in RoadH) { Touch(kv.Key); foreach (int j in Planet.Cells[kv.Key].nb) Touch(j); }
-        return RoadH.Count + " wegvakken op hooguit " + Mathf.RoundToInt(MaxGrade * 100f) + "%, " + tun + " tunnels, " + brug + " bruggen";
+        int stapel = 0, onder = 0; foreach (var kv in RoadH) { int np = 0; foreach (int j in Partners(kv.Key)) if (IsBore(kv.Key, j)) np++; if (np >= 3) stapel++; if (np >= 2 && Terrain(kv.Key) > kv.Value + 9f) onder++; }
+        return RoadH.Count + " wegvakken op hooguit " + Mathf.RoundToInt(MaxGrade * 100f) + "%, " + tun + " tunnels, " + brug + " bruggen, " + stapel + " kruispunten met drie portalen, " + onder + " vakken met twee portalen diep in de berg";
     }
     // voor de test: de steilste helling tussen twee verbonden wegvakken (als fractie), en hoeveel verbindingen steiler zijn dan MaxGrade
     public static (float max, int over, int total) GradeStats() => GradeStats(null);
