@@ -192,7 +192,7 @@ public static partial class PlanetCity
         for (int r = 0; r < 4 && ring.Count > 0; r++) { var next = new List<int>(); foreach (int i in ring) if (seen.Add(i)) { Touch(i); foreach (int j in Planet.Cells[i].nb) next.Add(j); } ring = next; }
         carved.Clear(); carved.UnionWith(now);
     }
-    static void UpdateCuts() { UpdateCuts0(); CollectBores(); }   // ook de tunnels door een berg (PlanetTunnels.cs)
+    public static void UpdateCuts() { UpdateCuts0(); CollectBores(); }   // ook de tunnels door een berg (PlanetTunnels.cs)
     static Dictionary<string, Vector3> cutKeys = new Dictionary<string, Vector3>();
     static float MaxGround(int i) { float g = float.MinValue; foreach (var q in cuts) if (!q.fill) g = Mathf.Max(g, q.ground); return g; }
     public static float FloorH(int i) { float m = Mathf.Min(G(i), MinCorner(i)); return Low.TryGetValue(i, out var lo) ? Mathf.Min(m, lo) : m; }   // het laagste punt in vak i

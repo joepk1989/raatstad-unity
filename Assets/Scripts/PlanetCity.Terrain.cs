@@ -331,7 +331,7 @@ public static partial class PlanetCity
     // de helling van de kant langs een weg op een niveau (hoogte per meter opzij; 1 = 45°), in te stellen met het schuifje Talud
     public static float FieldK = 1f / 1.5f;   // standaard 1 op 1,5 (34°), zoals het model overpass_path
     const float WallOut = 2.4f;   // de keermuur staat zo ver buiten de wegrand (de stoep en wat berm liggen nog op weghoogte)
-    static float FieldReach => Mathf.Min(14f / FK, 40f);   // (geprobeerd: 60 m bij een profiel, zodat een dijk doorloopt tot het terrein; 7× zo traag en nog steeds dijken van 50 m: dat hoort een brug of keermuur te zijn, stap 4)
+    static float FieldReach => RoadH.Count > 0 ? 6f / FK : Mathf.Min(14f / FK, 40f);   // nieuwe opbouw (ontwerp 8.3): het talud reikt tot 6 m hoogteverschil, daarboven een wand (sokkel of bak), een brug of een tunnel; anders hooguit 14 m
     static float FK => RoadSlopes ? FieldK : 8f;   // de steilte van de kant; Talud uit: bijna loodrecht (83°), geen sprong (een sprong kan het raster niet tekenen: gaten)   // tot zover naast de weg kan de grond nog omhoog of omlaag lopen (45°: twee niveaus plus de marge)
     public static void SetFieldK(float k)
     {

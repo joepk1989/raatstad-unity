@@ -58,6 +58,7 @@ public class WegVoorbeeld : MonoBehaviour
         if (mode == "mijnstad") { yield return MijnStad(); yield break; }
         if (mode.StartsWith("melding")) { yield return Melding(mode); yield break; }
         if (mode == "hoogtetest") { yield return Hoogtetest(); yield break; }
+        if (mode.StartsWith("ontwerp")) { yield return Ontwerp(home, mode); yield break; }
         if (mode == "zee") { yield return ZeeTest(home); yield break; }
         if (mode == "startnaden") { yield return StartNaden(); yield break; }
         if (mode == "aiterrein") { yield return AiTerrein(); yield break; }
@@ -914,6 +915,66 @@ public class WegVoorbeeld : MonoBehaviour
     }
     // de hoogtetest (Nieuwe stad op het startscherm) met de wegen van startpunt naar startpunt: hoeveel wegen, tunnels en bruggen, de graaf,
     // een scan langs alle wegen en foto's van een paar landschappen
+    // De testvolgorde van docs/terrein-wegen-oplossing.md (deel 11), één test per keer: "ontwerp 1" ... "ontwerp 12". Altijd met
+    // Terrein v2 en een wegprofiel (RoadH); elke test één handeling, dan de scan, de randcontrole, de hellingen en foto's.
+    IEnumerator Ontwerp(int home, string mode)
+    {
+        int nr = 1; int.TryParse(mode.Substring(7).Trim(), out nr); PlanetCity.Ground2 = true; Hc = home; bouw = new System.Text.StringBuilder();
+        float D90 = Mathf.PI / 2f; var lines = new List<List<int>>(); var centers = new List<int>();
+        void Terrein(System.Func<float, float, float> f, float r)   // hoogte als functie van x (langs de weg) en y (dwars), afgerond op 5 cm
+        {
+            foreach (int i in new List<int>(Nearby(home, r)))
+            {
+                Vector3 v = (Planet.Cells[i].dir - Planet.Cells[home].dir) * Planet.R; float x = Vector3.Dot(v, Dh(home, 0f)), y = Vector3.Dot(v, Dh(home, D90));
+                PlanetCity.SetTerr(i, Mathf.Round(f(x, y) * 20f) / 20f);
+            }
+        }
+        void Lijn(string nm, int a, int b)
+        {
+            var l = PlanetCity.LinePlan(a, b); if (l == null || l.Count < 2) { bouw.Append(nm).AppendLine(": GEEN LIJN"); return; }
+            int ok = PlanetCity.PlaceLine(l, "weg"); PlanetCity.SetLevel(l, 0, "weg"); lines.Add(new List<int>(l)); centers.AddRange(l);
+            bouw.Append(nm).Append(": ").Append(ok).Append('/').Append(l.Count).Append(" vakken").AppendLine();
+        }
+        switch (nr)
+        {
+            case 1: Terrein((x, y) => 20f + 0.25f * x, 120f); Lijn("weg op een helling", Go(home, 0f, -30f), Go(home, 0f, 30f)); break;   // 1. één weg op een helling van 0,35 m/m
+            case 2: Terrein((x, y) => 5f * Mathf.Exp(-x * x / (30f * 30f)), 120f); Lijn("insnijding", Go(home, 0f, -75f), Go(home, 0f, 75f)); break;   // 2. over een heuvel van 5 m
+            case 3: Terrein((x, y) => 5f - 5f * Mathf.Exp(-x * x / (30f * 30f)), 120f); Lijn("dijk", Go(home, 0f, -75f), Go(home, 0f, 75f)); break;   // 3. over een laagte van 5 m
+            case 4: Terrein((x, y) => 8f * Mathf.Exp(-(x + 45f) * (x + 45f) / (25f * 25f)) - 8f * Mathf.Exp(-(x - 45f) * (x - 45f) / (25f * 25f)), 140f); Lijn("keermuur", Go(home, 0f, -105f), Go(home, 0f, 105f)); break;   // 4. heuvel van 8 m en laagte van 8 m
+            case 5: Terrein((x, y) => 20f - 20f * Mathf.Exp(-x * x / (40f * 40f)), 160f); Lijn("dalbrug", Go(home, 0f, -120f), Go(home, 0f, 120f)); break;   // 5. laagte van 20 m
+            case 6: Terrein((x, y) => 30f * Mathf.Exp(-x * x / (40f * 40f)), 160f); Lijn("tunnel", Go(home, 0f, -120f), Go(home, 0f, 120f)); break;   // 6. berg van 30 m
+            case 7: Terrein((x, y) => 20f + 0.2f * x + 0.1f * y, 140f); Lijn("arm 1", Go(home, 0f, -60f), Go(home, 0f, 60f)); Lijn("arm 2", Go(home, D90, -60f), Go(home, D90, 60f)); break;   // 7. kruispunt op een helling
+            default: bouw.AppendLine("onbekende test " + nr); break;
+        }
+        PlanetCity.HeightTestNote = PlanetCity.ProfileAll(lines); PlanetCity.UpdateCuts(); PlanetCity.TouchAll();
+        PlanetCity.Rebuild(); PlanetCity.Rebuild(); PlanetCity.RebuildGrid(); yield return null; yield return null;
+        bouw.AppendLine(PlanetCity.HeightTestNote);
+        if (centers.Count > 0) { Hc = centers[centers.Count / 2]; yield return Scan(Hc, 0f, "ontwerp" + nr + "_scan", centers, 22f); }
+        File.WriteAllText(Path.Combine(Dir, "ontwerp" + nr + ".txt"), bouw.ToString());
+        if (centers.Count > 0)
+        {
+            int mid = centers[centers.Count / 2];
+            yield return Shot("ontwerp" + nr + "_zij", mid, Dh(mid, D90), 60f, 18f);
+            yield return Shot("ontwerp" + nr + "_schuin", mid, Quaternion.AngleAxis(35f, Planet.Cells[mid].dir) * Dh(mid, 0f), 70f, 30f);
+            yield return Shot("ontwerp" + nr + "_laag", centers[Mathf.Min(1, centers.Count - 1)], Dh(mid, 0f), 25f, 8f);
+            int e0 = centers[0], e1 = centers[centers.Count - 1];   // de twee einden van dichtbij, van opzij, en hun driehoekjes
+            {   // wat ligt er voorbij elk eind: stralen langs de as van de weg (afstand, wat geraakt, hoogte, en H)
+                var pr = new System.Text.StringBuilder();
+                foreach (var (e, sg) in new[] { (e0, -1f), (e1, 1f) })
+                    for (float dd = 4f; dd <= 20f; dd += 2f)
+                    {
+                        Vector3 d = (Planet.Cells[e].dir * Planet.R + Dh(e, 0f) * sg * dd).normalized;
+                        bool hit = Physics.Raycast(d * (Planet.R + 150f), -d, out RaycastHit hg, 180f, ~0, QueryTriggerInteraction.Ignore);
+                        pr.Append("eind ").Append(e).Append(' ').Append(dd).Append(" m: ").Append(hit ? hg.collider.name + " laag " + hg.collider.gameObject.layer + " h " + (hg.point.magnitude - Planet.R).ToString("0.00") : "NIETS").Append(" | H ").Append(PlanetCity.H(d).ToString("0.00")).AppendLine();
+                    }
+                File.WriteAllText(Path.Combine(Dir, "ontwerp" + nr + "_stralen.txt"), pr.ToString());
+            }
+            yield return Shot("ontwerp" + nr + "_eind1", e0, Quaternion.AngleAxis(60f, Planet.Cells[e0].dir) * Dh(e0, 0f), 30f, 20f);
+            yield return Shot("ontwerp" + nr + "_eind2", e1, Quaternion.AngleAxis(-120f, Planet.Cells[e1].dir) * Dh(e1, 0f), 30f, 20f); yield return Shot("ontwerp" + nr + "_eind2boven", e1, Dh(e1, 0f), 22f, 65f); yield return Shot("ontwerp" + nr + "_eind1boven", e0, Dh(e0, 0f), 22f, 65f);
+            File.WriteAllText(Path.Combine(Dir, "ontwerp" + nr + "_einden.txt"), PlanetCity.Ground2Dump(e0) + "\n" + PlanetCity.Ground2Dump(e1));
+        }
+        File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true;
+    }
     IEnumerator Hoogtetest()
     {
         var log = new System.Text.StringBuilder(); float t0 = Time.realtimeSinceStartup;
