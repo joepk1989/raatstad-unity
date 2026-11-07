@@ -193,12 +193,16 @@ public static partial class PlanetCity
         Lin B = new Lin { a = hc0, x = ((h1 - hc0) * L2.y - (h2 - hc0) * L1.y) / det, y = ((h2 - hc0) * L1.x - (h1 - hc0) * L2.x) / det };
         foreach (var q in segsUse)
         {
-            Vector3 ab = q.b - q.a; float len = ab.magnitude; if (len < 1e-3f) continue;
-            Vector3 along = Tan(ab, c.dir), across = Vector3.Cross(c.dir, along).normalized;
-            Lin T = new Lin { a = Vector3.Dot(o3 - q.a, across), x = Vector3.Dot(c.east, across), y = Vector3.Dot(c.north, across) };
-            Lin S = new Lin { a = Vector3.Dot(o3 - q.a, along), x = Vector3.Dot(c.east, along), y = Vector3.Dot(c.north, along) };
+            SegLins(c, q, out Lin T, out Lin S, out float len); if (len < 1e-3f) continue;
             if (Mathf.Abs(T.a) > q.hw + FieldReach + c.radius + 1f || S.a < -c.radius - FieldReach - 1f || S.a > len + c.radius + FieldReach + 1f) continue;
-            ls.Add(q);
+            ls.Add(q); Lin mT = Lin.C(0f) - T;
+            if (q.wall)   // sokkel of bak (nieuwe opbouw): de wegrand, de wand op WallOut (met de schuine aanloop aan een grens), het eind; de wand zelf is een eigen mesh
+            {
+                var fw = new List<Lin> { T - Lin.C(q.hw), T + Lin.C(q.hw), S, S - Lin.C(len), S + Lin.C(EndSlack), S - Lin.C(len + EndSlack), T - Lin.C(q.hw + WallOut), T + Lin.C(q.hw + WallOut) };
+                if (q.tap0) { fw.Add(T - S - Lin.C(q.hw)); fw.Add(mT - S - Lin.C(q.hw)); }
+                if (q.tap1) { fw.Add(T + S - Lin.C(q.hw + len)); fw.Add(mT + S - Lin.C(q.hw + len)); }
+                lines.AddRange(fw); continue;
+            }
             float hr = Mathf.Lerp(q.ha, q.hb, Mathf.Clamp01(S.a / len)) - 0.05f, dz = Mathf.Max(0.3f, Mathf.Abs(hr - hc0)) / FK;   // het wegdek (5 cm onder de weg)
             // de voet van de kant loopt schuin als de weg helt (hij ligt waar wegdek + talud het terrein raakt): een rechte lijn in (S, T)
             float sg = hr < hc0 ? 1f : -1f; Lin gap = (Lin.C(q.ha - 0.05f) + S * ((q.hb - q.ha) / len) - B) * (sg / FK);
@@ -206,7 +210,12 @@ public static partial class PlanetCity
             // ook op EndSlack voorbij elk eind: daar houdt het stuk op (GroundField), zonder kop is dat een klif (landhoofd, portaal); anders
             // liep de mesh van het eind schuin naar de verste hoek van de veelhoek en week hij meters van de hoogtefunctie af
             // en op het bereik van het veld (FieldReach) naast het stuk: verder reikt het talud niet, een hoger verschil is daar een klif
-            var fs = new List<Lin> { T - Lin.C(q.hw), T + Lin.C(q.hw), toeP, toeM, S, S - Lin.C(len), S + Lin.C(dz), S - Lin.C(len + dz), S + Lin.C(EndSlack + 0.02f), S - Lin.C(len + EndSlack + 0.02f), T - Lin.C(q.hw + FieldReach + 0.02f), T + Lin.C(q.hw + FieldReach + 0.02f), T - Lin.C(q.hw + WallOut), T + Lin.C(q.hw + WallOut), T - Lin.C(q.hw + WallOut + 0.02f), T + Lin.C(q.hw + WallOut + 0.02f) };   // (ook de keermuur: op WallOut buiten de wegrand, 2 cm dik)   // (2 cm voorbij de grens: op de grens zelf telt het stuk nog mee, de wand zit ertussen)
+            if (RoadH.Count > 0)   // maaiveldstuk (nieuwe opbouw): de wegrand, de voet, het eind en de kegel voorbij het eind (graten lat - hw = over, en zijn voet); geen stroken van 2 cm meer
+            {
+                lines.AddRange(new[] { T - Lin.C(q.hw), T + Lin.C(q.hw), toeP, toeM, S, S - Lin.C(len), S + Lin.C(FieldReach), S - Lin.C(len + FieldReach), T - Lin.C(q.hw + FieldReach), T + Lin.C(q.hw + FieldReach), T + S - Lin.C(q.hw), mT + S - Lin.C(q.hw), T - S + Lin.C(len - q.hw), mT - S + Lin.C(len - q.hw) });
+                continue;
+            }
+            var fs = new List<Lin> { T - Lin.C(q.hw), T + Lin.C(q.hw), toeP, toeM, S, S - Lin.C(len), S + Lin.C(dz), S - Lin.C(len + dz), S + Lin.C(EndSlack + 0.02f), S - Lin.C(len + EndSlack + 0.02f), T - Lin.C(q.hw + FieldReach + 0.02f), T + Lin.C(q.hw + FieldReach + 0.02f) };   // (2 cm voorbij de grens: op de grens zelf telt het stuk nog mee, de wand zit ertussen)
             lines.AddRange(fs);
         }
         foreach (var q in capsUse)
@@ -218,8 +227,9 @@ public static partial class PlanetCity
             {
                 Lin N = new Lin { a = Vector3.Dot(o3 - q.c, n), x = Vector3.Dot(c.east, n), y = Vector3.Dot(c.north, n) };
                 Vector3 pn = Vector3.Cross(q.dir, n).normalized; Lin P = new Lin { a = Vector3.Dot(o3 - q.c, pn), x = Vector3.Dot(c.east, pn), y = Vector3.Dot(c.north, pn) };
+                if (q.wall) { lines.AddRange(new[] { N - Lin.C(q.hw), N, P, N - Lin.C(q.hw + q.wo) }); continue; }   // sokkel- of bakkop: de wegrand, de graten, de wand (eigen mesh)
                 Lin toe = N - Lin.C(q.hw) - (B - Lin.C(q.h - 0.05f)) * (sg / FK);   // de voet: waar wegdek + talud het terrein raakt
-                var fc = new List<Lin> { N - Lin.C(q.hw), toe, N, P, N - Lin.C(q.hw + FieldReach + 0.02f), N - Lin.C(q.hw + WallOut), N - Lin.C(q.hw + WallOut + 0.02f) };   // (ook het bereik van het veld: daarbuiten een klif)
+                var fc = RoadH.Count > 0 ? new List<Lin> { N - Lin.C(q.hw), toe, N, P, N - Lin.C(q.hw + FieldReach) } : new List<Lin> { N - Lin.C(q.hw), toe, N, P, N - Lin.C(q.hw + FieldReach + 0.02f) };   // (ook het bereik van het veld: daarbuiten een klif)
                 lines.AddRange(fc);   // de zijde, de voet, de graat naar de hoek, de vouw in een bocht
             }
         }
@@ -304,13 +314,16 @@ public static partial class PlanetCity
     static float WalkHW(int i) { if (!IsRoad(i)) return PathHW; Dims(StyleOf(i), out _, out float sw); return sw + 1.5f; }
     public static float WalkHalfWidth(string type) { if (type != "weg") return PathHW; Dims(DragStyle, out _, out float sw); return sw + 1.5f; }   // voor het voorbeeld
     // ---------- de hoogtefunctie langs wegen op een niveau ----------
-    struct Seg { public Vector3 a, b; public float ha, hb, hw; public bool capA, capB; public int ia, ib; }   // ia, ib: de vakken aan de einden
+    // ia, ib: de vakken aan de einden. wall (nieuwe opbouw, ontwerp 8.3): een sokkel- of bakstuk (weg meer dan 6 m boven of onder het
+    // terrein): de grond op weghoogte tot WallOut buiten de wegrand en daarbuiten het terrein, met een wand als eigen mesh ertussen;
+    // tap0/tap1: aan dat eind grenst het aan een maaiveldstuk en loopt de wand schuin aan vanaf de wegrand (zo begint hij op hoogte 0)
+    struct Seg { public Vector3 a, b; public float ha, hb, hw; public bool capA, capB, wall, tap0, tap1; public int ia, ib; }
     static readonly List<Seg> flats = new List<Seg>();   // gewone wegen bij een weg op een niveau: daaronder de grond op weghoogte
     static float FlatHW(int i) { Dims(StyleOf(i), out _, out float sw); return sw + 0.3f; }   // de weg met stoep, net iets breder   // van hart a naar hart b (wereldpunten), met de weghoogte aan beide einden; cap: daar zit een kop, het stuk stopt op het hart
     static readonly List<Seg> segs = new List<Seg>();
     // de kop van een doodlopende weg: een zeshoek (vijfhoek) rond het hart van het vak, zijden recht tegenover de buren, met de
     // grond op weghoogte tot op hw van het hart en daarbuiten onder 45° terug, net als langs de weg
-    struct Cap { public Vector3 c, dir; public Vector3[] n; public float h, hw; public int ic; }
+    struct Cap { public Vector3 c, dir; public Vector3[] n; public float h, hw, wo; public int ic; public bool wall; }   // wall: sokkel- of bakkop (zie Seg); wo: de wand zo ver buiten de wegrand (WallOut, of minder als dat op een vakrand valt)
     static readonly List<Cap> caps = new List<Cap>();
     static bool HasField => segs.Count > 0 || caps.Count > 0;
     const float SteepUp = 0.766f;   // cos 40°: een talud steiler dan 40° is kale aarde, flauwer is gras
@@ -331,7 +344,120 @@ public static partial class PlanetCity
     // de helling van de kant langs een weg op een niveau (hoogte per meter opzij; 1 = 45°), in te stellen met het schuifje Talud
     public static float FieldK = 1f / 1.5f;   // standaard 1 op 1,5 (34°), zoals het model overpass_path
     const float WallOut = 2.4f;   // de keermuur staat zo ver buiten de wegrand (de stoep en wat berm liggen nog op weghoogte)
-    static float FieldReach => RoadH.Count > 0 ? 6f / FK : Mathf.Min(14f / FK, 40f);   // nieuwe opbouw (ontwerp 8.3): het talud reikt tot 6 m hoogteverschil, daarboven een wand (sokkel of bak), een brug of een tunnel; anders hooguit 14 m
+    // Een punt precies op de wandlijn hoort bij de kant die erom vraagt: de veelhoek aan de binnenkant (de strook) rekent met +1 mm,
+    // die aan de buitenkant (het terrein) met -1 mm; zo krijgen de wandquad en de grond aan beide kanten bit-gelijke punten (ontwerp 8.5)
+    static float wallBias;
+    // Het terrein zonder wegen op punt dir: het vlak over de waaierdriehoek (zoals de mesh), voor de indeling van de stukken (SplitWalls)
+    static float BaseAt(Vector3 dir)
+    {
+        if (!CellAt(dir, out int i, out int k, out float b0, out float b1, out float b2)) return Terrain(i);
+        if (Plateau(i)) return G(i); int m = Planet.Cells[i].corners.Length;
+        return b0 * Center2(i) + b1 * CornerBase(i, k) + b2 * CornerBase(i, (k + 1) % m);
+    }
+    // Nieuwe opbouw (ontwerp 8.3): elk stuk in delen naar het hoogteverschil d tussen weg en terrein: |d| <= 6 m maaiveld (talud),
+    // daarboven een sokkel (weg boven het terrein) of bak (eronder), de grens waar |d| door 6 gaat; delen korter dan 2 m gaan bij hun
+    // buur. Een kop is sokkel of bak naar d in zijn hart.
+    static void SplitWalls()
+    {
+        if (RoadH.Count == 0) return; const float Lim = 6f, MinPart = 2f; var outL = new List<Seg>();
+        foreach (var q in segs)
+        {
+            Vector3 ab = q.b - q.a; float len = ab.magnitude; if (len < 0.5f) { outL.Add(q); continue; }
+            int n = Mathf.Max(2, Mathf.CeilToInt(len) + 1); var d = new float[n];
+            for (int v = 0; v < n; v++) { float t = v / (n - 1f); d[v] = Mathf.Lerp(q.ha, q.hb, t) - BaseAt((q.a + ab * t).normalized); }
+            var parts = new List<(float t0, float t1, bool wall)>(); float tPrev = 0f; bool wPrev = Mathf.Abs(d[0]) > Lim;
+            for (int v = 1; v < n; v++)
+            {
+                bool w = Mathf.Abs(d[v]) > Lim; if (w == wPrev) continue;
+                float a0 = Mathf.Abs(d[v - 1]) - Lim, a1 = Mathf.Abs(d[v]) - Lim, tc = ((v - 1) + a0 / (a0 - a1)) / (n - 1f);
+                parts.Add((tPrev, tc, wPrev)); tPrev = tc; wPrev = w;
+            }
+            parts.Add((tPrev, 1f, wPrev));
+            for (bool again = true; again && parts.Count > 1;)   // te korte delen bij de buur
+            {
+                again = false;
+                for (int v = 0; v < parts.Count; v++)
+                {
+                    if ((parts[v].t1 - parts[v].t0) * len >= MinPart) continue;
+                    if (v + 1 < parts.Count) { parts[v + 1] = (parts[v].t0, parts[v + 1].t1, parts[v + 1].wall); parts.RemoveAt(v); }
+                    else { parts[v - 1] = (parts[v - 1].t0, parts[v].t1, parts[v - 1].wall); parts.RemoveAt(v); }
+                    again = true; break;
+                }
+            }
+            if (parts.Count == 1) { var q1 = q; q1.wall = parts[0].wall; outL.Add(q1); continue; }
+            for (int v = 0; v < parts.Count; v++)
+            {
+                var pt = parts[v]; var q2 = q;
+                q2.a = (q.a + ab * pt.t0).normalized * Planet.R; q2.b = (q.a + ab * pt.t1).normalized * Planet.R; q2.ha = Mathf.Lerp(q.ha, q.hb, pt.t0); q2.hb = Mathf.Lerp(q.ha, q.hb, pt.t1);
+                q2.wall = pt.wall; q2.tap0 = pt.wall && v > 0; q2.tap1 = pt.wall && v + 1 < parts.Count; q2.capA = v == 0 && q.capA; q2.capB = v + 1 == parts.Count && q.capB;
+                outL.Add(q2);
+            }
+        }
+        segs.Clear(); segs.AddRange(outL);
+        // kop en armen horen bij elkaar: een kop is ook een wand als een arm daar als wand aankomt, en bij een wandkop wordt het eind van elke
+        // maaiveldarm (minstens 3 m) wand, met de schuine aanloop naar het maaiveld; anders staat de zeshoekige wand van de kop in het talud van de arm
+        bool AtA(Seg q, int i) => Vector3.Distance(q.a, Planet.Cells[i].dir * Planet.R) < 0.5f;
+        bool AtB(Seg q, int i) => Vector3.Distance(q.b, Planet.Cells[i].dir * Planet.R) < 0.5f;
+        var wallCaps = new HashSet<int>();
+        for (int v = 0; v < caps.Count; v++)
+        {
+            bool w = Mathf.Abs(caps[v].h - BaseAt(caps[v].dir)) > Lim;
+            if (!w) foreach (var q in segs) if (q.wall && ((q.ia == caps[v].ic && AtA(q, q.ia)) || (q.ib == caps[v].ic && AtB(q, q.ib)))) { w = true; break; }
+            if (w) wallCaps.Add(caps[v].ic);
+        }
+        if (wallCaps.Count > 0)
+        {
+            const float Arm = 3f; outL.Clear();
+            foreach (var q0 in segs)
+            {
+                var q = q0; if (q.wall) { outL.Add(q); continue; }
+                Vector3 ab = q.b - q.a; float len = ab.magnitude; bool wa = wallCaps.Contains(q.ia) && AtA(q, q.ia), wb = wallCaps.Contains(q.ib) && AtB(q, q.ib);
+                if (!wa && !wb) { outL.Add(q); continue; }
+                if (len < Arm * 2f + MinPart || (wa && wb)) { q.wall = true; outL.Add(q); continue; }   // (te kort voor een eigen maaiveldstuk: helemaal wand)
+                float t0 = wa ? Arm / len : 0f, t1 = wb ? 1f - Arm / len : 1f;
+                if (wa) { var w1 = q; w1.b = (q.a + ab * t0).normalized * Planet.R; w1.hb = Mathf.Lerp(q.ha, q.hb, t0); w1.wall = true; w1.tap1 = true; w1.capB = false; outL.Add(w1); }
+                { var m1 = q; m1.a = (q.a + ab * t0).normalized * Planet.R; m1.b = (q.a + ab * t1).normalized * Planet.R; m1.ha = Mathf.Lerp(q.ha, q.hb, t0); m1.hb = Mathf.Lerp(q.ha, q.hb, t1); m1.capA = m1.capA && !wa; m1.capB = m1.capB && !wb; outL.Add(m1); }
+                if (wb) { var w2 = q; w2.a = (q.a + ab * t1).normalized * Planet.R; w2.ha = Mathf.Lerp(q.ha, q.hb, t1); w2.wall = true; w2.tap0 = true; w2.capA = false; outL.Add(w2); }
+            }
+            segs.Clear(); segs.AddRange(outL);
+        }
+        for (int v = 0; v < caps.Count; v++)
+        {
+            var q = caps[v]; q.wall = wallCaps.Contains(q.ic); q.wo = WallOut;
+            // de wand van een kop is een zeshoek evenwijdig aan het vak: valt hij binnen 8 cm op een vakrand, dan zou de grond ernaast zijn wandpunten
+            // voor randpunten aanzien (Ground2Cell snapt op 1 mm, randpunten op 1,5 cm); dan iets naar binnen
+            var cell = Planet.Cells[q.ic];
+            for (int it = 0; it < 3; it++) { bool near = false; foreach (int j in cell.nb) if (Mathf.Abs(q.hw + q.wo - 0.5f * Vector3.Distance(Planet.Cells[j].dir, cell.dir) * Planet.R) < 0.08f) near = true; if (!near) break; q.wo -= 0.25f; }
+            caps[v] = q;
+        }
+    }
+    // De lijnen van een stuk in de vlakke coördinaten van vak c: T de afstand opzij (positief aan één kant), S de afstand langs het stuk vanaf a
+    static void SegLins(Planet.Cell c, Seg q, out Lin T, out Lin S, out float len)
+    {
+        Vector3 ab = q.b - q.a; len = ab.magnitude; Vector3 o3 = c.dir * Planet.R;
+        Vector3 along = Tan(ab, c.dir), across = Vector3.Cross(c.dir, along).normalized;
+        T = new Lin { a = Vector3.Dot(o3 - q.a, across), x = Vector3.Dot(c.east, across), y = Vector3.Dot(c.north, across) };
+        S = new Lin { a = Vector3.Dot(o3 - q.a, along), x = Vector3.Dot(c.east, along), y = Vector3.Dot(c.north, along) };
+    }
+    // De wandlijnen (sokkels en bakken) bij vak c, zo gericht dat de binnenkant (de strook op weghoogte) negatief is: de rechte wanden op
+    // WallOut buiten de wegrand, de schuine aanloop aan een grens met een maaiveldstuk (lat - hw = s), de zijden van een kop
+    // grp (als gegeven): per lijn het nummer van zijn strook of kop; de strook is de snijding van alle halfvlakken (negatief) van die groep,
+    // want een lijn alleen zegt buiten de zeshoek niets (haar verlengde loopt door)
+    static List<Lin> WallLins(Planet.Cell c, List<Seg> ls, List<Cap> lc, List<int> grp = null)
+    {
+        var res = new List<Lin>(); Vector3 o3 = c.dir * Planet.R; int g = 0;
+        void Add(Lin f) { res.Add(f); grp?.Add(g); }
+        foreach (var q in ls)
+        {
+            if (!q.wall) continue; SegLins(c, q, out Lin T, out Lin S, out float len); Lin mT = Lin.C(0f) - T; g++;
+            Add(T - Lin.C(q.hw + WallOut)); Add(mT - Lin.C(q.hw + WallOut)); Add(Lin.C(-EndSlack) - S); Add(S - Lin.C(len + EndSlack));   // (de einden horen bij de strook, ze zijn geen wand: daar verschilt de hoogte niet)
+            if (q.tap0) { Add(T - S - Lin.C(q.hw)); Add(mT - S - Lin.C(q.hw)); }
+            if (q.tap1) { Add(T + S - Lin.C(q.hw + len)); Add(mT + S - Lin.C(q.hw + len)); }
+        }
+        foreach (var q in lc) { if (!q.wall) continue; g++; foreach (var n in q.n) Add(new Lin { a = Vector3.Dot(o3 - q.c, n) - q.hw - q.wo, x = Vector3.Dot(c.east, n), y = Vector3.Dot(c.north, n) }); }
+        return res;
+    }
+    static float FieldReach => Mathf.Min(14f / FK, 40f);   // tot zover reikt een talud (14 m hoogteverschil). Nieuwe opbouw (ontwerp 8.3): een stuk is maaiveld tot 6 m hoogteverschil in het hart (SplitWalls), daarboven een wand (sokkel of bak), een brug of een tunnel; het talud van een maaiveldstuk mag verder reiken, zodat het ook dwars op een helling en in de kegel voorbij het eind het terrein haalt
     static float FK => RoadSlopes ? FieldK : 8f;   // de steilte van de kant; Talud uit: bijna loodrecht (83°), geen sprong (een sprong kan het raster niet tekenen: gaten)   // tot zover naast de weg kan de grond nog omhoog of omlaag lopen (45°: twee niveaus plus de marge)
     public static void SetFieldK(float k)
     {
@@ -387,20 +513,33 @@ public static partial class PlanetCity
                 Vector3 ab = q.b - q.a; float l2 = ab.sqrMagnitude; if (l2 < 1e-4f) continue; float len = Mathf.Sqrt(l2), u = Vector3.Dot(w - q.a, ab) / l2;
                 Vector3 dv = w - (q.a + ab * u); if (dv.sqrMagnitude > 80f * 80f) continue;   // (ver weg: na het wegnemen van de radiale richting lijkt de overkant van de planeet vlakbij)
                 dv -= dir * Vector3.Dot(dv, dir); float lat = dv.magnitude, over = Mathf.Max(0f, Mathf.Max(-u, u - 1f) * len);   // naast het stuk, en voorbij een eind
-                if (lat > q.hw + FieldReach || over > EndSlack) continue;   // (met wat speling: op het hart zelf valt een punt door afronding anders net buiten beide stukken) alleen naast het stuk: voorbij het eind doet de kop het, of het volgende stuk (een rechte kop gaf daar een trapje)
-                float hr = Mathf.Lerp(q.ha, q.hb, Mathf.Clamp01(u)), rise = Mathf.Max(0f, lat - q.hw) * FK;   // de kant
-                if (lat <= q.hw) onLevelH = Mathf.Min(onLevelH, hr);
+                float hr = Mathf.Lerp(q.ha, q.hb, Mathf.Clamp01(u)), rise;
+                if (q.wall)   // sokkel of bak (nieuwe opbouw): de strook op weghoogte tot WallOut buiten de wegrand (aan een grens met een maaiveldstuk smaller: lat - hw <= s, zo begint de wand op 0), daarbuiten niets; de wand is een eigen mesh (Ground2Cell)
+                {
+                    float wo = WallOut; if (q.tap0) wo = Mathf.Min(wo, u * len); if (q.tap1) wo = Mathf.Min(wo, len - u * len);
+                    if (lat > q.hw + wo + wallBias || over > EndSlack) continue; rise = 0f;
+                }
+                else if (RoadH.Count > 0)   // maaiveldstuk (nieuwe opbouw): het talud opzij en als kegel voorbij het eind, zodat de grond zonder sprong overgaat in het volgende stuk, een sokkel of een bak
+                {
+                    if (lat > q.hw + FieldReach || over > FieldReach) continue; rise = Mathf.Max(Mathf.Max(0f, lat - q.hw), over) * FK;
+                }
+                else
+                {
+                    if (lat > q.hw + FieldReach || over > EndSlack) continue;   // (met wat speling: op het hart zelf valt een punt door afronding anders net buiten beide stukken) alleen naast het stuk: voorbij het eind doet de kop het, of het volgende stuk (een rechte kop gaf daar een trapje)
+                    rise = Mathf.Max(0f, lat - q.hw) * FK;   // de kant
+                }
+                if (lat <= q.hw && over <= EndSlack) onLevelH = Mathf.Min(onLevelH, hr);
                 if (!RoadShape && pass == 0) continue;   // terrein door wegen uit: niets opvullen (geen dijk), wel afgraven met een talud
-                // keermuur (nieuwe opbouw): reikt het talud niet tot het terrein, dan een wand op de wegrand in plaats van een wand ver weg op het bereik
-                if (RoadH.Count > 0 && Mathf.Abs(hr - base_) > FieldReach * FK) { if (lat > q.hw + WallOut) continue; rise = 0f; }
                 if (pass == 0 && hr > base_ + 0.01f) { float v = hr - rise - 0.05f; if (v > h) { h = v; slope = rise > 0f; } }        // talud (5 cm onder het wegdek: geen streepje gras op de weg)
                 else if (pass == 1 && hr - 0.05f < base_) { float v = hr + rise - 0.05f; lowRoad = Mathf.Min(lowRoad, hr); if (v < h) { h = v; slope = rise > 0f; } }   // uitgraving: pas als het wegdek (5 cm onder de weg) onder het terrein ligt, dan loopt het veld zonder sprong door
             }
             foreach (var q in caps)
             {
-                float rise = Mathf.Max(0f, CapDist(q, w) - q.hw) * FK; if (rise > FieldReach * FK) continue; if (rise <= 0f) onLevelH = Mathf.Min(onLevelH, q.h);
+                float cd = CapDist(q, w) - q.hw, rise = Mathf.Max(0f, cd) * FK;
+                if (q.wall) { if (cd > q.wo + wallBias) continue; rise = 0f; }   // sokkel- of bakkop (nieuwe opbouw): de strook tot wo (WallOut), daarbuiten het terrein, de wand is een eigen mesh
+                else if (rise > FieldReach * FK) continue;
+                if (cd <= 0f) onLevelH = Mathf.Min(onLevelH, q.h);
                 if (!RoadShape && pass == 0) continue;
-                if (RoadH.Count > 0 && Mathf.Abs(q.h - base_) > FieldReach * FK) { if (rise > WallOut * FK) continue; rise = 0f; }   // keermuur om de kop
                 if (pass == 0 && q.h > base_ + 0.01f) { float v = q.h - rise - 0.05f; if (v > h) { h = v; slope = rise > 0f; } }   // een kop ligt net als de weg 5 cm onder het wegdek
                 else if (pass == 1 && q.h - 0.05f < base_) { float v = q.h + rise - 0.05f; if (v < h) { h = v; slope = rise > 0f; } }
             }

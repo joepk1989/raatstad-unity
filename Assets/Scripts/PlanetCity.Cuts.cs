@@ -307,6 +307,7 @@ public static partial class PlanetCity
         }
         // gewone wegen en paden (niet op een niveau) in de buurt: onder zo'n weg ligt de grond op de hoogte van die weg, wat het talud
         // ernaast ook doet (zoals Cities: Skylines 2), anders loopt een talud bij een kruispunt over de weg heen
+        SplitWalls();   // nieuwe opbouw: maaiveld, sokkel of bak per deel van een stuk (ontwerp 8.3)
         FillFieldCells();
         flats.Clear();
         if (HasField)

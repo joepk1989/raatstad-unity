@@ -118,7 +118,8 @@ public static partial class PlanetCity
         return hc;
     }
     // Een randpunt: t langs de rand (0 bij hoek k, 1 bij hoek k+1) en de hoogte van het maaiveld daar
-    struct EPt { public float t, h; }
+    // side: bij een wand staan er twee punten op dezelfde t, side +1 het punt aan de kant van de strook (de binnenkant), -1 aan de kant van het terrein
+    struct EPt { public float t, h; public int side; }
     static readonly Dictionary<long, (long key, List<EPt> pts)> edgeCache = new Dictionary<long, (long, List<EPt>)>();
     static long EdgeKey(int i, int j, int k)
     {
@@ -149,7 +150,7 @@ public static partial class PlanetCity
         var ca2 = Planet.Cells[a]; int ka2 = 0; for (int q = 0; q < ca2.corners.Length; q++) if (edN[a][q] == i) { ka2 = q; break; }
         bool rev = Vector3.Dot(ca2.corners[ka2], c.corners[k]) < Vector3.Dot(ca2.corners[ka2], c.corners[k1]);
         if (!rev) return e.pts;
-        var r = new List<EPt>(e.pts.Count); for (int q = e.pts.Count - 1; q >= 0; q--) r.Add(new EPt { t = 1f - e.pts[q].t, h = e.pts[q].h }); return r;
+        var r = new List<EPt>(e.pts.Count); for (int q = e.pts.Count - 1; q >= 0; q--) r.Add(new EPt { t = 1f - e.pts[q].t, h = e.pts[q].h, side = e.pts[q].side }); return r;
     }
     static List<EPt> EdgeProfile0(int a, int ka)
     {
@@ -182,7 +183,29 @@ public static partial class PlanetCity
         var pts = new List<EPt>(); float len = (L2 - L1).magnitude;
         Vector3 PA = A * (Planet.R + bA), PB = B * (Planet.R + bB);   // de randpunten liggen op de koorde tussen de twee hoekpunten (zoals in de mesh)
         float HAt(float t) { Vector3 P = Vector3.Lerp(PA, PB, t); return H2(P.normalized, P.magnitude - Planet.R, field, cn); }
-        foreach (float t in ts) { if (pts.Count > 0 && t - pts[pts.Count - 1].t < 2e-4f) continue; pts.Add(new EPt { t = t, h = HAt(t) }); }
+        float HAt2(float t, float bias) { float ob = wallBias; wallBias = bias; try { return HAt(t); } finally { wallBias = ob; } }
+        // De wanden: de wandlijnen zijn vlak en de hoogtefunctie leeft op de bol, dus de sprong ligt millimeters naast de snijlijn; de echte
+        // sprong zoeken (bisectie binnen 4 cm) en daar twee punten op dezelfde t zetten, eerst de kant van de lagere t (ontwerp 8.5 punt 4)
+        var wallT = new List<(float t, float h0, float h1, int side0)>();
+        if (fld) foreach (var w in WallLins(c, ls, lc))
+        {
+            float f1 = w.At(L1), f2 = w.At(L2); if ((f1 < 0f) == (f2 < 0f) || Mathf.Abs(f1 - f2) < 1e-6f) continue; float tw = f1 / (f1 - f2), dq = 0.04f / len;
+            float lo = Mathf.Max(0f, tw - dq), hi = Mathf.Min(1f, tw + dq); if (hi - lo < 1e-6f) continue;
+            float d0 = HAt(lo), d1 = HAt(hi); if (Mathf.Abs(d1 - d0) < 0.2f) continue; float mid = (d0 + d1) * 0.5f;
+            for (int it = 0; it < 20; it++) { float m2 = (lo + hi) * 0.5f; if ((HAt(m2) > mid) == (d1 > d0)) hi = m2; else lo = m2; }
+            float ts2 = (lo + hi) * 0.5f; if (ts2 < 1e-3f || ts2 > 1f - 1e-3f) continue;
+            float hA = HAt2(ts2, 1e-3f), hB = HAt2(ts2, -1e-3f); if (Mathf.Abs(hA - hB) < 1e-3f) continue;   // (de twee kanten; welke eerst komt zegt d0)
+            bool inFirst = Mathf.Abs(d0 - hA) < Mathf.Abs(d0 - hB);
+            ts.RemoveAll(t => t > 1e-3f && t < 1f - 1e-3f && Mathf.Abs(t - ts2) * len < 0.045f); ts.Add(ts2); wallT.Add((ts2, inFirst ? hA : hB, inFirst ? hB : hA, inFirst ? 1 : -1));
+        }
+        ts.Sort();
+        foreach (float t in ts)
+        {
+            if (pts.Count > 0 && t - pts[pts.Count - 1].t < 2e-4f) continue;
+            int wi = wallT.FindIndex(x => x.t == t);
+            if (wi < 0) { pts.Add(new EPt { t = t, h = HAt(t) }); continue; }
+            var wp = wallT[wi]; pts.Add(new EPt { t = t, h = wp.h0, side = wp.side0 }); pts.Add(new EPt { t = t, h = wp.h1, side = -wp.side0 });
+        }
         // de knikken die de snijlijnen niet geven (twee taluds die elkaar kruisen, een talud tegen een geul): zoeken (Kinks)
         var all = new List<EPt>();
         for (int v = 0; v + 1 < pts.Count; v++)
@@ -226,13 +249,21 @@ public static partial class PlanetCity
             Lin T = new Lin { a = Vector3.Dot(o3 - q.a, across), x = Vector3.Dot(c.east, across), y = Vector3.Dot(c.north, across) };
             Lin S = new Lin { a = Vector3.Dot(o3 - q.a, along), x = Vector3.Dot(c.east, along), y = Vector3.Dot(c.north, along) };
             float sp = S.At(p); Lin hr = sp <= 0f ? Lin.C(q.ha) : sp >= len ? Lin.C(q.hb) : Lin.C(q.ha) + S * ((q.hb - q.ha) / len);
-            float tp = T.At(p); Lin side = tp > q.hw ? (T - Lin.C(q.hw)) * FK : tp < -q.hw ? (Lin.C(-q.hw) - T) * FK : Lin.C(0f);
+            float tp = T.At(p);
+            if (q.wall)   // sokkel of bak: binnen de wand de strook op weghoogte, erbuiten niets (de wand zelf is geen vlak)
+            {
+                float wo = WallOut; if (q.tap0) wo = Mathf.Min(wo, sp); if (q.tap1) wo = Mathf.Min(wo, len - sp);
+                if (Mathf.Abs(tp) > q.hw + wo || sp < -EndSlack || sp > len + EndSlack) continue; res.Add(hr - Lin.C(0.05f)); continue;
+            }
+            Lin side = tp > q.hw ? (T - Lin.C(q.hw)) * FK : tp < -q.hw ? (Lin.C(-q.hw) - T) * FK : Lin.C(0f);
+            if (RoadH.Count > 0) { float ov = Mathf.Max(0f, Mathf.Max(-sp, sp - len)); if (ov > 0f && ov > Mathf.Abs(tp) - q.hw) side = (sp < 0f ? Lin.C(0f) - S : S - Lin.C(len)) * FK; }   // voorbij het eind: de kegel in de lengterichting
             res.Add(hr - side - Lin.C(0.05f)); res.Add(hr + side - Lin.C(0.05f));
         }
         foreach (var q in lc)
         {
             Lin best = Lin.C(float.MinValue); float bd = float.MinValue;
             foreach (var n in q.n) { Lin N = new Lin { a = Vector3.Dot(o3 - q.c, n), x = Vector3.Dot(c.east, n), y = Vector3.Dot(c.north, n) }; float d = N.At(p); if (d > bd) { bd = d; best = N; } }
+            if (q.wall) { if (bd > q.hw + q.wo) continue; res.Add(Lin.C(q.h - 0.05f)); continue; }   // sokkel- of bakkop: binnen de wand vlak, erbuiten niets
             Lin side = bd > q.hw ? (best - Lin.C(q.hw)) * FK : Lin.C(0f);
             res.Add(Lin.C(q.h) - side - Lin.C(0.05f)); res.Add(Lin.C(q.h) + side - Lin.C(0.05f));
         }
@@ -269,16 +300,33 @@ public static partial class PlanetCity
         }
         return res;
     }
-    static float ProfileAt(List<EPt> pts, float t)
+    // De hoogte van het randprofiel op t. Op een wand (twee punten op dezelfde t) kiest bias de kant: > 0 de strook, < 0 het terrein;
+    // zonder bias de kant waar het punt vandaan kwam (t0, voor het op het profiel gezet werd)
+    static float ProfileAt(List<EPt> pts, float t, float bias = 0f, float t0 = -1f)
     {
-        if (t <= pts[0].t) return pts[0].h; for (int v = 1; v < pts.Count; v++) if (t <= pts[v].t) { float d = pts[v].t - pts[v - 1].t; return d < 1e-6f ? pts[v].h : Mathf.Lerp(pts[v - 1].h, pts[v].h, (t - pts[v - 1].t) / d); }
+        if (t <= pts[0].t)
+        {
+            if (pts.Count > 1 && pts[1].t - pts[0].t < 1e-7f && pts[0].side != 0) { if (bias != 0f) return (bias > 0f) == (pts[0].side > 0) ? pts[0].h : pts[1].h; return t0 > pts[0].t ? pts[1].h : pts[0].h; }
+            return pts[0].h;
+        }
+        for (int v = 1; v < pts.Count; v++)
+        {
+            if (t > pts[v].t) continue;
+            if (v + 1 < pts.Count && pts[v + 1].t - pts[v].t < 1e-7f && Mathf.Abs(t - pts[v].t) < 1e-7f && pts[v].side != 0)   // een wandpaar
+            {
+                if (bias != 0f) return (bias > 0f) == (pts[v].side > 0) ? pts[v].h : pts[v + 1].h;
+                return t0 >= 0f && t0 > pts[v].t ? pts[v + 1].h : pts[v].h;
+            }
+            float d = pts[v].t - pts[v - 1].t; return d < 1e-6f ? pts[v].h : Mathf.Lerp(pts[v - 1].h, pts[v].h, (t - pts[v - 1].t) / d);
+        }
         return pts[pts.Count - 1].h;
     }
     // Vak i tekenen (v2): per waaierdriehoek de veelhoeken langs de snijlijnen van de hoogtefunctie en de geulen (zoals LineGround en
     // ExactGround), de gedeelde randpunten erin (op de rand komt de hoogte uit de polylijn, niet uit de functie: zo is de rand van twee
     // kanten gelijk), de rest uit H2, en waar het binnenin nog kromt verfijnd via het midden (geen nieuwe punten op de rand).
     // plat: een bebouwd vak (plateau op G; alleen de hoogtefunctie erover, de sokkel doet de rest); skip: driehoekjes onder een brugdek
-    static void Ground2Cell(int i, bool plat, System.Action<Vector3, Vector3, Vector3, float, float, float, bool> emit, System.Func<int, bool> skip)
+    // wall: een wandquad (boven a-b, onder c-d, outw naar de lage kant), naar het materiaal sokkel
+    static void Ground2Cell(int i, bool plat, System.Action<Vector3, Vector3, Vector3, float, float, float, bool> emit, System.Func<int, bool> skip, System.Action<Vector3, Vector3, Vector3, Vector3, Vector3> wall = null)
     {
         var c = Planet.Cells[i]; int m = c.corners.Length; float g = G(i);
         if (FlatGround(i)) { Vector3 mid = c.dir * (Planet.R + g); for (int k = 0; k < m; k++) { if (skip(k)) continue; emit(mid, c.corners[k] * (Planet.R + g), c.corners[(k + 1) % m] * (Planet.R + g), g, g, g, false); } return; }
@@ -297,6 +345,7 @@ public static partial class PlanetCity
             var ls = new List<Seg>(); var lc = new List<Cap>(); var spI = spanNear.Count > 0 && spanNear.TryGetValue(i, out var spl) ? spl : null;
             if (field) foreach (var f in FieldLines(c, k, hc0, h1, h2, ls, lc)) Split(f);
             foreach (var f in SpanLines(c, spI)) Split(f);
+            var wg = new List<int>(); var wl = field ? WallLins(c, ls, lc, wg) : new List<Lin>();   // de wanden hier (sokkels en bakken), binnenkant negatief; wg: per lijn de strook of kop
             Lin B2 = new Lin { a = hc0, x = ((h1 - hc0) * L2.y - (h2 - hc0) * L1.y) / det, y = ((h2 - hc0) * L1.x - (h1 - hc0) * L2.x) / det };
             if (cn) foreach (var n in near) foreach (var f in new[] { n.sd - Lin.C(-0.01f), n.sd - Lin.C(n.fl), n.sd - Lin.C(n.fl + n.rl), n.sd - Lin.C(n.end), n.t - Lin.C(n.q.hw), n.t - Lin.C(-n.q.hw) }) Split(f);
             var prof = plat ? null : EdgeProfile(i, k);
@@ -347,40 +396,78 @@ public static partial class PlanetCity
                     polys[pi] = outp;
                 }
             }
+            // De wandlijnen zijn vlak en de hoogtefunctie leeft op de bol: een punt op een wandlijn ligt millimeters naast de echte sprong.
+            // Elk punt binnen 4 cm van een wandlijn (niet op de vakrand: die komen uit het profiel) schuift langs de normaal naar de sprong
+            // (bisectie); dezelfde functie van de positie, dus alle kopieën van het punt schuiven gelijk
+            float HQ(Vector2 q) => H2(Dir(q), Base(q), field, cn);
+            Vector2 SnapWall(Vector2 q)
+            {
+                if (OnEdge(q)) return q;
+                foreach (var w in wl)
+                {
+                    if (Mathf.Abs(w.At(q)) > 0.04f) continue; Vector2 nh = new Vector2(w.x, w.y).normalized;
+                    float d0 = HQ(q - nh * 0.04f), d1 = HQ(q + nh * 0.04f); if (Mathf.Abs(d1 - d0) < 0.2f) continue;
+                    float mid = (d0 + d1) * 0.5f, lo = -0.04f, hi = 0.04f;
+                    for (int it = 0; it < 20; it++) { float m2 = (lo + hi) * 0.5f; if ((HQ(q + nh * m2) > mid) == (d1 > d0)) hi = m2; else lo = m2; }
+                    return q + nh * ((lo + hi) * 0.5f);
+                }
+                return q;
+            }
+            if (wl.Count > 0) foreach (var pl in polys) for (int v = 0; v < pl.Count; v++) pl[v] = SnapWall(pl[v]);
             foreach (var pl0 in polys) Piece(pl0);
+            // Aan welke kant van een wand ligt een hoekpunt van deze veelhoek: op een wandlijn van groep g (een strook of kop) hoort het bij
+            // de binnenkant (+1 mm) als het midden van de veelhoek binnen alle lijnen van g ligt, anders bij het terrein (-1 mm); een punt dat
+            // op geen wandlijn ligt krijgt geen kant. Per hoekpunt, want een veelhoek kan binnen de kop en toch buiten de strook van een arm liggen.
+            bool InsideG(int g, Vector2 ctr) { for (int y = 0; y < wl.Count; y++) if (wg[y] == g && wl[y].At(ctr) >= 0f) return false; return true; }
             void Piece(List<Vector2> pl0)
             {
-                int n0 = pl0.Count; if (n0 < 3) return;
+                int n0 = pl0.Count; if (n0 < 3) return; Vector2 ctr = Vector2.zero; foreach (var v in pl0) ctr += v; ctr /= n0;
                 // de hoekpunten: op de rand (t >= 0) of binnenin (t < 0); de gedeelde randpunten tussen twee randhoekpunten erbij, en een
-                // randhoekpunt vlak bij een gedeeld punt (binnen 1,5 cm) daarop gezet
-                var pl = new List<(Vector2 q, float t)>();
+                // randhoekpunt vlak bij een gedeeld punt (binnen 1,5 cm) daarop gezet (t0: waar het vandaan kwam, voor de kant van een wand)
+                var pl = new List<(Vector2 q, float t, float t0)>();
                 for (int v = 0; v < n0; v++)
                 {
-                    Vector2 q = pl0[v]; bool on = prof != null && OnEdge(q); float t = on ? Mathf.Clamp01(TOf(q)) : -1f;
-                    if (on) foreach (var ep in prof) if (Mathf.Abs(ep.t - t) * el < 0.015f) { t = ep.t; break; }
-                    pl.Add((q, t));
+                    Vector2 q = pl0[v]; bool on = prof != null && OnEdge(q); float t = on ? Mathf.Clamp01(TOf(q)) : -1f, tq = t;
+                    if (on) foreach (var ep in prof) if (Mathf.Abs(ep.t - t) * el < (ep.side != 0 ? 0.045f : 0.015f)) { t = ep.t; break; }   // (een wandpaar ligt tot 4 cm naast zijn lijn)
+                    pl.Add((q, t, tq));
                     if (!on) continue; Vector2 qn = pl0[(v + 1) % n0]; if (!OnEdge(qn)) continue;
-                    float tn = Mathf.Clamp01(TOf(qn)); foreach (var ep in prof) if (Mathf.Abs(ep.t - tn) * el < 0.015f) { tn = ep.t; break; }
-                    if (tn > t) { foreach (var ep in prof) if (ep.t > t + 1e-6f && ep.t < tn - 1e-6f) pl.Add((L1 + E * ep.t, ep.t)); }
-                    else for (int w = prof.Count - 1; w >= 0; w--) { var ep = prof[w]; if (ep.t < t - 1e-6f && ep.t > tn + 1e-6f) pl.Add((L1 + E * ep.t, ep.t)); }
+                    float tn = Mathf.Clamp01(TOf(qn)); foreach (var ep in prof) if (Mathf.Abs(ep.t - tn) * el < (ep.side != 0 ? 0.045f : 0.015f)) { tn = ep.t; break; }
+                    if (tn > t) { foreach (var ep in prof) if (ep.t > t + 1e-6f && ep.t < tn - 1e-6f) pl.Add((L1 + E * ep.t, ep.t, ep.t)); }
+                    else for (int w = prof.Count - 1; w >= 0; w--) { var ep = prof[w]; if (ep.t < t - 1e-6f && ep.t > tn + 1e-6f) pl.Add((L1 + E * ep.t, ep.t, ep.t)); }
                 }
                 for (int v = pl.Count - 1; v >= 0 && pl.Count > 3; v--) if ((pl[v].q - pl[(v + pl.Count - 1) % pl.Count].q).sqrMagnitude < 1e-6f) pl.RemoveAt(v);   // dubbele punten (na het snijden)
                 int n = pl.Count; if (n < 3) return; var P = new Vector3[n]; var H = new float[n];
-                for (int v = 0; v < n; v++)
+                float HOf(int v, float bs) { if (pl[v].t >= 0f) return ProfileAt(prof, pl[v].t, bs, pl[v].t0); float ob = wallBias; wallBias = bs; try { return H2(Dir(pl[v].q), Base(pl[v].q), field, cn); } finally { wallBias = ob; } }
+                Vector3 DOf(int v) => pl[v].t >= 0f ? Vector3.Lerp(D1 * (Planet.R + h1), D2 * (Planet.R + h2), pl[v].t).normalized : Dir(pl[v].q);
+                var bv = new float[n]; var lv = new int[n];
+                for (int v = 0; v < n; v++)   // (bij een hoek waar twee wanden elkaar raken ligt een punt op twee lijnen: binnen als de veelhoek binnen een van die groepen ligt)
                 {
-                    if (pl[v].t >= 0f) { Vector3 d = Vector3.Lerp(D1 * (Planet.R + h1), D2 * (Planet.R + h2), pl[v].t).normalized; H[v] = ProfileAt(prof, pl[v].t); P[v] = d * (Planet.R + H[v]); }
-                    else { Vector3 d = Dir(pl[v].q); H[v] = H2(d, Base(pl[v].q), field, cn); P[v] = d * (Planet.R + H[v]); }
+                    lv[v] = -1; bv[v] = 0f; if (wl.Count == 0) continue;
+                    for (int x = 0; x < wl.Count; x++) { if (Mathf.Abs(wl[x].At(pl[v].q)) >= 0.045f) continue; if (lv[v] < 0) { lv[v] = x; bv[v] = -1e-3f; } if (InsideG(wg[x], ctr)) { lv[v] = x; bv[v] = 1e-3f; break; } }
                 }
+                for (int v = 0; v < n; v++) { H[v] = HOf(v, bv[v]); P[v] = DOf(v) * (Planet.R + H[v]); }
+                // de wand (ontwerp 8.5): langs elke zijde van de veelhoek op een wandlijn, aan de kant van de strook, een quad van de eigen hoogte
+                // naar de hoogte van de andere kant (bit-gelijk aan wat de buurveelhoek daar tekent), naar de lage kant gekeerd
+                if (wall != null)
+                    for (int v = 0; v < n; v++)
+                    {
+                        int v1 = (v + 1) % n; if (bv[v] <= 0f || bv[v1] <= 0f) continue; Lin w = default; bool found = false;   // een zijde aan de binnenkant van een wand
+                        foreach (var wq in wl) if (Mathf.Abs(wq.At(pl[v].q)) < 0.045f && Mathf.Abs(wq.At(pl[v1].q)) < 0.045f) { w = wq; found = true; break; }
+                        if (!found) continue;
+                        float la = HOf(v, -1e-3f), lb = HOf(v1, -1e-3f); if (Mathf.Abs(la - H[v]) < 1e-3f && Mathf.Abs(lb - H[v1]) < 1e-3f) continue;
+                        Vector3 outw = (c.east * w.x + c.north * w.y).normalized; if (la + lb > H[v] + H[v1]) outw = -outw;   // naar de lage kant: het terrein (sokkel) of de strook (bak)
+                        wall(P[v], P[v1], DOf(v1) * (Planet.R + lb), DOf(v) * (Planet.R + la), outw);
+                    }
                 int r = 0; for (int v = 0; v < n; v++) if (pl[v].t < 0f) { r = v; break; }   // waaieren vanuit een punt dat niet op de rand ligt (anders platte driehoekjes langs de rand)
-                for (int v = 1; v + 1 < n; v++) { int a = (r + v) % n, b = (r + v + 1) % n; Refine2(pl[r].q, pl[a].q, pl[b].q, P[r], P[a], P[b], H[r], H[a], H[b], 0); }
+                for (int v = 1; v + 1 < n; v++) { int a = (r + v) % n, b = (r + v + 1) % n; Refine2(pl[r].q, pl[a].q, pl[b].q, P[r], P[a], P[b], H[r], H[a], H[b], 0f, 0); }
             }
-            void Refine2(Vector2 a, Vector2 b, Vector2 cc, Vector3 Pa, Vector3 Pb, Vector3 Pc, float ha, float hb, float hc2, int depth)
+            void Refine2(Vector2 a, Vector2 b, Vector2 cc, Vector3 Pa, Vector3 Pb, Vector3 Pc, float ha, float hb, float hc2, float bias, int depth)
             {
-                Vector2 m2 = (a + b + cc) / 3f; Vector3 dm = Dir(m2); float hm = H2(dm, Base(m2), field, cn, out bool steep);
+                Vector2 m2 = (a + b + cc) / 3f; Vector3 dm = Dir(m2); float ob = wallBias; wallBias = bias; float hm; bool steep; try { hm = H2(dm, Base(m2), field, cn, out steep); } finally { wallBias = ob; }
                 if (depth < 3 && Mathf.Abs(hm - (ha + hb + hc2) / 3f) > 0.06f && (b - a).sqrMagnitude + (cc - a).sqrMagnitude > 0.5f)
                 {
                     Vector3 Pm = dm * (Planet.R + hm);
-                    Refine2(a, b, m2, Pa, Pb, Pm, ha, hb, hm, depth + 1); Refine2(b, cc, m2, Pb, Pc, Pm, hb, hc2, hm, depth + 1); Refine2(cc, a, m2, Pc, Pa, Pm, hc2, ha, hm, depth + 1);
+                    Refine2(a, b, m2, Pa, Pb, Pm, ha, hb, hm, bias, depth + 1); Refine2(b, cc, m2, Pb, Pc, Pm, hb, hc2, hm, bias, depth + 1); Refine2(cc, a, m2, Pc, Pa, Pm, hc2, ha, hm, bias, depth + 1);
                     return;
                 }
                 emit(Pa, Pb, Pc, ha, hb, hc2, steep);
@@ -399,8 +486,11 @@ public static partial class PlanetCity
             for (int k = 0; k < m; k++)
             {
                 var pk = EdgeProfile(i, k); var pp = EdgeProfile(i, (k + m - 1) % m);   // (t loopt langs de koorde tussen de hoekpunten)
-                float ha = pk[0].h, hb = pp[pp.Count - 1].h;
-                if (Mathf.Abs(ha - hb) > 0.002f) { nc++; if (nc <= 4) sb.Append("  hoek ").Append(i).Append('/').Append(k).Append(": rand ").Append(k).Append(' ').Append(ha.ToString("0.00")).Append(" rand ").Append((k + m - 1) % m).Append(' ').Append(hb.ToString("0.00")).Append(" (eigenaar ").Append(Mathf.Min(i, edN[i][k])).Append('/').Append(Mathf.Min(i, edN[i][(k + m - 1) % m])).Append(')').AppendLine(); }
+                float ha = pk[0].h, hb = pp[pp.Count - 1].h;   // (op een wand: een paar op de hoek, dan hoort een van de twee te kloppen)
+                bool okc = Mathf.Abs(ha - hb) <= 0.002f;
+                if (!okc && pk.Count > 1 && pk[1].t - pk[0].t < 1e-7f) okc = Mathf.Abs(pk[1].h - hb) <= 0.002f;
+                if (!okc && pp.Count > 1 && pp[pp.Count - 1].t - pp[pp.Count - 2].t < 1e-7f) okc = Mathf.Abs(ha - pp[pp.Count - 2].h) <= 0.002f || (pk.Count > 1 && pk[1].t - pk[0].t < 1e-7f && Mathf.Abs(pk[1].h - pp[pp.Count - 2].h) <= 0.002f);
+                if (!okc) { nc++; if (nc <= 4) sb.Append("  hoek ").Append(i).Append('/').Append(k).Append(": rand ").Append(k).Append(' ').Append(ha.ToString("0.00")).Append(" rand ").Append((k + m - 1) % m).Append(' ').Append(hb.ToString("0.00")).Append(" (eigenaar ").Append(Mathf.Min(i, edN[i][k])).Append('/').Append(Mathf.Min(i, edN[i][(k + m - 1) % m])).Append(')').AppendLine(); }
                 int j = edN[i][k]; if (Plateau(j)) continue; int kj = -1; for (int q = 0; q < Planet.Cells[j].corners.Length; q++) if (edN[j][q] == i) kj = q; if (kj < 0) continue;
                 var pj = EdgeProfile(j, kj); bool same = pj.Count == pk.Count; if (same) for (int q = 0; q < pk.Count; q++) if (Mathf.Abs(pj[pj.Count - 1 - q].h - pk[q].h) > 0.002f || Mathf.Abs(1f - pj[pj.Count - 1 - q].t - pk[q].t) > 1e-4f) same = false;
                 if (!same) { nn++; if (nn <= 4) sb.Append("  rand ").Append(i).Append('/').Append(k).Append(" en ").Append(j).Append('/').Append(kj).Append(": ").Append(pk.Count).Append(" en ").Append(pj.Count).Append(" punten").AppendLine(); }
@@ -419,6 +509,26 @@ public static partial class PlanetCity
         {
             sb.Append("vak ").Append(i).Append(' ').Append(Desc(i)).Append(" G ").Append(G(i).ToString("0.00")).Append(" plateau ").Append(Plateau(i)).Append(" vlak ").Append(FlatGround(i)).Append(" veld ").Append(fieldCells.Contains(i)).Append('/').Append(NearSeg(c.dir, c.radius)).AppendLine();
             for (int k = 0; k < m; k++) { var pr = EdgeProfile(i, k); sb.Append("  rand ").Append(k).Append(" naar ").Append(edN[i][k]).Append(" (CornerBase ").Append(CornerBase(i, k).ToString("0.00")).Append("): "); foreach (var e in pr) sb.Append(e.t.ToString("0.000")).Append('=').Append(e.h.ToString("0.00")).Append(' '); sb.AppendLine(); }
+            {   // de stukken en koppen hier met hun indeling, en per rand de snijpunten van de wandlijnen (om te zien of een wand als paar herkend wordt)
+                float hc0 = Plateau(i) ? G(i) : Center2(i);
+                for (int k = 0; k < m; k++)
+                {
+                    var ls = new List<Seg>(); var lc = new List<Cap>(); var fl = FieldLines(c, k, hc0, CornerBase(i, k), CornerBase(i, (k + 1) % m), ls, lc); var wl = WallLins(c, ls, lc);
+                    sb.Append("  rand ").Append(k).Append(" stukken:"); foreach (var q in ls) sb.Append(' ').Append(q.ia).Append('-').Append(q.ib).Append(q.wall ? "W" : "m").Append(q.tap0 ? "0" : "").Append(q.tap1 ? "1" : "");
+                    sb.Append(" koppen:"); foreach (var q in lc) sb.Append(' ').Append(q.ic).Append(q.wall ? "W" : "m").Append("/wo").Append(q.wo.ToString("0.00"));
+                    Vector2 L1 = c.local[k], L2 = c.local[(k + 1) % m]; sb.Append(" wandlijnen ").Append(wl.Count).Append(" snijden op t:");
+                    Vector3 PA = c.corners[k] * (Planet.R + CornerBase(i, k)), PB = c.corners[(k + 1) % m] * (Planet.R + CornerBase(i, (k + 1) % m)); float elen = (L2 - L1).magnitude;
+                    float HAtE(float t) { Vector3 P = Vector3.Lerp(PA, PB, t); return H2(P.normalized, P.magnitude - Planet.R, fieldCells.Contains(i) && NearSeg(c.dir, c.radius), false); }
+                    foreach (var f in wl)
+                    {
+                        float f1 = f.At(L1), f2 = f.At(L2); if ((f1 < 0f) == (f2 < 0f)) continue; float tw = f1 / (f1 - f2); sb.Append(' ').Append(tw.ToString("0.000"));
+                        float dq = 0.3f / elen, lo = Mathf.Max(0f, tw - dq), hi = Mathf.Min(1f, tw + dq), d0 = HAtE(lo), d1 = HAtE(hi); if (Mathf.Abs(d1 - d0) < 0.2f) { sb.Append("(geen sprong binnen 30 cm)"); continue; }
+                        float mid = (d0 + d1) * 0.5f; for (int it = 0; it < 20; it++) { float m2 = (lo + hi) * 0.5f; if ((HAtE(m2) > mid) == (d1 > d0)) hi = m2; else lo = m2; }
+                        sb.Append("(sprong op ").Append(((lo + hi) * 0.5f).ToString("0.000")).Append(' ').Append((((lo + hi) * 0.5f - tw) * elen * 100f).ToString("+0.0;-0.0")).Append(" cm)");
+                    }
+                    sb.AppendLine();
+                }
+            }
             Ground2Cell(i, Plateau(i), (a, b, cc, ha, hb, hc, steep) =>
             {
                 Vector3 mid = (a + b + cc) / 3f; float hm = H(mid.normalized), hp = (ha + hb + hc) / 3f; tris.Add((a, b, cc, Mathf.Abs(hm - hp)));

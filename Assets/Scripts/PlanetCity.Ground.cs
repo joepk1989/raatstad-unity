@@ -214,7 +214,8 @@ public static partial class PlanetCity
                     }
                     if (Ground2)   // Terrein v2: het vak uit de hoogtefunctie, de randpunten gedeeld met de buren (PlanetGround2.cs)
                     {
-                        Ground2Cell(i, Plateau(i), Emit2, k => { if (!hasDeck) return false; Vector3 dw = (c.corners[k] + c.corners[(k + 1) % m]).normalized * Planet.R - dk.p; return Vector3.Dot(dw, dk.o) - dk.skew * Vector3.Dot(dw, dk.t) < -0.5f; });
+                        Ground2Cell(i, Plateau(i), Emit2, k => { if (!hasDeck) return false; Vector3 dw = (c.corners[k] + c.corners[(k + 1) % m]).normalized * Planet.R - dk.p; return Vector3.Dot(dw, dk.o) - dk.skew * Vector3.Dot(dw, dk.t) < -0.5f; },
+                            (wa, wb, wc, wd, outw) => TB("sokkel").Quad(wa, wb, wc, wd, outw));   // de wanden van sokkels en bakken (ontwerp 8.5): eigen quads, steen
                         goto Walls;
                     }
                     // bij een geul of dijk: het maaiveld zonder geul als vlak, de geul of dijk komt er precies in (ExactGround)
