@@ -927,7 +927,7 @@ public class WegVoorbeeld : MonoBehaviour
         PlanetCity.Rebuild(); Fase("rebuild 1"); PlanetCity.Rebuild(); PlanetCity.RebuildGrid(); yield return null; yield return null; Fase("rebuild 2");
         File.WriteAllText(Path.Combine(Dir, "hoogtetest.txt"), log.ToString());
         var centers = new List<int>(); foreach (var kv in PlanetCity.Cells) { if (!PlanetCity.IsRoad(kv.Key)) continue; bool far = true; foreach (int c in centers) if (Vector3.Distance(Planet.Cells[c].dir, Planet.Cells[kv.Key].dir) * Planet.R < 45f) { far = false; break; } if (far) centers.Add(kv.Key); }
-        Hc = centers[0]; bouw = new System.Text.StringBuilder(); Fase("scan"); yield return Scan(centers[0], 0f, "hoogtetest_scan", centers, 24f); int worst = scanWorst; Fase("scan klaar");
+        Hc = centers[0]; bouw = new System.Text.StringBuilder(); Fase("scan"); yield return Scan(centers[0], 0f, "hoogtetest_scan", centers, 24f); int worst = scanWorst; Fase("scan klaar"); { int nu = 0; foreach (var kv in PlanetCity.RoadH) if (PlanetCity.Underground(kv.Key) && nu < 3) { nu++; yield return Shot("hoogtetest_ondergronds" + nu, kv.Key, Dh(kv.Key, 0.7f), 6f, 4f); } }   // de ondergrondse kruispunten (nieuwe opbouw)
         for (int s = 0; s < 4; s++) yield return Shot("hoogtetest_" + s, Planet.Starts[s], Dh(Planet.Starts[s], 0.4f), 260f, 50f);
         log.Append(bouw.ToString()); File.WriteAllText(Path.Combine(Dir, "hoogtetest.txt"), log.ToString());
         File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar");

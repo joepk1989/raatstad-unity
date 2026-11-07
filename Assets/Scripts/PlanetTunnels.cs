@@ -135,8 +135,16 @@ public static partial class PlanetCity
         var f = new Frame(a, true).Flat(); f.e = Tan(dB - dA, dA); f.n = Vector3.Cross(f.u, f.e).normalized;
         float X(Vector3 d) => Vector3.Dot(d * (Planet.R / Vector3.Dot(d, dA)) - dA * Planet.R, f.e);
         float L = X(dB); k = (G(b) - G(a)) / L;
-        p0 = new Vector2(FlatL, 0f); p1 = new Vector2(X((dB * Planet.R + Tan(dA - dB, dB) * FlatL).normalized), 0f);
+        p0 = new Vector2(Underground(a) ? 0f : FlatL, 0f); p1 = new Vector2(Underground(b) ? L : X((dB * Planet.R + Tan(dA - dB, dB) * FlatL).normalized), 0f);
         return f.Lift(LevelH).Incline(k);
+    }
+    // Een ondergronds kruispunt (nieuwe opbouw): een wegvak met een profiel diep onder het terrein (minstens BoreNeed) waarvan alle armen
+    // tunnels zijn. Geen portaal en geen mantel die uit de berg steekt: de kokers lopen door tot het hart van het vak en komen daar samen.
+    public static bool Underground(int c)
+    {
+        if (RoadH.Count == 0 || !IsWalk(c) || Terrain(c) < G(c) + BoreNeed) return false;
+        int nb = 0; foreach (int j in Partners(c)) { if (!IsBore(c, j) || SpanLinks.Contains(Key(c, j))) return false; nb++; }
+        return nb >= 2;
     }
     // de koker, de portalen en de mantel van elke tunnel die in a begint (de kleinste van de twee tekent)
     static void BoreMesh(Dictionary<string, MeshBuilder> mb, int a)
@@ -149,7 +157,7 @@ public static partial class PlanetCity
             var f = BoreFrame(a, b, out var p0, out var p1, out _); tubeW = BoreHW(a); float fl = -LevelH, top = -DeckT;
             int ns = Mathf.Max(1, Mathf.CeilToInt((p1 - p0).magnitude / 6f));   // in stukken, zodat de koker de bol volgt
             for (int s = 0; s < ns; s++) TubeSeg(M, f, Vector2.Lerp(p0, p1, s / (float)ns), Vector2.Lerp(p0, p1, (s + 1) / (float)ns), fl, fl, top, false, false);
-            Portal(M, f, p0, new Vector2(-1f, 0f), fl, top); Portal(M, f, p1, new Vector2(1f, 0f), fl, top);
+            if (!Underground(a)) Portal(M, f, p0, new Vector2(-1f, 0f), fl, top); if (!Underground(b)) Portal(M, f, p1, new Vector2(1f, 0f), fl, top);
             Mantle(M, f, p0, p1, fl, top);
             for (float s = p0.x + 3f; s < p1.x - 2f; s += 6f)   // tunnellichten: om de 6 m twee lichtbalken tegen het plafond, boven elke rijstrook
                 foreach (float x in new[] { -tubeW * 0.45f, tubeW * 0.45f })
