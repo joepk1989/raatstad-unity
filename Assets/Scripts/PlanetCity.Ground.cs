@@ -282,9 +282,10 @@ public static partial class PlanetCity
                         if (Ground2)   // Terrein v2: de wand tot op de randpunten die de buur ook tekent (precies aansluitend, geen kier)
                         {
                             var prof = EdgeProfile(i, k); Vector3 ca = c.corners[k], cb = c.corners[(k + 1) % m];
+                            Vector3 qa = ca * (Planet.R + CornerBase(i, k)), qb = cb * (Planet.R + CornerBase(i, (k + 1) % m));   // de randpunten liggen op de koorde tussen de hoekpunten (EdgeProfile)
                             for (int t = 0; t + 1 < prof.Count; t++)
                             {
-                                Vector3 pa = Vector3.Lerp(ca, cb, prof[t].t).normalized, pb = Vector3.Lerp(ca, cb, prof[t + 1].t).normalized;
+                                Vector3 pa = Vector3.Lerp(qa, qb, prof[t].t).normalized, pb = Vector3.Lerp(qa, qb, prof[t + 1].t).normalized;
                                 float ta = strip ? GroundField(pa, g) : g, tb = strip ? GroundField(pb, g) : g, ba = Mathf.Min(prof[t].h, ta), bb = Mathf.Min(prof[t + 1].h, tb);   // de bovenkant: het plateau, of waar de weg in het vak steekt de grond daar
                                 if (ta - ba < 0.01f && tb - bb < 0.01f) continue;
                                 TB("sokkel").Quad(pa * (Planet.R + ta), pb * (Planet.R + tb), pb * (Planet.R + bb), pa * (Planet.R + ba), (ca + cb) * 0.5f - c.dir);

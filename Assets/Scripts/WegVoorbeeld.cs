@@ -392,6 +392,7 @@ public class WegVoorbeeld : MonoBehaviour
             }
         }
         }
+        { var gd = new System.Text.StringBuilder(); var gs = PlanetCity.GradeStats(gd); bouw.Append(gd); bouw.Append("hellingen: steilste ").Append((gs.max * 100f).ToString("0.0")).Append("%, ").Append(gs.over).Append(" van ").Append(gs.total).Append(" verbindingen steiler dan ").Append((PlanetCity.MaxGrade * 100f).ToString("0")).AppendLine("%"); }
         bouw.Append("gescand: ").Append(nRoad).Append(" punten op de weg, ").Append(nGround).Append(" ernaast; Terrein v2 ").AppendLine(PlanetCity.Ground2 ? "aan" : "uit");
         if (PlanetCity.Ground2) { var cc = new HashSet<int>(); foreach (var disc in discs) for (int ci = 0; ci < Planet.Cells.Length; ci++) if (Vector3.Angle(Planet.Cells[ci].dir, Planet.Cells[disc.c].dir) * Mathf.Deg2Rad * Planet.R < disc.R + 10f) cc.Add(ci); bouw.AppendLine(PlanetCity.Ground2Check(cc)); }
         bouw.Append("A terrein boven het wegdek: ").Append(nA).Append(" punten (").Append(nRoad > 0 ? (100f * nA / nRoad).ToString("0.00") : "0").AppendLine("%)");
@@ -404,6 +405,7 @@ public class WegVoorbeeld : MonoBehaviour
             foreach (var kv in lc.GetRange(0, Mathf.Min(8, lc.Count))) bouw.Append("  C vak ").Append(kv.Key).Append(": ").Append(kv.Value.n).Append(" punten, tot ").Append(kv.Value.max.ToString("0.00")).Append(" m; ").Append(Desc(kv.Key)).AppendLine();
             for (int k = 0; k < Mathf.Min(3, lc.Count); k++) { var pC = lc[k].Value.p; Physics.Raycast(pC * (Planet.R + 150f), -pC, out RaycastHit hm, 180f, 1 << Layers.Bodem); bouw.Append("  C punt ").Append(k + 1).Append(": mesh ").Append((hm.point.magnitude - Planet.R).ToString("0.00")).Append(" (").Append(hm.collider ? hm.collider.name : "-").Append(") ").Append(PlanetCity.HInfo(pC)).AppendLine(); int cc = Planet.Nearest(pC * Planet.R); var cl = Planet.Cells[cc]; int kb = 0; for (int q = 1; q < cl.corners.Length; q++) if (Vector3.Dot(cl.corners[q], pC) > Vector3.Dot(cl.corners[kb], pC)) kb = q; bouw.Append("    punt: ").AppendLine(PlanetCity.GroundInfo(pC)); bouw.Append("    driehoek: ").AppendLine(TriInfo(hm)); bouw.Append("    hoek ").Append(kb).Append(" (").Append(PlanetCity.OwnCorner(cc, kb).ToString("0.00")).Append("): ").AppendLine(PlanetCity.GroundInfo(cl.corners[kb])); }
             cShots = new List<int>(); for (int k = 0; k < Mathf.Min(3, lc.Count); k++) cShots.Add(lc[k].Key);
+            if (PlanetCity.Ground2) { var dump = new System.Text.StringBuilder(); for (int k = 0; k < Mathf.Min(3, lc.Count); k++) dump.AppendLine(PlanetCity.Ground2Dump(lc[k].Key)); dumpB = dump; }
         }
         // groeperen per vak, ergste eerst
         var perA = new Dictionary<int, (int n, float max, Vector3 p)>(); foreach (var f in foutA) { int c = Planet.Nearest(f.p * Planet.R); perA.TryGetValue(c, out var t); perA[c] = (t.n + 1, Mathf.Max(t.max, f.d), t.n == 0 ? f.p : t.p); }
@@ -413,6 +415,7 @@ public class WegVoorbeeld : MonoBehaviour
         scanWorst = lb.Count > 0 ? lb[0].Key : la.Count > 0 ? la[0].Key : -1;
         for (int k = 0; k < Mathf.Min(3, la.Count); k++) { var pA = la[k].Value.p; Vector3 tp = pA * (Planet.R + 60f); Physics.Raycast(tp, -pA, out RaycastHit h1, 80f, 1 << Layers.Weg); Physics.Raycast(tp, -pA, out RaycastHit h2, 80f, 1 << Layers.Bodem); bouw.Append("  punt ").Append(k + 1).Append(": weg ").Append((h1.point.magnitude - Planet.R).ToString("0.00")).Append(" (").Append(h1.collider != null ? h1.collider.transform.parent?.name + "/" + h1.collider.name : "-").Append("), grond ").Append((h2.point.magnitude - Planet.R).ToString("0.00")).Append("; ").AppendLine(PlanetCity.GroundInfo(pA)); }
         foreach (var kv in la.GetRange(0, Mathf.Min(12, la.Count))) bouw.Append("  A vak ").Append(kv.Key).Append(": ").Append(kv.Value.n).Append(" punten, tot ").Append(kv.Value.max.ToString("0.00")).Append(" m; ").Append(Desc(kv.Key)).AppendLine();
+        if (dumpB != null) { for (int k = 0; k < Mathf.Min(3, lb.Count); k++) dumpB.Append("GAT ").AppendLine(PlanetCity.Ground2Dump(lb[k].Key)); File.WriteAllText(Path.Combine(Dir, name + "_dump.txt"), dumpB.ToString()); dumpB = null; }
         foreach (var kv in lb.GetRange(0, Mathf.Min(12, lb.Count))) bouw.Append("  B vak ").Append(kv.Key).Append(": ").Append(kv.Value.n).Append(" punten; ").Append(Desc(kv.Key)).AppendLine();
         File.WriteAllText(Path.Combine(Dir, name + ".txt"), bouw.ToString());
         yield return Shot(name + "_overzicht", home, Dh(home, 0.3f), R * 1.6f, 60f);
@@ -434,6 +437,7 @@ public class WegVoorbeeld : MonoBehaviour
         sb.Append("\n      midden: ").Append(PlanetCity.GroundInfo(sum.normalized));
         return sb.ToString();
     }
+    System.Text.StringBuilder dumpB;
     List<int> cShots = new List<int>();   // de vakken waar de mesh het meest van H afwijkt (voor de foto's)
     // de grootste steden die de AI-bouwer bewaarde (ai-runs, per bouwstijl de grootste) laden en scannen
     IEnumerator AiSteden()
