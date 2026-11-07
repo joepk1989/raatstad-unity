@@ -270,7 +270,7 @@ public static partial class PlanetCity
             return false;
         }
         bool PlainRoad(int a) => IsRoad(a) && !levelled.Contains(a) && !Underpass(a) && !carved.Contains(a) && !preCarve.ContainsKey(a) && !IsRot(a);
-        var uneven = new HashSet<int>(); if (RoadField) foreach (var kv in Cells) if (PlainRoad(kv.Key) && Uneven(kv.Key)) uneven.Add(kv.Key);
+        var uneven = new HashSet<int>(); if (RoadField) foreach (var kv in Cells) if (PlainRoad(kv.Key) && (RoadH.Count > 0 || Uneven(kv.Key))) uneven.Add(kv.Key);   // nieuwe opbouw (RoadH): elke weg, het terrein eronder is niet op weghoogte
         // De weg wordt in een bocht afgerond (SmoothLine): bij het hart van een bochtvak ligt hij dan op het gemiddelde van de bocht,
         // lager dan het vak zelf als hij daar daalt; de grond rekent met die hoogte (anders lag hij tot een meter boven de stoep)
         float RH(int x)

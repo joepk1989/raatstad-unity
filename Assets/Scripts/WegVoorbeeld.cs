@@ -15,7 +15,7 @@ public class WegVoorbeeld : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Boot()
     {
-        if (!File.Exists(Flag)) return; mode = File.ReadAllText(Flag).Trim(); File.Delete(Flag); PlanetCity.Ground2 = false; PlanetCity.Seams = true; for (bool again = true; again;) { again = false; if (mode.EndsWith(" v2")) { PlanetCity.Ground2 = true; mode = mode.Substring(0, mode.Length - 3); again = true; } if (mode.EndsWith(" geennaden")) { PlanetCity.Seams = false; mode = mode.Substring(0, mode.Length - 10); again = true; } }   // "... v2": met Terrein v2; "... geennaden": zonder naden   // tekst "fiets": de fietspaden en de startstad
+        if (!File.Exists(Flag)) return; mode = File.ReadAllText(Flag).Trim(); File.Delete(Flag); PlanetCity.Ground2 = false; PlanetCity.Seams = true; PlanetCity.ProfileFirst = false; for (bool again = true; again;) { again = false; if (mode.EndsWith(" v2")) { PlanetCity.Ground2 = true; mode = mode.Substring(0, mode.Length - 3); again = true; } if (mode.EndsWith(" geennaden")) { PlanetCity.Seams = false; mode = mode.Substring(0, mode.Length - 10); again = true; } if (mode.EndsWith(" profiel")) { PlanetCity.ProfileFirst = true; mode = mode.Substring(0, mode.Length - 8); again = true; } }   // "... v2": met Terrein v2; "... geennaden": zonder naden   // tekst "fiets": de fietspaden en de startstad
         Application.runInBackground = true;
         new GameObject("Wegvoorbeeld").AddComponent<WegVoorbeeld>();
     }
@@ -392,7 +392,7 @@ public class WegVoorbeeld : MonoBehaviour
             }
         }
         }
-        { var gd = new System.Text.StringBuilder(); var gs = PlanetCity.GradeStats(gd); bouw.Append(gd); bouw.Append("hellingen: steilste ").Append((gs.max * 100f).ToString("0.0")).Append("%, ").Append(gs.over).Append(" van ").Append(gs.total).Append(" verbindingen steiler dan ").Append((PlanetCity.MaxGrade * 100f).ToString("0")).AppendLine("%"); }
+        { if (PlanetCity.HeightTestNote != "") bouw.AppendLine(PlanetCity.HeightTestNote); var gd = new System.Text.StringBuilder(); var gs = PlanetCity.GradeStats(gd); bouw.Append(gd); bouw.Append("hellingen: steilste ").Append((gs.max * 100f).ToString("0.0")).Append("%, ").Append(gs.over).Append(" van ").Append(gs.total).Append(" verbindingen steiler dan ").Append((PlanetCity.MaxGrade * 100f).ToString("0")).AppendLine("%"); }
         bouw.Append("gescand: ").Append(nRoad).Append(" punten op de weg, ").Append(nGround).Append(" ernaast; Terrein v2 ").AppendLine(PlanetCity.Ground2 ? "aan" : "uit");
         if (PlanetCity.Ground2) { var cc = new HashSet<int>(); foreach (var disc in discs) for (int ci = 0; ci < Planet.Cells.Length; ci++) if (Vector3.Angle(Planet.Cells[ci].dir, Planet.Cells[disc.c].dir) * Mathf.Deg2Rad * Planet.R < disc.R + 10f) cc.Add(ci); bouw.AppendLine(PlanetCity.Ground2Check(cc)); }
         bouw.Append("A terrein boven het wegdek: ").Append(nA).Append(" punten (").Append(nRoad > 0 ? (100f * nA / nRoad).ToString("0.00") : "0").AppendLine("%)");

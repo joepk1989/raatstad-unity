@@ -18,7 +18,7 @@ public static partial class PlanetCity
             order.Sort((p, q) => Vector3.Dot(Planet.Cells[Planet.Starts[q]].dir, ds).CompareTo(Vector3.Dot(Planet.Cells[Planet.Starts[p]].dir, ds)));
             for (int k = 0; k < 3; k++) { int t = order[k]; var pr = s < t ? (s, t) : (t, s); if (!pairs.Contains(pr)) pairs.Add(pr); }
         }
-        HeightTestRoadCount = 0; DragLevel = 0; DragUnder = false; DragStyle = 0; DragBike = false;
+        HeightTestRoadCount = 0; DragLevel = 0; DragUnder = false; DragStyle = 0; DragBike = false; var lines = new List<List<int>>();
         for (int q = 0; q < pairs.Count; q++)
         {
             int a = Planet.Starts[pairs[q].a], b = Planet.Starts[pairs[q].b], cur = a;
@@ -26,12 +26,15 @@ public static partial class PlanetCity
             {
                 var line = LinePlan(cur, b); if (line == null || line.Count < 2) break;
                 prog?.Invoke(q / (float)pairs.Count, "weg " + a + "-" + b + " stuk " + leg + " vanaf " + cur + " (" + line.Count + " vakken)");
-                if (PlaceLine(line, "weg") > 0) { prog?.Invoke(q / (float)pairs.Count, "gelegd"); SetLevel(line, 0, "weg"); prog?.Invoke(q / (float)pairs.Count, "niveau"); DipUnder(line); prog?.Invoke(q / (float)pairs.Count, "dip"); BoreLine(line); prog?.Invoke(q / (float)pairs.Count, "bore"); UpdateCuts(); prog?.Invoke(q / (float)pairs.Count, "cuts"); }
+                if (PlaceLine(line, "weg") > 0) { prog?.Invoke(q / (float)pairs.Count, "gelegd"); SetLevel(line, 0, "weg"); prog?.Invoke(q / (float)pairs.Count, "niveau"); if (ProfileFirst) lines.Add(new List<int>(line)); else { DipUnder(line); prog?.Invoke(q / (float)pairs.Count, "dip"); BoreLine(line); prog?.Invoke(q / (float)pairs.Count, "bore"); } UpdateCuts(); prog?.Invoke(q / (float)pairs.Count, "cuts"); }
                 int end = line[line.Count - 1]; if (end == cur) break; cur = end;
             }
             if (cur == b) HeightTestRoadCount++;
             prog?.Invoke((q + 1f) / pairs.Count, "Wegen tussen de startpunten"); yield return null;
         }
+        if (ProfileFirst) { prog?.Invoke(1f, "Wegprofiel"); HeightTestNote = ProfileAll(lines); UpdateCuts(); }   // nieuwe opbouw: eerst het profiel, dan de kunstwerken
         TouchAll();
     }
+    public static bool ProfileFirst;   // de nieuwe opbouw (stap 1) in de hoogtetest
+    public static string HeightTestNote = "";
 }

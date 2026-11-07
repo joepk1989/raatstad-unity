@@ -134,6 +134,56 @@ public static partial class PlanetCity
         if (notes.Count > 0) LastNote = string.Join(", ", notes);
         return done.Count + dals.Count;
     }
+    // Nieuwe opbouw, stap 1: eerst het profiel van alle wegen samen (hooguit MaxGrade, ook over kruispunten heen, zo min mogelijk
+    // van het terrein af; alleen vakken onder of naast een brug vast), dan per lijn de kunstwerken aan dat profiel: een tunnel waar
+    // het terrein er ver boven ligt, een dalbrug waar het er ver onder ligt (dezelfde maten als BoreLine). De overige wegvakken komen
+    // op het profiel (voorlopig nog via LevelTerr; in stap 5 leest alles de weghoogte uit RoadH en blijft het terrein onaangeroerd).
+    public static readonly Dictionary<int, float> RoadH = new Dictionary<int, float>();
+    public static string ProfileAll(List<List<int>> lines)
+    {
+        var idx = new Dictionary<int, int>(); var cells = new List<int>();
+        foreach (var kv in Cells) if (IsWalk(kv.Key)) { idx[kv.Key] = cells.Count; cells.Add(kv.Key); }
+        int n = cells.Count; if (n == 0) return "geen wegen"; var h = new float[n]; var fix = new bool[n];
+        for (int k = 0; k < n; k++) { int c = cells[k]; h[k] = Terrain(c); if (Underpass(c)) fix[k] = true; foreach (int j in Planet.Cells[c].nb) if (Underpass(j)) fix[k] = true; }
+        var links = new List<(int a, int b, float d)>(); var seen = new HashSet<long>();
+        foreach (int c in cells) foreach (int p in Partners(c))
+        {
+            if (!idx.ContainsKey(p) || !seen.Add(Key(Mathf.Min(c, p), Mathf.Max(c, p)))) continue;
+            links.Add((idx[c], idx[p], Vector3.Angle(Planet.Cells[c].dir, Planet.Cells[p].dir) * Mathf.Deg2Rad * Planet.R));
+        }
+        for (int it = 0; it < 4000; it++)
+        {
+            bool any = false;
+            foreach (var l in links)
+            {
+                float e = h[l.b] - h[l.a], lim = MaxGrade * l.d; if (Mathf.Abs(e) <= lim + 1e-4f) continue; any = true;
+                float over = (Mathf.Abs(e) - lim) * Mathf.Sign(e);
+                if (fix[l.a] && fix[l.b]) continue;
+                if (fix[l.a]) h[l.b] -= over; else if (fix[l.b]) h[l.a] += over; else { h[l.a] += over * 0.5f; h[l.b] -= over * 0.5f; }
+            }
+            if (!any) break;
+        }
+        RoadH.Clear(); for (int k = 0; k < n; k++) RoadH[cells[k]] = h[k];
+        // de kunstwerken per lijn, aan het profiel
+        bool Plain(int c) => IsWalk(c) && !Underpass(c) && !IsRot(c) && !preCarve.ContainsKey(c);
+        float Ground(int c) => Terrain(c);
+        float Road(int c) => RoadH.TryGetValue(c, out var v) ? v : G(c);
+        int tun = 0, brug = 0;
+        foreach (var line in lines)
+        {
+            if (line == null || line.Count < 4) continue;
+            System.Func<int, bool> Step = k => LineStep(line[k], line[k + 1]) && Linked(line[k], line[k + 1]);
+            System.Func<int, bool> Inner = k => { int c = line[k], p = line[k - 1], q = line[k + 1]; var ps = Partners(c); return Plain(c) && ps.Count == 2 && ps.Contains(p) && ps.Contains(q) && Straight(p, c, q); };
+            var done = BoreSearch(line, Plain, Step, Inner, Road, Ground);
+            foreach (var (i, j) in done) { Span(line, i, j); SpanLinks.Remove(Key(line[i], line[j])); tun++; }
+            var dals = BoreSearch(line, Plain, Step, Inner, Road, Ground, true);
+            foreach (var (i, j) in dals) { Span(line, i, j); SpanLinks.Add(Key(line[i], line[j])); brug++; }
+        }
+        // het terrein blijft; de wegvakken lezen hun hoogte uit RoadH (G), de hoogtefunctie legt het wegdek en het talud erop
+        foreach (int c in new List<int>(RoadH.Keys)) if (!IsWalk(c)) RoadH.Remove(c);   // (de vakken in een tunnel of onder een brug zijn weer terrein)
+        foreach (var kv in RoadH) { Touch(kv.Key); foreach (int j in Planet.Cells[kv.Key].nb) Touch(j); }
+        return RoadH.Count + " wegvakken op hooguit " + Mathf.RoundToInt(MaxGrade * 100f) + "%, " + tun + " tunnels, " + brug + " bruggen";
+    }
     // voor de test: de steilste helling tussen twee verbonden wegvakken (als fractie), en hoeveel verbindingen steiler zijn dan MaxGrade
     public static (float max, int over, int total) GradeStats() => GradeStats(null);
     public static (float max, int over, int total) GradeStats(System.Text.StringBuilder detail)

@@ -11,7 +11,10 @@ public static partial class PlanetCity
     // hoogte met een stenen sokkel tot op het maaiveld; weg- en padvakken volgen de helling naar hun buren.
     public static readonly Dictionary<int, float> Terr = new Dictionary<int, float>();
     public const float TerrTop = 90f, TerrLow = -12f;   // bergen tot 90 m (rots en sneeuw, PlanetNature.cs); afgraven kan tot 12 m onder het gewone maaiveld
-    public static float G(int i) => LakeG(i, Terr.TryGetValue(i, out var h) ? h : 0f);   // een meer ligt vanzelf onder het zeeniveau (PlanetNature.cs)
+    // Nieuwe opbouw: een wegvak met een profielhoogte (RoadH) geeft die als G (alles wat de weghoogte leest blijft werken); het
+    // terrein zelf (Terrain) blijft onaangeroerd en is de basis voor de hoekpunten en de hoogtefunctie.
+    public static float G(int i) => RoadH.Count > 0 && RoadH.TryGetValue(i, out var rh) ? rh : Terrain(i);
+    public static float Terrain(int i) => LakeG(i, Terr.TryGetValue(i, out var h) ? h : 0f);   // een meer ligt vanzelf onder het zeeniveau (PlanetNature.cs)
     public static bool Plateau(int i) => Cells.TryGetValue(i, out var l) && l.Count > 0 && !IsWalk(i) && !OpenGround(l) && !PathHalf(i) && (RoadShape || !IsHalf(i) || HalfBuilt(i));   // zonder terrein door wegen is een half wegvak met alleen groen geen plaat (die stak over de weg uit); met een gebouw wel (anders zweeft het)
     static bool HalfBuilt(int i) { var l = Cells[i]; for (int k = 1; k < l.Count; k++) if (l[k] != "park" && l[k] != "bos") return true; return false; }   // bomen, meren en grachten liggen in het terrein (PlanetNature.cs)
     public static bool SetTerr(int i, float h)   // geeft true als de hoogte echt veranderde
@@ -106,9 +109,9 @@ public static partial class PlanetCity
         Topo(); int a = cnA[i][k], b = cnB[i][k];
         if (RoadShape && RoadCorner(i, a, b, out float rh)) return rh;
         bool qi = Quay(i), qa = Quay(a), qb = Quay(b); DamSkip(i, a, b, ref qi, ref qa, ref qb);   // een gracht heeft kademuren: de buren lopen niet naar de bodem af; een weg over een meer is een dam (PlanetNature.cs)
-        if (carved.Count == 0 && !qi && !qa && !qb) return Mathf.Min(G(i), Mathf.Min(G(a), G(b)));
-        float h = float.MaxValue; if (!carved.Contains(i) && !qi) h = G(i); if (!carved.Contains(a) && !qa) h = Mathf.Min(h, G(a)); if (!carved.Contains(b) && !qb) h = Mathf.Min(h, G(b));
-        if (h == float.MaxValue) h = Mathf.Min(G(i), Mathf.Min(G(a), G(b)));
+        if (carved.Count == 0 && !qi && !qa && !qb) return Mathf.Min(Terrain(i), Mathf.Min(Terrain(a), Terrain(b)));   // (het terrein: de weg zelf komt uit de hoogtefunctie)
+        float h = float.MaxValue; if (!carved.Contains(i) && !qi) h = Terrain(i); if (!carved.Contains(a) && !qa) h = Mathf.Min(h, Terrain(a)); if (!carved.Contains(b) && !qb) h = Mathf.Min(h, Terrain(b));
+        if (h == float.MaxValue) h = Mathf.Min(Terrain(i), Mathf.Min(Terrain(a), Terrain(b)));
         return h;
     }
     // Een hoekpunt waar twee verbonden gewone weg- of padvakken samenkomen ligt op de weg (het gemiddelde van die vakken: de weg loopt

@@ -112,6 +112,7 @@ public static partial class PlanetCity
     {
         var c = Planet.Cells[i]; int m = c.corners.Length;
         if (levelled.Contains(i)) { float s = 0f; for (int k = 0; k < m; k++) s += CornerBase(i, k); return s / m + CenterOfs1(i); }
+        if (RoadH.Count > 0 && IsWalk(i)) return Terrain(i) + CenterOfs1(i);   // nieuwe opbouw: het terrein onder de weg; de weg zelf komt uit de hoogtefunctie
         float hc = G(i) + CenterOfs1(i);
         if (IsWalk(i) && !carved.Contains(i)) for (int k = 0; k < m; k++) hc = Mathf.Min(hc, CornerBase(i, k));
         return hc;
