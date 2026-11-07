@@ -297,6 +297,7 @@ public static partial class PlanetCity
         foreach (long k in TunnelLinks)   // (ook een tunnel: de weg helt van het portaalvak de berg in)
         {
             int a0 = (int)(k >> 20), b0 = (int)(k & 0xFFFFF); if (!IsBore(a0, b0) || !IsWalk(a0) || !IsWalk(b0)) continue;
+            if (RoadH.Count > 0 && SpanLinks.Contains(k)) continue;   // nieuwe opbouw: het dek van een dalbrug loopt tot het hart, de grond ervoor blijft liggen
             foreach (var (e, oe) in new[] { (a0, b0), (b0, a0) })
             {
                 Vector3 de = Planet.Cells[e].dir, dO = Planet.Cells[oe].dir; float L = Vector3.Angle(de, dO) * Mathf.Deg2Rad * Planet.R, t = FlatL * 0.55f / L;

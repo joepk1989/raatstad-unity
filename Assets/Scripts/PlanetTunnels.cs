@@ -22,7 +22,8 @@ public static partial class PlanetCity
     // onder de rechte lijn tussen de randen (en is het stuk niet langer dan SpanMax), dan gaat de weg er met een brug overheen: een
     // lange verbinding van landhoofd tot landhoofd (TunnelLinks plus SpanLinks), het dal eronder blijft terrein. Getekend als
     // betonnen dek met borstwering, landhoofden en zeshoekige pijlers tot op het maaiveld (SpanMesh).
-    const float SpanClear = 0.8f, SpanMax = 260f;
+    static float SpanClear => RoadH.Count > 0 ? 1.6f : 0.8f;   // nieuwe opbouw: het dek (1,3 m dik) blijft boven het terrein, dat wordt niet meer verlaagd
+    const float SpanMax = 260f;
     static float SpanNeed => DragUnder ? StepH : LevelH;
     // stap k → k+1 van een rechte lijn: een buur, of schuin (90°) over een hoek
     static bool LineStep(int a, int b) => IsNeighbour(a, b) || System.Array.IndexOf(Planet.Cells[a].across, b) >= 0;
@@ -320,12 +321,13 @@ public static partial class PlanetCity
     {
         Vector3 dA = Planet.Cells[a].dir, dB = Planet.Cells[b].dir, n = Vector3.Cross(dA, dB).normalized;
         float L = Vector3.Angle(dA, dB) * Mathf.Deg2Rad * Planet.R;
-        return new SpanC { a = a, b = b, dA = dA, eA = Vector3.Cross(n, dA).normalized, n = n, L = L, ha = ha, hb = hb, hw = hw, s0 = FlatL * 0.55f, s1 = L - FlatL * 0.55f };
+        bool full = RoadH.Count > 0;   // nieuwe opbouw: het dek van hart tot hart, het landhoofd op het hart van het landhoofdvak (geen opgehoogde grond ervoor)
+        return new SpanC { a = a, b = b, dA = dA, eA = Vector3.Cross(n, dA).normalized, n = n, L = L, ha = ha, hb = hb, hw = hw, s0 = full ? 0f : FlatL * 0.55f, s1 = full ? L : L - FlatL * 0.55f };
     }
     // ligt wereldpunt w onder het dek van een brug over een dal (voorbij de landhoofden)? Dan hooguit tot 20 cm onder de onderkant.
     static bool SpanBottom(Vector3 w, out float bottom)
     {
-        bottom = 0f; if (!spanNear.TryGetValue(Planet.Nearest(w), out var sl)) return false; Vector3 d = w.normalized; bool hit = false;
+        bottom = 0f; if (RoadH.Count > 0 || !spanNear.TryGetValue(Planet.Nearest(w), out var sl)) return false; Vector3 d = w.normalized; bool hit = false;
         foreach (int si in sl)
         {
             var q = spans[si]; SpanLocal(q, d, out float s, out float x); if (s <= q.s0 || s >= q.s1 || Mathf.Abs(x) > q.hw + 0.6f) continue;
