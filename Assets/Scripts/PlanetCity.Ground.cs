@@ -203,7 +203,9 @@ public static partial class PlanetCity
                     void Emit2(Vector3 P0, Vector3 P1, Vector3 P2, float h0, float h1, float h2, bool steep)   // steep: op de schuine kant van een weg (gras, of aarde als het steiler is dan 40°)
                     {
                         string tag = null; float up = Mathf.Abs(Vector3.Dot(Vector3.Cross(P1 - P0, P2 - P0).normalized, c.dir));
-                        if (steep) { if (up < SteepUp) tag = "aarde"; }   // een talud is gras, alleen waar het steiler is dan 40° kale aarde
+                        float hdif = Mathf.Max(h0, Mathf.Max(h1, h2)) - Mathf.Min(h0, Mathf.Min(h1, h2));
+                        if (RoadH.Count > 0 && up < 0.12f && hdif > 1.5f) tag = "sokkel";   // keermuur (nieuwe opbouw): een loodrechte kant van meer dan anderhalve meter is steen
+                        else if (steep) { if (up < SteepUp) tag = "aarde"; }   // een talud is gras, alleen waar het steiler is dan 40° kale aarde
                         else if (!special && (Mathf.Max(h0, Mathf.Max(h1, h2)) > 0.03f || Mathf.Min(h0, Mathf.Min(h1, h2)) < -0.03f))   // verhoogd: kleur naar de hoogte, aarde waar het steiler is dan zo'n 45°
                             tag = up < 0.72f ? "aarde" : "t" + Mathf.Clamp(Mathf.FloorToInt((h0 + h1 + h2) / 9f), 0, 29);
                         if (!steep) tag = NatureTag(i, tag, h0, h1, h2, up);   // rots, sneeuw, strand en zeebodem (PlanetNature.cs)

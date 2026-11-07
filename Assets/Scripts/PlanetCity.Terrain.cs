@@ -206,7 +206,7 @@ public static partial class PlanetCity
             // ook op EndSlack voorbij elk eind: daar houdt het stuk op (GroundField), zonder kop is dat een klif (landhoofd, portaal); anders
             // liep de mesh van het eind schuin naar de verste hoek van de veelhoek en week hij meters van de hoogtefunctie af
             // en op het bereik van het veld (FieldReach) naast het stuk: verder reikt het talud niet, een hoger verschil is daar een klif
-            var fs = new List<Lin> { T - Lin.C(q.hw), T + Lin.C(q.hw), toeP, toeM, S, S - Lin.C(len), S + Lin.C(dz), S - Lin.C(len + dz), S + Lin.C(EndSlack + 0.02f), S - Lin.C(len + EndSlack + 0.02f), T - Lin.C(q.hw + FieldReach + 0.02f), T + Lin.C(q.hw + FieldReach + 0.02f) };   // (2 cm voorbij de grens: op de grens zelf telt het stuk nog mee, de wand zit ertussen)
+            var fs = new List<Lin> { T - Lin.C(q.hw), T + Lin.C(q.hw), toeP, toeM, S, S - Lin.C(len), S + Lin.C(dz), S - Lin.C(len + dz), S + Lin.C(EndSlack + 0.02f), S - Lin.C(len + EndSlack + 0.02f), T - Lin.C(q.hw + FieldReach + 0.02f), T + Lin.C(q.hw + FieldReach + 0.02f), T - Lin.C(q.hw + 0.02f), T + Lin.C(q.hw + 0.02f) };   // (ook 2 cm buiten de wegrand: de keermuur)   // (2 cm voorbij de grens: op de grens zelf telt het stuk nog mee, de wand zit ertussen)
             lines.AddRange(fs);
         }
         foreach (var q in capsUse)
@@ -219,7 +219,7 @@ public static partial class PlanetCity
                 Lin N = new Lin { a = Vector3.Dot(o3 - q.c, n), x = Vector3.Dot(c.east, n), y = Vector3.Dot(c.north, n) };
                 Vector3 pn = Vector3.Cross(q.dir, n).normalized; Lin P = new Lin { a = Vector3.Dot(o3 - q.c, pn), x = Vector3.Dot(c.east, pn), y = Vector3.Dot(c.north, pn) };
                 Lin toe = N - Lin.C(q.hw) - (B - Lin.C(q.h - 0.05f)) * (sg / FK);   // de voet: waar wegdek + talud het terrein raakt
-                var fc = new List<Lin> { N - Lin.C(q.hw), toe, N, P, N - Lin.C(q.hw + FieldReach + 0.02f) };   // (ook het bereik van het veld: daarbuiten een klif)
+                var fc = new List<Lin> { N - Lin.C(q.hw), toe, N, P, N - Lin.C(q.hw + FieldReach + 0.02f), N - Lin.C(q.hw + 0.02f) };   // (ook het bereik van het veld: daarbuiten een klif)
                 lines.AddRange(fc);   // de zijde, de voet, de graat naar de hoek, de vouw in een bocht
             }
         }
@@ -330,7 +330,7 @@ public static partial class PlanetCity
     }
     // de helling van de kant langs een weg op een niveau (hoogte per meter opzij; 1 = 45°), in te stellen met het schuifje Talud
     public static float FieldK = 1f / 1.5f;   // standaard 1 op 1,5 (34°), zoals het model overpass_path
-    static float FieldReach => Mathf.Min(14f / FK, 40f);
+    static float FieldReach => Mathf.Min(14f / FK, 40f);   // (geprobeerd: 60 m bij een profiel, zodat een dijk doorloopt tot het terrein; 7× zo traag en nog steeds dijken van 50 m: dat hoort een brug of keermuur te zijn, stap 4)
     static float FK => RoadSlopes ? FieldK : 8f;   // de steilte van de kant; Talud uit: bijna loodrecht (83°), geen sprong (een sprong kan het raster niet tekenen: gaten)   // tot zover naast de weg kan de grond nog omhoog of omlaag lopen (45°: twee niveaus plus de marge)
     public static void SetFieldK(float k)
     {
@@ -390,6 +390,8 @@ public static partial class PlanetCity
                 float hr = Mathf.Lerp(q.ha, q.hb, Mathf.Clamp01(u)), rise = Mathf.Max(0f, lat - q.hw) * FK;   // de kant
                 if (lat <= q.hw) onLevelH = Mathf.Min(onLevelH, hr);
                 if (!RoadShape && pass == 0) continue;   // terrein door wegen uit: niets opvullen (geen dijk), wel afgraven met een talud
+                // keermuur (nieuwe opbouw): reikt het talud niet tot het terrein, dan een wand op de wegrand in plaats van een wand ver weg op het bereik
+                if (RoadH.Count > 0 && Mathf.Abs(hr - base_) > FieldReach * FK) { if (lat > q.hw) continue; rise = 0f; }
                 if (pass == 0 && hr > base_ + 0.01f) { float v = hr - rise - 0.05f; if (v > h) { h = v; slope = rise > 0f; } }        // talud (5 cm onder het wegdek: geen streepje gras op de weg)
                 else if (pass == 1 && hr - 0.05f < base_) { float v = hr + rise - 0.05f; lowRoad = Mathf.Min(lowRoad, hr); if (v < h) { h = v; slope = rise > 0f; } }   // uitgraving: pas als het wegdek (5 cm onder de weg) onder het terrein ligt, dan loopt het veld zonder sprong door
             }
@@ -397,6 +399,7 @@ public static partial class PlanetCity
             {
                 float rise = Mathf.Max(0f, CapDist(q, w) - q.hw) * FK; if (rise > FieldReach * FK) continue; if (rise <= 0f) onLevelH = Mathf.Min(onLevelH, q.h);
                 if (!RoadShape && pass == 0) continue;
+                if (RoadH.Count > 0 && Mathf.Abs(q.h - base_) > FieldReach * FK) { if (rise > 0f) continue; }   // keermuur om de kop
                 if (pass == 0 && q.h > base_ + 0.01f) { float v = q.h - rise - 0.05f; if (v > h) { h = v; slope = rise > 0f; } }   // een kop ligt net als de weg 5 cm onder het wegdek
                 else if (pass == 1 && q.h - 0.05f < base_) { float v = q.h + rise - 0.05f; if (v < h) { h = v; slope = rise > 0f; } }
             }
