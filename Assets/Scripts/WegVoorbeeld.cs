@@ -360,7 +360,7 @@ public class WegVoorbeeld : MonoBehaviour
     IEnumerator Scan(int home, float R, string name, List<int> centers = null, float r = 0f)
     {
         // scannen: punten om de 0,7 m over het hele gebied (of rond elk van de centers, straal r)
-        var foutA = new List<(Vector3 p, float d)>(); var foutB = new List<Vector3>(); var foutC = new List<(Vector3 p, float d)>(); int nA = 0, nRoad = 0, nGround = 0, nC = 0; float maxC = 0f; string worstC = "";
+        var foutA = new List<(Vector3 p, float d)>(); var foutAHit = new Dictionary<Vector3, string>(); var foutB = new List<Vector3>(); var foutC = new List<(Vector3 p, float d)>(); int nA = 0, nRoad = 0, nGround = 0, nC = 0; float maxC = 0f; string worstC = "";
         var discs = new List<(int c, float R)>(); if (centers == null) discs.Add((home, R)); else foreach (int cc in centers) discs.Add((cc, r));
         foreach (var disc in discs)
         {
@@ -374,7 +374,7 @@ public class WegVoorbeeld : MonoBehaviour
             bool road = Physics.Raycast(top, -dir, out RaycastHit hr, 180f, 1 << Layers.Weg, QueryTriggerInteraction.Ignore);
             bool ground = Physics.Raycast(top, -dir, out RaycastHit hg, 180f, (1 << Layers.Bodem) | (1 << Layers.Water), QueryTriggerInteraction.Ignore);
             float hRoad = road ? hr.point.magnitude - Planet.R : 0f, hGround = ground ? hg.point.magnitude - Planet.R : 0f;
-            if (road) { nRoad++; if (ground && hGround > hRoad + 0.03f && hGround < hRoad + 4f) { nA++; foutA.Add((dir, hGround - hRoad)); } }   // (meer dan 4 m erboven: een tunnel of brug)
+            if (road) { nRoad++; if (ground && hGround > hRoad + 0.03f && hGround < hRoad + 4f) { nA++; foutA.Add((dir, hGround - hRoad)); foutAHit[dir] = hg.collider.name + " (laag " + hg.collider.gameObject.layer + ")"; } }   // (meer dan 4 m erboven: een tunnel of brug)
             if (!road && ground && hg.collider.gameObject.layer == Layers.Bodem)   // C: de mesh tegenover de hoogtefunctie H (stap 2 van Terrein v2 bouwt de mesh uit H: dan 0)
             {
                 nC++; float hH = PlanetCity.H(dir), lo = hH, hi = hH; foreach (var sd in new[] { e, -e, n, -n }) { float hs = PlanetCity.H((dir * Planet.R + sd * 0.05f).normalized); lo = Mathf.Min(lo, hs); hi = Mathf.Max(hi, hs); } float dh = hGround < lo ? lo - hGround : hGround > hi ? hGround - hi : 0f; if (dh > 0.1f) { foutC.Add((dir, dh)); if (dh > maxC) { maxC = dh; worstC = "mesh " + hGround.ToString("0.00") + " (" + hg.collider.name + ") H " + hH.ToString("0.00") + " vak " + Planet.Nearest(dir * Planet.R) + " | " + PlanetCity.HInfo(dir); } }
@@ -415,7 +415,7 @@ public class WegVoorbeeld : MonoBehaviour
         var lb = new List<KeyValuePair<int, (int n, Vector3 p)>>(perB); lb.Sort((p1, p2) => p2.Value.n.CompareTo(p1.Value.n));
         scanWorst = lb.Count > 0 ? lb[0].Key : la.Count > 0 ? la[0].Key : -1;
         for (int k = 0; k < Mathf.Min(3, la.Count); k++) { var pA = la[k].Value.p; Vector3 tp = pA * (Planet.R + 60f); Physics.Raycast(tp, -pA, out RaycastHit h1, 80f, 1 << Layers.Weg); Physics.Raycast(tp, -pA, out RaycastHit h2, 80f, 1 << Layers.Bodem); bouw.Append("  punt ").Append(k + 1).Append(": weg ").Append((h1.point.magnitude - Planet.R).ToString("0.00")).Append(" (").Append(h1.collider != null ? h1.collider.transform.parent?.name + "/" + h1.collider.name : "-").Append("), grond ").Append((h2.point.magnitude - Planet.R).ToString("0.00")).Append("; ").AppendLine(PlanetCity.GroundInfo(pA)); }
-        foreach (var kv in la.GetRange(0, Mathf.Min(12, la.Count))) bouw.Append("  A vak ").Append(kv.Key).Append(": ").Append(kv.Value.n).Append(" punten, tot ").Append(kv.Value.max.ToString("0.00")).Append(" m; ").Append(Desc(kv.Key)).AppendLine();
+        foreach (var kv in la.GetRange(0, Mathf.Min(12, la.Count))) bouw.Append("  A vak ").Append(kv.Key).Append(": ").Append(kv.Value.n).Append(" punten, tot ").Append(kv.Value.max.ToString("0.00")).Append(" m; ").Append(Desc(kv.Key)).Append(foutAHit.TryGetValue(kv.Value.p, out var hitName) ? " | geraakt: " + hitName : "").AppendLine();
         if (dumpB != null) { for (int k = 0; k < Mathf.Min(3, lb.Count); k++) dumpB.Append("GAT ").AppendLine(PlanetCity.Ground2Dump(lb[k].Key)); File.WriteAllText(Path.Combine(Dir, name + "_dump.txt"), dumpB.ToString()); dumpB = null; }
         foreach (var kv in lb.GetRange(0, Mathf.Min(12, lb.Count))) bouw.Append("  B vak ").Append(kv.Key).Append(": ").Append(kv.Value.n).Append(" punten; ").Append(Desc(kv.Key)).AppendLine();
         File.WriteAllText(Path.Combine(Dir, name + ".txt"), bouw.ToString());
@@ -940,7 +940,7 @@ public class WegVoorbeeld : MonoBehaviour
             case 1: Terrein((x, y) => 20f + 0.25f * x, 120f); Lijn("weg op een helling", Go(home, 0f, -30f), Go(home, 0f, 30f)); break;   // 1. één weg op een helling van 0,35 m/m
             case 2: Terrein((x, y) => 8f * Mathf.Exp(-x * x / (20f * 20f)), 120f); Lijn("insnijding", Go(home, 0f, -75f), Go(home, 0f, 75f)); break;   // 2. over een heuvel van 8 m (flank tot 34%: de weg op 10% snijdt er tot zo'n 4 m in)
             case 3: Terrein((x, y) => 8f - 8f * Mathf.Exp(-x * x / (20f * 20f)), 120f); Lijn("dijk", Go(home, 0f, -75f), Go(home, 0f, 75f)); break;   // 3. over een laagte van 8 m (de weg op 10% ligt er tot zo'n 4 m boven: een dijk)
-            case 4: Terrein((x, y) => 8f * Mathf.Exp(-(x + 45f) * (x + 45f) / (25f * 25f)) - 8f * Mathf.Exp(-(x - 45f) * (x - 45f) / (25f * 25f)), 140f); Lijn("keermuur", Go(home, 0f, -105f), Go(home, 0f, 105f)); break;   // 4. heuvel van 8 m en laagte van 8 m
+            case 4: Terrein((x, y) => 20f + (Mathf.Abs(x + 45f) < 14f ? 14f : 0f) - (Mathf.Abs(x - 45f) < 14f ? 14f : 0f), 140f); Lijn("keermuur", Go(home, 0f, -105f), Go(home, 0f, 105f)); break;   // 4. op 20 m een blok van 14 m hoog en een kuil van 14 m diep, elk 28 m breed (hele vakken; de hellingbegrenzer verdeelt het verschil over de vakken ervoor en erna, zo blijft er zo'n 7 m over: bak en sokkel): de weg op 10% kan ze niet volgen, dus een bak en een sokkel van zo'n 7 m (6 tot 9 m: wanden)
             case 5: Terrein((x, y) => 20f - 20f * Mathf.Exp(-x * x / (40f * 40f)), 160f); Lijn("dalbrug", Go(home, 0f, -120f), Go(home, 0f, 120f)); break;   // 5. laagte van 20 m
             case 6: Terrein((x, y) => 30f * Mathf.Exp(-x * x / (40f * 40f)), 160f); Lijn("tunnel", Go(home, 0f, -120f), Go(home, 0f, 120f)); break;   // 6. berg van 30 m
             case 7: Terrein((x, y) => 20f + 0.2f * x + 0.1f * y, 140f); Lijn("arm 1", Go(home, 0f, -60f), Go(home, 0f, 60f)); Lijn("arm 2", Go(home, D90, -60f), Go(home, D90, 60f)); break;   // 7. kruispunt op een helling
@@ -957,6 +957,7 @@ public class WegVoorbeeld : MonoBehaviour
             yield return Shot("ontwerp" + nr + "_zij", mid, Dh(mid, D90), 60f, 18f);
             yield return Shot("ontwerp" + nr + "_schuin", mid, Quaternion.AngleAxis(35f, Planet.Cells[mid].dir) * Dh(mid, 0f), 70f, 30f);
             yield return Shot("ontwerp" + nr + "_laag", centers[Mathf.Min(1, centers.Count - 1)], Dh(mid, 0f), 25f, 8f);
+            if (nr == 4) { int bk = Go(home, 0f, -45f), br = Go(home, 0f, 45f); yield return Shot("ontwerp4_bak", bk, Quaternion.AngleAxis(40f, Planet.Cells[bk].dir) * Dh(bk, 0f), 45f, 22f); yield return Shot("ontwerp4_brug", br, Quaternion.AngleAxis(-50f, Planet.Cells[br].dir) * Dh(br, 0f), 70f, 12f); }   // de bak door het blok en de brug over de kuil
             int e0 = centers[0], e1 = centers[centers.Count - 1];   // de twee einden van dichtbij, van opzij, en hun driehoekjes
             {   // wat ligt er voorbij elk eind: stralen langs de as van de weg (afstand, wat geraakt, hoogte, en H)
                 var pr = new System.Text.StringBuilder();
