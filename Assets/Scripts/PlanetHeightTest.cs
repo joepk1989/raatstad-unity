@@ -38,6 +38,35 @@ public static partial class PlanetCity
         prog?.Invoke(1f, "Klaar");
     }
 
+    // Natuurtest: de natuurplaneet (het platteland van Hele planeet vol: heuvels, bergketens, bossen en meren, zonder dorpen) met daarop
+    // dezelfde 30 wegen als de hoogtetest. Realistische situaties in plaats van de kunstlandschappen; dit is de maat voor het terrein
+    // rond wegen (docs/terrein-wegen-oplossing.md, test 11).
+    public static System.Collections.IEnumerator NatuurTestSteps(System.Action<float, string> prog, int seed = 11)
+    {
+        ClearAll(); FillTowns.Clear(); var rnd = new System.Random(seed); int n = Planet.Cells.Length;
+        prog?.Invoke(0f, "Natuurplaneet"); yield return null;
+        for (int c = 0; c < n; c++)
+        {
+            if (Planet.IsPole(c)) continue; Vector3 d = Planet.Cells[c].dir;
+            float flag = 1e9f; foreach (int st in Planet.Starts) flag = Mathf.Min(flag, Mathf.Acos(Mathf.Clamp(Vector3.Dot(d, Planet.Cells[st].dir), -1f, 1f)));
+            flag *= Planet.R / 15.6f; if (flag < 2.5f) continue;
+            float k = Mathf.Clamp01((flag - 4.5f) / 5f);   // rond de startpunten vlak, daarbuiten het volle reliëf (zoals rond de stadjes)
+            float h = Mathf.Max(0f, (Noise(d, 1f / 140f, 0f) - 0.4f) / 0.6f) * 30f * k;
+            float mt = MountainMask(d), ridge = 1f - Mathf.Abs(2f * Noise(d, 1f / 110f, 17f) - 1f);
+            if (mt > 0f) h = Mathf.Max(h, Mathf.Pow(mt, 0.7f) * (55f + 45f * ridge) * k * k);
+            if (h > 0.3f) SetTerr(c, h);
+            if (h > TreeLine) continue;
+            float wet = Noise(d, 1f / 90f, 37f), wood = Noise(d, 1f / 70f, 71f), r = (float)rnd.NextDouble();
+            if (h < 0.5f && wet > 0.66f && k > 0.4f) { SetTerr(c, SeaLevel - 1f - (wet - 0.66f) * 22f * k); continue; }
+            if (h < 0.5f && wet > 0.6f && k > 0.4f) { SetTerr(c, SeaLevel + 0.3f); continue; }
+            else if (wood > 0.56f) { if (r < 0.85f) Place(c, "park"); }
+            else if (wood > 0.46f && r < 0.35f) Place(c, "park");
+            if (c % 4000 == 3999) { prog?.Invoke(0.5f * c / n, "Natuurplaneet"); yield return null; }
+        }
+        TouchAll();
+        yield return HeightTestRoads(prog);
+        prog?.Invoke(1f, "Klaar");
+    }
     static float Smooth(float a, float b, float v) => Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(a, b, v));
     static float Cone(float x, float y, float cx, float cy, float rad, float top, float pow = 1f) => top * Mathf.Pow(Mathf.Clamp01(1f - Mathf.Sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy)) / rad), pow);
 

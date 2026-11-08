@@ -58,6 +58,7 @@ public class WegVoorbeeld : MonoBehaviour
         if (mode == "mijnstad") { yield return MijnStad(); yield break; }
         if (mode.StartsWith("melding")) { yield return Melding(mode); yield break; }
         if (mode == "hoogtetest") { yield return Hoogtetest(); yield break; }
+        if (mode == "natuurtest") { yield return Hoogtetest(true); yield break; }   // de natuurplaneet met de 30 wegen (test 11 van het ontwerp)
         if (mode.StartsWith("ontwerp")) { yield return Ontwerp(home, mode); yield break; }
         if (mode == "zee") { yield return ZeeTest(home); yield break; }
         if (mode == "startnaden") { yield return StartNaden(); yield break; }
@@ -980,23 +981,24 @@ public class WegVoorbeeld : MonoBehaviour
         }
         File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true;
     }
-    IEnumerator Hoogtetest()
+    IEnumerator Hoogtetest(bool natuur = false)
     {
+        string nm = natuur ? "natuurtest" : "hoogtetest";
         var log = new System.Text.StringBuilder(); float t0 = Time.realtimeSinceStartup;
         void Fase(string w) { File.AppendAllText(Path.Combine(Dir, "fase.txt"), (Time.realtimeSinceStartup - t0).ToString("0.0") + " s: " + w + "\n"); }
-        Fase("start"); yield return PlanetCity.HeightTestSteps((f, w) => Fase(w + " " + f.ToString("0.00"))); Fase("planeet en wegen");
+        Fase("start"); yield return natuur ? PlanetCity.NatuurTestSteps((f, w) => Fase(w + " " + f.ToString("0.00"))) : PlanetCity.HeightTestSteps((f, w) => Fase(w + " " + f.ToString("0.00"))); Fase("planeet en wegen");
         log.Append("klaar in ").Append((Time.realtimeSinceStartup - t0).ToString("0.0")).Append(" s; wegen ").Append(PlanetCity.HeightTestRoadCount).AppendLine(" van startpunt naar startpunt aangekomen");
         int nt = 0, nb = 0, nr = 0; foreach (long k in PlanetCity.TunnelLinks) { int a = (int)(k >> 20), b = (int)(k & 0xFFFFF); if (PlanetCity.IsSpan(a, b)) nb++; else if (PlanetCity.IsBore(a, b)) nt++; }
         foreach (var kv in PlanetCity.Cells) if (PlanetCity.IsRoad(kv.Key)) nr++;
         log.Append(nr).Append(" wegvakken, ").Append(nt).Append(" tunnels, ").Append(nb).AppendLine(" dalbruggen");
         foreach (string p in PlanetCity.CheckGraph()) log.Append("  GRAAF ").AppendLine(p);
         PlanetCity.Rebuild(); Fase("rebuild 1"); PlanetCity.Rebuild(); PlanetCity.RebuildGrid(); yield return null; yield return null; Fase("rebuild 2");
-        File.WriteAllText(Path.Combine(Dir, "hoogtetest.txt"), log.ToString());
+        File.WriteAllText(Path.Combine(Dir, nm + ".txt"), log.ToString());
         var centers = new List<int>(); foreach (var kv in PlanetCity.Cells) { if (!PlanetCity.IsRoad(kv.Key)) continue; bool far = true; foreach (int c in centers) if (Vector3.Distance(Planet.Cells[c].dir, Planet.Cells[kv.Key].dir) * Planet.R < 45f) { far = false; break; } if (far) centers.Add(kv.Key); }
-        Hc = centers[0]; bouw = new System.Text.StringBuilder(); Fase("scan"); yield return Scan(centers[0], 0f, "hoogtetest_scan", centers, 24f); int worst = scanWorst; Fase("scan klaar"); { int nu = 0; foreach (var kv in PlanetCity.RoadH) if (PlanetCity.Underground(kv.Key) && nu < 3) { nu++; yield return Shot("hoogtetest_ondergronds" + nu, kv.Key, Dh(kv.Key, 0.7f), 6f, 4f); } }   // de ondergrondse kruispunten (nieuwe opbouw)
+        Hc = centers[0]; bouw = new System.Text.StringBuilder(); Fase("scan"); yield return Scan(centers[0], 0f, nm + "_scan", centers, 24f); int worst = scanWorst; Fase("scan klaar"); { int nu = 0; foreach (var kv in PlanetCity.RoadH) if (PlanetCity.Underground(kv.Key) && nu < 3) { nu++; yield return Shot("hoogtetest_ondergronds" + nu, kv.Key, Dh(kv.Key, 0.7f), 6f, 4f); } }   // de ondergrondse kruispunten (nieuwe opbouw)
         { int nl2 = 0; foreach (var kv in PlanetCity.RoadH) { if (nl2 >= 3) break; foreach (int p in PlanetCity.Partners(kv.Key)) if (PlanetCity.IsSpan(kv.Key, p)) { nl2++; Vector3 fw = (Planet.Cells[p].dir - Planet.Cells[kv.Key].dir).normalized; yield return Shot("hoogtetest_landhoofd" + nl2, kv.Key, Quaternion.AngleAxis(50f, Planet.Cells[kv.Key].dir) * fw, 28f, 25f); break; } } }   // landhoofden van dalbruggen
-        for (int s = 0; s < 4; s++) yield return Shot("hoogtetest_" + s, Planet.Starts[s], Dh(Planet.Starts[s], 0.4f), 260f, 50f);
-        log.Append(bouw.ToString()); File.WriteAllText(Path.Combine(Dir, "hoogtetest.txt"), log.ToString());
+        for (int s = 0; s < 4; s++) yield return Shot(nm + "_" + s, Planet.Starts[s], Dh(Planet.Starts[s], 0.4f), 260f, 50f);
+        log.Append(bouw.ToString()); File.WriteAllText(Path.Combine(Dir, nm + ".txt"), log.ToString());
         File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar");
         Breng(worst >= 0 ? worst : Planet.Starts[0], worst >= 0 ? "Hier klopt het terrein nog niet" : "De hoogtetest met wegen");
     }
