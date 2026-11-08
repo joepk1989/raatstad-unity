@@ -189,14 +189,15 @@ public static partial class PlanetCity
         var wallT = new List<(float t, float h0, float h1, int side0)>();
         if (fld) foreach (var w in WallLins(c, ls, lc))
         {
-            float f1 = w.At(L1), f2 = w.At(L2); if ((f1 < 0f) == (f2 < 0f) || Mathf.Abs(f1 - f2) < 1e-6f) continue; float tw = f1 / (f1 - f2), dq = 0.04f / len;
+            float f1 = w.At(L1), f2 = w.At(L2); if ((f1 < 0f) == (f2 < 0f) || Mathf.Abs(f1 - f2) < 1e-6f) continue; float tw = f1 / (f1 - f2);
+            float sinA = Mathf.Abs(w.x * (L2.y - L1.y) - w.y * (L2.x - L1.x)) / (Mathf.Sqrt(w.x * w.x + w.y * w.y) * len), dq = Mathf.Min(0.5f, 0.04f / Mathf.Max(sinA, 0.08f)) / len;   // (een lijn die de rand scheef kruist: de sprong ligt langs de rand verder van de snijlijn, tot 50 cm)
             float lo = Mathf.Max(0f, tw - dq), hi = Mathf.Min(1f, tw + dq); if (hi - lo < 1e-6f) continue;
             float d0 = HAt(lo), d1 = HAt(hi); if (Mathf.Abs(d1 - d0) < 0.2f) continue; float mid = (d0 + d1) * 0.5f;
             for (int it = 0; it < 20; it++) { float m2 = (lo + hi) * 0.5f; if ((HAt(m2) > mid) == (d1 > d0)) hi = m2; else lo = m2; }
             float ts2 = (lo + hi) * 0.5f; if (ts2 < 1e-3f || ts2 > 1f - 1e-3f) continue;
             float hA = HAt2(ts2, 1e-3f), hB = HAt2(ts2, -1e-3f); if (Mathf.Abs(hA - hB) < 1e-3f) continue;   // (de twee kanten; welke eerst komt zegt d0)
             bool inFirst = Mathf.Abs(d0 - hA) < Mathf.Abs(d0 - hB);
-            ts.RemoveAll(t => t > 1e-3f && t < 1f - 1e-3f && Mathf.Abs(t - ts2) * len < 0.045f); ts.Add(ts2); wallT.Add((ts2, inFirst ? hA : hB, inFirst ? hB : hA, inFirst ? 1 : -1));
+            ts.RemoveAll(t => t > 1e-3f && t < 1f - 1e-3f && Mathf.Abs(t - ts2) < dq * 1.1f); ts.Add(ts2); wallT.Add((ts2, inFirst ? hA : hB, inFirst ? hB : hA, inFirst ? 1 : -1));
         }
         ts.Sort();
         foreach (float t in ts)
@@ -231,7 +232,7 @@ public static partial class PlanetCity
         for (int it = 0; it < 26; it++) { float a = lo + (hi - lo) / 3f, b = hi - (hi - lo) / 3f; if (Mathf.Abs(D(a)) < Mathf.Abs(D(b))) lo = a; else hi = b; }
         float tk = (lo + hi) * 0.5f; if (tk - t0 < 1e-4f || t1 - tk < 1e-4f) return;
         float dq = 0.02f / len, fa = f(Mathf.Max(t0, tk - dq)), fb = f(Mathf.Min(t1, tk + dq)); bool step = Mathf.Abs(fb - fa) > 0.15f;
-        outT.Add((tk, step));
+        outT.Add((tk, false));   // (sprongen zijn sinds de wandparen (EdgeProfile0) geen zaak van Kinks meer: een punt aan elke kant gaf splinters van 2 cm; een sprong die hier nog opduikt is een fout die de meting moet laten zien)
         Kinks(f, f0, fa, t0, Mathf.Max(t0, tk - dq), len, outT, depth + 1); Kinks(f, fb, f1, Mathf.Min(t1, tk + dq), t1, len, outT, depth + 1);
     }
     // De hoogtefunctie is een min/max van vlakken (hoogte als lineaire functie van de vlakke coördinaten): het basisterrein, per stuk
@@ -256,7 +257,7 @@ public static partial class PlanetCity
                 if (Mathf.Abs(tp) > q.hw + wo || sp < -EndSlack || sp > len + EndSlack) continue; res.Add(hr - Lin.C(0.05f)); continue;
             }
             Lin side = tp > q.hw ? (T - Lin.C(q.hw)) * FK : tp < -q.hw ? (Lin.C(-q.hw) - T) * FK : Lin.C(0f);
-            if (RoadH.Count > 0) { float ov = Mathf.Max(0f, Mathf.Max(-sp, sp - len)); if (ov > 0f && ov > Mathf.Abs(tp) - q.hw) side = (sp < 0f ? Lin.C(0f) - S : S - Lin.C(len)) * FK; }   // voorbij het eind: de kegel in de lengterichting
+            if (RoadH.Count > 0) { float ov = Mathf.Max(0f, Mathf.Max(-sp, sp - len)); bool hard = sp < 0f ? q.hardA : q.hardB; if (ov > 0f && !hard && ov > Mathf.Abs(tp) - q.hw) side = (sp < 0f ? Lin.C(0f) - S : S - Lin.C(len)) * FK; }   // voorbij het eind: de kegel in de lengterichting (niet aan een hard eind)
             res.Add(hr - side - Lin.C(0.05f)); res.Add(hr + side - Lin.C(0.05f));
         }
         foreach (var q in lc)
