@@ -11,11 +11,9 @@ public static class Babble
     // laat iemand praten; geeft de duur terug in seconden
     public static float Say(Person who, float dur, float pitch, bool hi)
     {
-        if (who == null || who.audio == null) return 0f;
-        AudioClip clip = Make(dur, pitch, hi, Random.Range(0, 100000));
-        if (!Muted) who.audio.PlayOneShot(clip);
-        Object.Destroy(clip, clip.length + 2f);
-        return clip.length;
+        // stemmen staan uit (8 november 2026): geen geluid meer, wel de duur, zodat praatjes, groeten en wachten op elkaar gelijk blijven
+        if (who == null) return 0f;
+        return hi ? 0.38f : Mathf.Clamp(dur, 0.4f, 5f) + 0.1f;
     }
 
     public static AudioClip Make(float dur, float pitch, bool hi, int seed)

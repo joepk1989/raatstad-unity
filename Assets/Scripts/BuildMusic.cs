@@ -39,8 +39,8 @@ public class BuildMusic : RenderedMusic
         public float Rand => (float)rnd.NextDouble();
         public void Add(double t0, float[] s, float pan)   // een geluidje op tijd t0 erbij (rond: wat over het eind gaat komt aan het begin)
         {
-            int i0 = (int)(t0 * SR); float pl = 1f - pan, pr = pan;
-            for (int j = 0; j < s.Length; j++) { int k = (i0 + j) % n; L[k] += s[j] * pl; R[k] += s[j] * pr; }
+            int i0 = (int)(t0 * SR), fade = SR * 6 / 1000; float pl = 1f - pan, pr = pan;
+            for (int j = 0; j < s.Length; j++) { int k = (i0 + j) % n; float g = s.Length - j < fade ? (s.Length - j) / (float)fade : 1f; L[k] += s[j] * pl * g; R[k] += s[j] * pr * g; }   // de laatste 6 ms naar nul: een klank die nog nagalmt wordt niet afgeknipt (geen tik)
         }
         // galm: twee vertragingen die naar elkaar terugkaatsen, twee rondes zodat het einde op het begin aansluit
         public float[] Finish(double dl, double dr, float fb, float wet)
