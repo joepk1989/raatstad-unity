@@ -452,7 +452,8 @@ public static partial class PlanetCity
         void Add(Lin f) { res.Add(f); grp?.Add(g); }
         foreach (var q in ls)
         {
-            if (!q.wall) continue; SegLins(c, q, out Lin T, out Lin S, out float len); Lin mT = Lin.C(0f) - T; g++;
+            SegLins(c, q, out Lin T, out Lin S, out float len); Lin mT = Lin.C(0f) - T; g++;
+            if (!q.wall) continue;   // (geprobeerd: de bereikgrens van een maaiveldstuk ook als wand; lijnen van twee groepen vlak bij elkaar gaven scheve wandquads. In plaats daarvan reikt het talud verder: FieldReach)
             Add(T - Lin.C(q.hw + WallOut)); Add(mT - Lin.C(q.hw + WallOut)); Add(Lin.C(-EndSlack) - S); Add(S - Lin.C(len + EndSlack));   // (de einden horen bij de strook, ze zijn geen wand: daar verschilt de hoogte niet)
             if (q.tap0) { Add(T - S - Lin.C(q.hw)); Add(mT - S - Lin.C(q.hw)); }
             if (q.tap1) { Add(T + S - Lin.C(q.hw + len)); Add(mT + S - Lin.C(q.hw + len)); }
@@ -460,7 +461,7 @@ public static partial class PlanetCity
         foreach (var q in lc) { if (!q.wall) continue; g++; foreach (var n in q.n) Add(new Lin { a = Vector3.Dot(o3 - q.c, n) - q.hw - q.wo, x = Vector3.Dot(c.east, n), y = Vector3.Dot(c.north, n) }); }
         return res;
     }
-    static float FieldReach => Mathf.Min(14f / FK, 40f);   // tot zover reikt een talud (14 m hoogteverschil). Nieuwe opbouw (ontwerp 8.3): een stuk is maaiveld tot 6 m hoogteverschil in het hart (SplitWalls), daarboven een wand (sokkel of bak), een brug of een tunnel; het talud van een maaiveldstuk mag verder reiken, zodat het ook dwars op een helling en in de kegel voorbij het eind het terrein haalt
+    static float FieldReach => RoadH.Count > 0 ? 20f / FK : Mathf.Min(14f / FK, 40f);   // tot zover reikt een talud (14 m hoogteverschil; met een profiel 20 m, zodat het ook in een steile dalwand onder een brug het terrein haalt: op de grens eindigt het anders hard). Nieuwe opbouw (ontwerp 8.3): een stuk is maaiveld tot 6 m hoogteverschil in het hart (SplitWalls), daarboven een wand (sokkel of bak), een brug of een tunnel; het talud van een maaiveldstuk mag verder reiken, zodat het ook dwars op een helling en in de kegel voorbij het eind het terrein haalt
     static float FK => RoadSlopes ? FieldK : 8f;   // de steilte van de kant; Talud uit: bijna loodrecht (83°), geen sprong (een sprong kan het raster niet tekenen: gaten)   // tot zover naast de weg kan de grond nog omhoog of omlaag lopen (45°: twee niveaus plus de marge)
     public static void SetFieldK(float k)
     {
@@ -525,7 +526,7 @@ public static partial class PlanetCity
                 else if (RoadH.Count > 0)   // maaiveldstuk (nieuwe opbouw): het talud opzij en als kegel voorbij het eind, zodat de grond zonder sprong overgaat in het volgende stuk, een sokkel of een bak; aan een hard eind (portaal) geen kegel
                 {
                     bool hard = u < 0f ? q.hardA : q.hardB;
-                    if (lat > q.hw + FieldReach || over > (hard ? EndSlack : FieldReach)) continue; rise = Mathf.Max(Mathf.Max(0f, lat - q.hw), hard ? 0f : over) * FK;
+                    if (lat > q.hw + FieldReach + wallBias || over > (hard ? EndSlack : FieldReach + wallBias)) continue; rise = Mathf.Max(Mathf.Max(0f, lat - q.hw), hard ? 0f : over) * FK;   // (op de bereikgrens eindigt het talud hard: een wand, zie WallLins)
                 }
                 else
                 {
@@ -541,7 +542,7 @@ public static partial class PlanetCity
             {
                 float cd = CapDist(q, w) - q.hw, rise = Mathf.Max(0f, cd) * FK;
                 if (q.wall) { if (cd > q.wo + wallBias) continue; rise = 0f; }   // sokkel- of bakkop (nieuwe opbouw): de strook tot wo (WallOut), daarbuiten het terrein, de wand is een eigen mesh
-                else if (rise > FieldReach * FK) continue;
+                else if (cd > FieldReach + (RoadH.Count > 0 ? wallBias : 0f)) continue;
                 if (cd <= 0f) onLevelH = Mathf.Min(onLevelH, q.h);
                 if (!RoadShape && pass == 0) continue;
                 if (pass == 0 && q.h > base_ + 0.01f) { float v = q.h - rise - 0.05f; if (v > h) { h = v; slope = rise > 0f; } }   // een kop ligt net als de weg 5 cm onder het wegdek

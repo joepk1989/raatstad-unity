@@ -896,7 +896,8 @@ public class WegVoorbeeld : MonoBehaviour
         float Num(string key, int from) { int i = js.IndexOf("\"" + key + "\"", from); i = js.IndexOf(':', i) + 1; int j = i; while (j < js.Length && "-0123456789.eE ".IndexOf(js[j]) >= 0) j++; return float.Parse(js.Substring(i, j - i).Trim(), System.Globalization.CultureInfo.InvariantCulture); }
         int cp = js.IndexOf("\"positie\""), cr = js.IndexOf("\"rotatie\""), cv = js.IndexOf("\"kijktNaarVak\"");
         Vector3 pos = new Vector3(Num("x", cp), Num("y", cp), Num("z", cp)); var rot = new Quaternion(Num("x", cr), Num("y", cr), Num("z", cr), Num("w", cr)); int vak = (int)Num("kijktNaarVak", cv);
-        PlanetCity.ClearAll(); PlanetCity.Restore(File.ReadAllText(Path.Combine(dir.FullName, "stad.json"))); PlanetCity.TouchAll(); PlanetCity.Rebuild(); PlanetCity.RebuildGrid(); yield return null; yield return null;
+        PlanetCity.ClearAll(); PlanetCity.Restore(File.ReadAllText(Path.Combine(dir.FullName, "stad.json"))); if (PlanetCity.ProfileFirst) { PlanetCity.HeightTestNote = PlanetCity.ProfileAll(new List<List<int>>()); PlanetCity.UpdateCuts(); }   // "melding N profiel": de stad met de nieuwe opbouw (het profiel over alle wegen, de kunstwerken blijven)
+        PlanetCity.TouchAll(); PlanetCity.Rebuild(); PlanetCity.RebuildGrid(); yield return null; yield return null;
         cam.transform.position = pos; cam.transform.rotation = rot; cam.fieldOfView = 60f; yield return null; yield return null;
         ScreenCapture.CaptureScreenshot(Path.Combine(Dir, "melding_" + dir.Name + (uit ? "_uit" : "") + ".png")); yield return null; yield return null;
         Hc = vak; bouw = new System.Text.StringBuilder(dir.Name + (uit ? " (terrein door wegen uit)" : "") + "\n"); yield return Scan(vak, 45f, "melding");
@@ -929,10 +930,10 @@ public class WegVoorbeeld : MonoBehaviour
                 PlanetCity.SetTerr(i, Mathf.Round(f(x, y) * 20f) / 20f);
             }
         }
-        void Lijn(string nm, int a, int b)
+        void Lijn(string nm, int a, int b, int lvl = 0)   // lvl: niveau in halve stappen (2 = 4,5 m: over een andere weg heen)
         {
             var l = PlanetCity.LinePlan(a, b); if (l == null || l.Count < 2) { bouw.Append(nm).AppendLine(": GEEN LIJN"); return; }
-            int ok = PlanetCity.PlaceLine(l, "weg"); PlanetCity.SetLevel(l, 0, "weg"); lines.Add(new List<int>(l)); centers.AddRange(l);
+            int ok = PlanetCity.PlaceLine(l, "weg"); PlanetCity.SetLevel(l, lvl, "weg"); lines.Add(new List<int>(l)); centers.AddRange(l);
             bouw.Append(nm).Append(": ").Append(ok).Append('/').Append(l.Count).Append(" vakken").AppendLine();
         }
         switch (nr)
@@ -944,6 +945,9 @@ public class WegVoorbeeld : MonoBehaviour
             case 5: Terrein((x, y) => 20f - 20f * Mathf.Exp(-x * x / (40f * 40f)), 160f); Lijn("dalbrug", Go(home, 0f, -120f), Go(home, 0f, 120f)); break;   // 5. laagte van 20 m
             case 6: Terrein((x, y) => 30f * Mathf.Exp(-x * x / (40f * 40f)), 160f); Lijn("tunnel", Go(home, 0f, -120f), Go(home, 0f, 120f)); break;   // 6. berg van 30 m
             case 7: Terrein((x, y) => 20f + 0.2f * x + 0.1f * y, 140f); Lijn("arm 1", Go(home, 0f, -60f), Go(home, 0f, 60f)); Lijn("arm 2", Go(home, D90, -60f), Go(home, D90, 60f)); break;   // 7. kruispunt op een helling
+            case 8: Terrein((x, y) => 20f, 140f); Lijn("onder", Go(home, 0f, -60f), Go(home, 0f, 60f)); Lijn("over", Go(home, D90, -60f), Go(home, D90, 60f), 2); break;   // 8. onderdoorgang: een weg op +4,5 m over een weg op het maaiveld
+            case 9: Terrein((x, y) => 20f - 20f * Mathf.Exp(-(x + 30f) * (x + 30f) / (25f * 25f)) + 30f * Mathf.Exp(-(x - 50f) * (x - 50f) / (30f * 30f)), 170f); Lijn("brug naar portaal", Go(home, 0f, -120f), Go(home, 0f, 120f)); break;   // 9. een dal van 20 m vlak voor een berg van 30 m (melding 8)
+            case 10: Terrein((x, y) => 5f + 30f * Mathf.Exp(-(x * x + y * y) / (50f * 50f)), 170f); Lijn("arm 1", Go(home, 0f, -120f), Go(home, 0f, 120f)); Lijn("arm 2", Go(home, Mathf.PI / 3f, -120f), Go(home, Mathf.PI / 3f, 120f)); break;   // 10. kruispunt in de berg (arm 2 onder 60°: een rasteras, want een schuine weg wordt geen tunnel): twee wegen door een berg van 30 m, kruising in het hart
             default: bouw.AppendLine("onbekende test " + nr); break;
         }
         PlanetCity.HeightTestNote = PlanetCity.ProfileAll(lines); PlanetCity.UpdateCuts(); PlanetCity.TouchAll();

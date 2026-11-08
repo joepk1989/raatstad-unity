@@ -163,7 +163,7 @@ public static partial class PlanetCity
         var ls = new List<Seg>(); var lc = new List<Cap>(); bool fld = field && NearSeg(c.dir, c.radius);
         if (fld) foreach (var f in FieldLines(c, ka, hc0, bA, bB, ls, lc)) Cross(f);
         if (cn) foreach (var n in near) foreach (var f in new[] { n.sd - Lin.C(-0.01f), n.sd - Lin.C(n.fl), n.sd - Lin.C(n.fl + n.rl), n.sd - Lin.C(n.end), n.t - Lin.C(n.q.hw), n.t - Lin.C(-n.q.hw) }) Cross(f);
-        var spI = spanNear.Count > 0 && spanNear.TryGetValue(a, out var spl) ? spl : null; foreach (var f in SpanLines(c, spI)) Cross(f);
+        var spI = RoadH.Count == 0 && spanNear.Count > 0 && spanNear.TryGetValue(a, out var spl) ? spl : null; foreach (var f in SpanLines(c, spI)) Cross(f);   // (nieuwe opbouw: het terrein onder een dek blijft liggen, SpanBottom staat uit: geen deklijnen in de grond)
         ts.Sort();
         {   // de snijlijnen van de vlakken die in elk stuk gelden (gemeten in het midden van het stuk), daar de snijpunten met de rand bij
             float det0 = L1.x * L2.y - L1.y * L2.x; Lin BL = new Lin { a = hc0, x = ((bA - hc0) * L2.y - (bB - hc0) * L1.y) / det0, y = ((bB - hc0) * L1.x - (bA - hc0) * L2.x) / det0 };
@@ -232,7 +232,7 @@ public static partial class PlanetCity
         for (int it = 0; it < 26; it++) { float a = lo + (hi - lo) / 3f, b = hi - (hi - lo) / 3f; if (Mathf.Abs(D(a)) < Mathf.Abs(D(b))) lo = a; else hi = b; }
         float tk = (lo + hi) * 0.5f; if (tk - t0 < 1e-4f || t1 - tk < 1e-4f) return;
         float dq = 0.02f / len, fa = f(Mathf.Max(t0, tk - dq)), fb = f(Mathf.Min(t1, tk + dq)); bool step = Mathf.Abs(fb - fa) > 0.15f;
-        outT.Add((tk, false));   // (sprongen zijn sinds de wandparen (EdgeProfile0) geen zaak van Kinks meer: een punt aan elke kant gaf splinters van 2 cm; een sprong die hier nog opduikt is een fout die de meting moet laten zien)
+        outT.Add((tk, step && RoadH.Count == 0));   // zonder profiel (het spel nu): een punt aan elke kant van een sprong, anders wordt een klif op het bereik een scheve flap (melding 9). Met profiel komen de wanden uit de paren (EdgeProfile0) en is een sprong hier een fout die de meting moet laten zien
         Kinks(f, f0, fa, t0, Mathf.Max(t0, tk - dq), len, outT, depth + 1); Kinks(f, fb, f1, Mathf.Min(t1, tk + dq), t1, len, outT, depth + 1);
     }
     // De hoogtefunctie is een min/max van vlakken (hoogte als lineaire functie van de vlakke coördinaten): het basisterrein, per stuk
@@ -343,7 +343,7 @@ public static partial class PlanetCity
             Vector3 V0 = D0 * (Planet.R + hc0), V1 = D1 * (Planet.R + h1), V2 = D2 * (Planet.R + h2), Nrm = Vector3.Cross(V1 - V0, V2 - V0); float ND = Vector3.Dot(V0, Nrm);   // het vlak door de drie hoekpunten
             var polys = new List<List<Vector2>> { new List<Vector2> { Vector2.zero, L1, L2 } };
             void Split(Lin f) { var next = new List<List<Vector2>>(); foreach (var pl in polys) if (!SplitBy(pl, f, next)) next.Add(pl); polys = next; }
-            var ls = new List<Seg>(); var lc = new List<Cap>(); var spI = spanNear.Count > 0 && spanNear.TryGetValue(i, out var spl) ? spl : null;
+            var ls = new List<Seg>(); var lc = new List<Cap>(); var spI = RoadH.Count == 0 && spanNear.Count > 0 && spanNear.TryGetValue(i, out var spl) ? spl : null;   // (nieuwe opbouw: geen deklijnen, zie EdgeProfile0)
             if (field) foreach (var f in FieldLines(c, k, hc0, h1, h2, ls, lc)) Split(f);
             foreach (var f in SpanLines(c, spI)) Split(f);
             var wg = new List<int>(); var wl = field ? WallLins(c, ls, lc, wg) : new List<Lin>();   // de wanden hier (sokkels en bakken), binnenkant negatief; wg: per lijn de strook of kop
