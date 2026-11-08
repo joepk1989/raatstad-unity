@@ -24,7 +24,7 @@ public static partial class PlanetCity
     // betonnen dek met borstwering, landhoofden en zeshoekige pijlers tot op het maaiveld (SpanMesh).
     static float SpanClear => RoadH.Count > 0 ? 1.6f : 0.8f;   // nieuwe opbouw: het dek (1,3 m dik) blijft boven het terrein, dat wordt niet meer verlaagd
     const float SpanMax = 260f;
-    static float SpanNeed => DragUnder ? StepH : LevelH;
+    static float SpanNeed => RoadH.Count > 0 ? 9f : DragUnder ? StepH : LevelH;   // nieuwe opbouw (ontwerp 8.3): pas een dalbrug als het terrein meer dan 9 m onder de weg ligt, daaronder een dijk of sokkel
     // stap k → k+1 van een rechte lijn: een buur, of schuin (90°) over een hoek
     static bool LineStep(int a, int b) => IsNeighbour(a, b) || System.Array.IndexOf(Planet.Cells[a].across, b) >= 0;
     // ligt c recht tussen p en q (ook op een schuine lijn)?

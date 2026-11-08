@@ -938,8 +938,8 @@ public class WegVoorbeeld : MonoBehaviour
         switch (nr)
         {
             case 1: Terrein((x, y) => 20f + 0.25f * x, 120f); Lijn("weg op een helling", Go(home, 0f, -30f), Go(home, 0f, 30f)); break;   // 1. één weg op een helling van 0,35 m/m
-            case 2: Terrein((x, y) => 5f * Mathf.Exp(-x * x / (30f * 30f)), 120f); Lijn("insnijding", Go(home, 0f, -75f), Go(home, 0f, 75f)); break;   // 2. over een heuvel van 5 m
-            case 3: Terrein((x, y) => 5f - 5f * Mathf.Exp(-x * x / (30f * 30f)), 120f); Lijn("dijk", Go(home, 0f, -75f), Go(home, 0f, 75f)); break;   // 3. over een laagte van 5 m
+            case 2: Terrein((x, y) => 8f * Mathf.Exp(-x * x / (20f * 20f)), 120f); Lijn("insnijding", Go(home, 0f, -75f), Go(home, 0f, 75f)); break;   // 2. over een heuvel van 8 m (flank tot 34%: de weg op 10% snijdt er tot zo'n 4 m in)
+            case 3: Terrein((x, y) => 8f - 8f * Mathf.Exp(-x * x / (20f * 20f)), 120f); Lijn("dijk", Go(home, 0f, -75f), Go(home, 0f, 75f)); break;   // 3. over een laagte van 8 m (de weg op 10% ligt er tot zo'n 4 m boven: een dijk)
             case 4: Terrein((x, y) => 8f * Mathf.Exp(-(x + 45f) * (x + 45f) / (25f * 25f)) - 8f * Mathf.Exp(-(x - 45f) * (x - 45f) / (25f * 25f)), 140f); Lijn("keermuur", Go(home, 0f, -105f), Go(home, 0f, 105f)); break;   // 4. heuvel van 8 m en laagte van 8 m
             case 5: Terrein((x, y) => 20f - 20f * Mathf.Exp(-x * x / (40f * 40f)), 160f); Lijn("dalbrug", Go(home, 0f, -120f), Go(home, 0f, 120f)); break;   // 5. laagte van 20 m
             case 6: Terrein((x, y) => 30f * Mathf.Exp(-x * x / (40f * 40f)), 160f); Lijn("tunnel", Go(home, 0f, -120f), Go(home, 0f, 120f)); break;   // 6. berg van 30 m
