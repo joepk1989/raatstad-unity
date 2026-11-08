@@ -139,6 +139,17 @@ public static partial class PlanetCity
     // het terrein er ver boven ligt, een dalbrug waar het er ver onder ligt (dezelfde maten als BoreLine). De overige wegvakken komen
     // op het profiel (voorlopig nog via LevelTerr; in stap 5 leest alles de weghoogte uit RoadH en blijft het terrein onaangeroerd).
     public static readonly Dictionary<int, float> RoadH = new Dictionary<int, float>();
+    // Het profiel in het spel (Terrein v2, nieuwe opbouw): na elke wijziging opnieuw over alle wegen en paden. line: een net gelegde lijn,
+    // daarop zoekt het tunnels en dalbruggen (BoreLine en DipUnder slaat het spel dan over). Terrein v2 uit: het profiel weg, de oude opbouw.
+    public static List<int> ProfileNewLine;   // de lijn van de laatste klik (PlanetBuilder), voor Reprofile in Changed
+    public static float LastProfileMs;
+    public static void Reprofile(List<int> line = null)
+    {
+        if (!Ground2) { if (RoadH.Count > 0) { foreach (var kv in RoadH) { Touch(kv.Key); foreach (int j in Planet.Cells[kv.Key].nb) Touch(j); } RoadH.Clear(); UpdateCuts(); } return; }
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var ls = new List<List<int>>(); if (line != null && line.Count >= 4) ls.Add(line);
+        ProfileAll(ls); UpdateCuts(); LastProfileMs = sw.ElapsedMilliseconds;
+    }
     public static string ProfileAll(List<List<int>> lines)
     {
         var idx = new Dictionary<int, int>(); var cells = new List<int>();
@@ -169,6 +180,7 @@ public static partial class PlanetCity
             // in de berg is een ondergronds kruispunt, dat hoort als één koker met een splitsing getekend te worden, stap 4c)
             if (!any) break;
         }
+        var oldH = new Dictionary<int, float>(RoadH);   // (om alleen de vakken aan te raken die veranderen: op een volle planeet scheelt dat een hele herbouw per klik)
         RoadH.Clear(); for (int k = 0; k < n; k++) RoadH[cells[k]] = h[k];
         // de kunstwerken per lijn, aan het profiel
         bool Plain(int c) => IsWalk(c) && !Underpass(c) && !IsRot(c) && !preCarve.ContainsKey(c);
@@ -187,7 +199,9 @@ public static partial class PlanetCity
         }
         // het terrein blijft; de wegvakken lezen hun hoogte uit RoadH (G), de hoogtefunctie legt het wegdek en het talud erop
         foreach (int c in new List<int>(RoadH.Keys)) if (!IsWalk(c)) RoadH.Remove(c);   // (de vakken in een tunnel of onder een brug zijn weer terrein)
-        foreach (var kv in RoadH) { Touch(kv.Key); foreach (int j in Planet.Cells[kv.Key].nb) Touch(j); }
+        void TouchAround(int c) { Touch(c); foreach (int j in Planet.Cells[c].nb) Touch(j); }
+        foreach (var kv in RoadH) if (!oldH.TryGetValue(kv.Key, out var o) || Mathf.Abs(o - kv.Value) > 1e-3f) TouchAround(kv.Key);
+        foreach (var kv in oldH) if (!RoadH.ContainsKey(kv.Key)) TouchAround(kv.Key);
         int stapel = 0, onder = 0; foreach (var kv in RoadH) { int np = 0; foreach (int j in Partners(kv.Key)) if (IsBore(kv.Key, j)) np++; if (np >= 3) stapel++; if (np >= 2 && Terrain(kv.Key) > kv.Value + 9f) onder++; }
         return RoadH.Count + " wegvakken op hooguit " + Mathf.RoundToInt(MaxGrade * 100f) + "%, " + tun + " tunnels, " + brug + " bruggen, " + stapel + " kruispunten met drie portalen, " + onder + " vakken met twee portalen diep in de berg";
     }

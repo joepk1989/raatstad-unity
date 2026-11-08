@@ -58,7 +58,8 @@ public class WegVoorbeeld : MonoBehaviour
         if (mode == "mijnstad") { yield return MijnStad(); yield break; }
         if (mode.StartsWith("melding")) { yield return Melding(mode); yield break; }
         if (mode == "hoogtetest") { yield return Hoogtetest(); yield break; }
-        if (mode == "natuurtest") { yield return Hoogtetest(true); yield break; }   // de natuurplaneet met de 30 wegen (test 11 van het ontwerp)
+        if (mode == "natuurtest") { yield return Hoogtetest(true); yield break; }
+        if (mode == "inspel") { yield return Inspel(); yield break; }   // Terrein v2 zoals in het spel: wegen een voor een, opslaan en laden, de schakelaar   // de natuurplaneet met de 30 wegen (test 11 van het ontwerp)
         if (mode.StartsWith("ontwerp")) { yield return Ontwerp(home, mode); yield break; }
         if (mode == "zee") { yield return ZeeTest(home); yield break; }
         if (mode == "startnaden") { yield return StartNaden(); yield break; }
@@ -979,6 +980,34 @@ public class WegVoorbeeld : MonoBehaviour
             yield return Shot("ontwerp" + nr + "_eind2", e1, Quaternion.AngleAxis(-120f, Planet.Cells[e1].dir) * Dh(e1, 0f), 30f, 20f); yield return Shot("ontwerp" + nr + "_eind2boven", e1, Dh(e1, 0f), 22f, 65f); yield return Shot("ontwerp" + nr + "_eind1boven", e0, Dh(e0, 0f), 22f, 65f);
             File.WriteAllText(Path.Combine(Dir, "ontwerp" + nr + "_einden.txt"), PlanetCity.Ground2Dump(e0) + "\n" + PlanetCity.Ground2Dump(e1));
         }
+        File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true;
+    }
+    // Terrein v2 in het spel: de natuurplaneet, dan de 30 wegen een voor een zoals een speler ze sleept (PlayerRoads: profiel per sleep,
+    // met de tijd), dan opslaan en laden (Snapshot, Restore: het profiel komt terug), de schakelaar uit (het profiel weg) en weer aan,
+    // en dan de scan en foto's zoals de natuurtest.
+    IEnumerator Inspel()
+    {
+        var log = new System.Text.StringBuilder(); PlanetCity.Ground2 = true; PlanetCity.ProfileFirst = false;
+        yield return PlanetCity.NatuurTestSteps(null, 11, false);
+        var ms = new List<float>(); float t0 = Time.realtimeSinceStartup; yield return PlanetCity.PlayerRoads(null, ms);
+        float mx = 0f, sum = 0f; foreach (float m in ms) { mx = Mathf.Max(mx, m); sum += m; }
+        log.Append("wegen ").Append(PlanetCity.HeightTestRoadCount).Append(" aangekomen, ").Append(ms.Count).Append(" slepen; profiel per sleep gemiddeld ").Append(ms.Count > 0 ? (sum / ms.Count).ToString("0") : "-").Append(" ms, hooguit ").Append(mx.ToString("0")).Append(" ms; RoadH ").Append(PlanetCity.RoadH.Count).AppendLine();
+        int nt = 0, nb = 0; foreach (long k in PlanetCity.TunnelLinks) { int a = (int)(k >> 20), b = (int)(k & 0xFFFFF); if (PlanetCity.IsSpan(a, b)) nb++; else if (PlanetCity.IsBore(a, b)) nt++; }
+        log.Append(nt).Append(" tunnels, ").Append(nb).AppendLine(" dalbruggen");
+        // opslaan en laden
+        var keep = new Dictionary<int, float>(PlanetCity.RoadH); string snap = PlanetCity.Snapshot();
+        PlanetCity.ClearAll(); var sw = System.Diagnostics.Stopwatch.StartNew(); bool ok = PlanetCity.Restore(snap); long tl = sw.ElapsedMilliseconds;
+        int diff = 0; foreach (var kv in keep) if (!PlanetCity.RoadH.TryGetValue(kv.Key, out var v) || Mathf.Abs(v - kv.Value) > 0.01f) diff++;
+        log.Append("laden ").Append(ok ? "gelukt" : "MISLUKT").Append(" in ").Append(tl).Append(" ms; RoadH ").Append(PlanetCity.RoadH.Count).Append(", ").Append(diff).AppendLine(" vakken met een andere weghoogte dan voor het opslaan");
+        // de schakelaar
+        PlanetCity.Ground2 = false; PlanetCity.Reprofile(); int off = PlanetCity.RoadH.Count;
+        PlanetCity.Ground2 = true; PlanetCity.Reprofile(); log.Append("schakelaar uit: RoadH ").Append(off).Append("; weer aan: RoadH ").Append(PlanetCity.RoadH.Count).AppendLine();
+        PlanetCity.TouchAll(); PlanetCity.Rebuild(); PlanetCity.Rebuild(); PlanetCity.RebuildGrid(); yield return null; yield return null;
+        File.WriteAllText(Path.Combine(Dir, "inspel.txt"), log.ToString());
+        var centers = new List<int>(); foreach (var kv in PlanetCity.Cells) { if (!PlanetCity.IsRoad(kv.Key)) continue; bool far = true; foreach (int c in centers) if (Vector3.Distance(Planet.Cells[c].dir, Planet.Cells[kv.Key].dir) * Planet.R < 40f) { far = false; break; } if (far) centers.Add(kv.Key); }
+        if (centers.Count > 0) { Hc = centers[0]; bouw = new System.Text.StringBuilder(); yield return Scan(centers[0], 0f, "inspel_scan", centers, 24f); log.Append(bouw.ToString()); }
+        for (int st = 0; st < 2; st++) yield return Shot("inspel_" + st, Planet.Starts[st], Dh(Planet.Starts[st], 0.4f), 260f, 50f);
+        File.WriteAllText(Path.Combine(Dir, "inspel.txt"), log.ToString());
         File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true;
     }
     IEnumerator Hoogtetest(bool natuur = false)

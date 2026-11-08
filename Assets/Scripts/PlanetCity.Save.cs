@@ -90,6 +90,7 @@ public static partial class PlanetCity
                 Terr[k] = Mathf.Min(TerrTop, G(k) + n * 3f); l.RemoveRange(0, n); if (l.Count == 0) Cells.Remove(k);
             }
             FixCrossings();
+            RoadH.Clear(); Reprofile();   // Terrein v2: het wegprofiel opnieuw (het wordt niet opgeslagen)
             TouchAll(); RebuildGrid(); return true;
         }
         catch (Exception e) { Debug.LogWarning("Laden mislukt: " + e.Message); return false; }

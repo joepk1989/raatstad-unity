@@ -41,7 +41,7 @@ public static partial class PlanetCity
     // Natuurtest: de natuurplaneet (het platteland van Hele planeet vol: heuvels, bergketens, bossen en meren, zonder dorpen) met daarop
     // dezelfde 30 wegen als de hoogtetest. Realistische situaties in plaats van de kunstlandschappen; dit is de maat voor het terrein
     // rond wegen (docs/terrein-wegen-oplossing.md, test 11).
-    public static System.Collections.IEnumerator NatuurTestSteps(System.Action<float, string> prog, int seed = 11)
+    public static System.Collections.IEnumerator NatuurTestSteps(System.Action<float, string> prog, int seed = 11, bool roads = true)
     {
         ClearAll(); FillTowns.Clear(); var rnd = new System.Random(seed); int n = Planet.Cells.Length;
         prog?.Invoke(0f, "Natuurplaneet"); yield return null;
@@ -64,7 +64,7 @@ public static partial class PlanetCity
             if (c % 4000 == 3999) { prog?.Invoke(0.5f * c / n, "Natuurplaneet"); yield return null; }
         }
         TouchAll();
-        yield return HeightTestRoads(prog);
+        if (roads) yield return HeightTestRoads(prog);
         prog?.Invoke(1f, "Klaar");
     }
     static float Smooth(float a, float b, float v) => Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(a, b, v));

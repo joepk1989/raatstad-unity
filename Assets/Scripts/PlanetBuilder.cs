@@ -146,7 +146,7 @@ public partial class PlanetBuilder : MonoBehaviour
     }
     // na een wijziging: het deel onder de muis meteen opnieuw tekenen, de rest (buurdelen, raster, opslaan) in de volgende beelden
     bool rebuilding;
-    void Changed() { Sounds.After(hasHover ? hoverPoint : focus * Planet.R); PlanetCity.UserEdit(); beautyVer++; PlanetCity.Save(); PlanetCity.RebuildSoon(hasHover ? hover : -1); rebuilding = true; RebuildTick(0f); beautyT = -99f; }   // 0: in dit beeld alleen het deel van de klik
+    void Changed() { PlanetCity.Reprofile(PlanetCity.ProfileNewLine); PlanetCity.ProfileNewLine = null; Sounds.After(hasHover ? hoverPoint : focus * Planet.R); PlanetCity.UserEdit(); beautyVer++; PlanetCity.Save(); PlanetCity.RebuildSoon(hasHover ? hover : -1); rebuilding = true; RebuildTick(0f); beautyT = -99f; }   // 0: in dit beeld alleen het deel van de klik
     void RebuildTick(float budget) { if (PlanetCity.RebuildSome(budget)) { PlanetCity.RebuildGrid(); rebuilding = false; } }
     void ToggleSound() { Babble.Muted = !Babble.Muted; Ambience.Muted = Babble.Muted; Say(Babble.Muted ? "Geluid uit" : "Geluid aan"); }
     void ToggleHelp()
@@ -339,8 +339,9 @@ public partial class PlanetBuilder : MonoBehaviour
                 else { err = PlanetCity.Place(lineStart, t); if (err == null) ok = 1; }
                 PlanetCity.DragUnder = du;
                 if (ok > 0 && level) PlanetCity.SetLevel(linePlan ?? new List<int> { lineStart }, lv, t);
-                if (ok > 0 && level && lv == 0 && linePlan != null) PlanetCity.DipUnder(linePlan);   // ongelijkvloers op het maaiveld: alleen bij de kruising omlaag
-                if (ok > 0 && level && lv == 0 && linePlan != null) PlanetCity.BoreLine(linePlan);   // door een berg: een tunnel (PlanetTunnels.cs)
+                if (ok > 0 && level && lv == 0 && linePlan != null && !PlanetCity.Ground2) PlanetCity.DipUnder(linePlan);   // ongelijkvloers op het maaiveld: alleen bij de kruising omlaag
+                if (ok > 0 && level && lv == 0 && linePlan != null && !PlanetCity.Ground2) PlanetCity.BoreLine(linePlan);   // door een berg: een tunnel (PlanetTunnels.cs)
+                if (ok > 0 && level && lv == 0) PlanetCity.ProfileNewLine = linePlan;   // Terrein v2: het profiel zoekt de tunnels en bruggen op deze lijn (Changed)
                 if (ok > 0) Changed(); else if (err != null) { Say(err); Sounds.Fx("deny"); }
                 if (linePlan != null && ok > 0) Say(PlanetCity.LastNote ?? ok + " vakken " + Cur.name.ToLower());   // een melding over de lijn gaat voor
                 lineStart = -1; linePlan = null; ShowPlan(null);
