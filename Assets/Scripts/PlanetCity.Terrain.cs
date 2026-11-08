@@ -15,7 +15,7 @@ public static partial class PlanetCity
     // terrein zelf (Terrain) blijft onaangeroerd en is de basis voor de hoekpunten en de hoogtefunctie.
     public static float G(int i) => RoadH.Count > 0 && RoadH.TryGetValue(i, out var rh) ? rh : Terrain(i);
     public static float Terrain(int i) => LakeG(i, Terr.TryGetValue(i, out var h) ? h : 0f);   // een meer ligt vanzelf onder het zeeniveau (PlanetNature.cs)
-    public static bool Plateau(int i) => Cells.TryGetValue(i, out var l) && l.Count > 0 && !IsWalk(i) && !OpenGround(l) && !PathHalf(i) && (RoadShape || !IsHalf(i) || HalfBuilt(i));   // zonder terrein door wegen is een half wegvak met alleen groen geen plaat (die stak over de weg uit); met een gebouw wel (anders zweeft het)
+    public static bool Plateau(int i) => Cells.TryGetValue(i, out var l) && l.Count > 0 && !IsWalk(i) && !OpenGround(l) && !PathHalf(i) && ((RoadShape && RoadH.Count == 0) || !IsHalf(i) || HalfBuilt(i));   // zonder terrein door wegen is een half wegvak met alleen groen geen plaat (die stak over de weg uit); met een gebouw wel (anders zweeft het). Nieuwe opbouw (RoadH): een half wegvak zonder gebouw is gewoon terrein, de wegstrook komt uit de hoogtefunctie
     static bool HalfBuilt(int i) { var l = Cells[i]; for (int k = 1; k < l.Count; k++) if (l[k] != "park" && l[k] != "bos") return true; return false; }   // bomen, meren en grachten liggen in het terrein (PlanetNature.cs)
     public static bool SetTerr(int i, float h)   // geeft true als de hoogte echt veranderde
     {
