@@ -1,6 +1,6 @@
 // Het terrein van de planeet in één materiaal: bodemsoorten die zacht in elkaar overlopen, elk met een eigen reliëf
 // (triplanaire textures BodemA en BodemB uit Tools/terreintextures.py). Het low-poly blijft: elke driehoek houdt zijn eigen
-// normaal, alleen de kleur loopt door.
+// normaal, alleen de kleur loopt door (met Terrein zacht krijgt de belichting gedeelde normalen; de soort volgt de driehoek).
 // Wat de shader zelf weet (per pixel): de hoogte boven de bol (gras, dieper groen, grijsgroen, rots boven de 30 m, sneeuw boven
 // de 54 m), de helling van de driehoek (aarde op steile flanken, rots boven de 22 m) en de waterlijn (zand, zeebodem).
 // Wat per hoekpunt meekomt (vertexkleur, gemiddeld over de vakken eromheen, PlanetCity.SoilColor): r ijs, g woestijn, b heide,
@@ -18,6 +18,8 @@ Shader "Raatstad/Bodem"
         _PlanetR ("Straal", Float) = 600
         _Sea ("Zeeniveau", Float) = -1
         _Snow ("Sneeuwgrens", Float) = 54
+        _SoilSmooth ("Soort naar zachte normaal (Terrein zacht/rond)", Float) = 0
+        _SteepBias ("Steiler rekenen bij zachte normaal", Float) = 0.06
         _Gras0 ("Gras", Color) = (0.64, 0.78, 0.45, 1)
         _Gras1 ("Gras diep", Color) = (0.373, 0.58, 0.278, 1)
         _Gras3 ("Grijsgroen", Color) = (0.604, 0.643, 0.541, 1)
@@ -38,7 +40,7 @@ Shader "Raatstad/Bodem"
         HLSLINCLUDE
         #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
         CBUFFER_START(UnityPerMaterial)
-            float _Scale, _MacroScale, _PlanetR, _Sea, _Snow;
+            float _Scale, _MacroScale, _PlanetR, _Sea, _Snow, _SoilSmooth, _SteepBias;
             float4 _Center;
             half4 _Gras0, _Gras1, _Gras3, _Aarde, _Rots, _Zand, _Sneeuw, _IJs, _Woestijn, _Heide, _HeideBloem, _Zeebodem;
         CBUFFER_END
@@ -65,6 +67,8 @@ Shader "Raatstad/Bodem"
 
             TEXTURE2D(_BodemA); SAMPLER(sampler_BodemA);
             TEXTURE2D(_BodemB);
+            #define RAATSTAD_FACE_SURFACE   // de soort naar de driehoek, de belichting naar de normaal (zacht terrein: PlanetSoil.Smooth.cs)
+            #define RAATSTAD_SOIL_SMOOTH _SoilSmooth   // zacht en rond: de soort ook naar de zachte normaal (vloeiende overgangen)
             #include "RaatstadLit.hlsl"
 
             // de nieuwe soort komt erbij waar zijn gewicht w plus zijn eigen reliëf d boven de helft komt: een rafelige rand
@@ -76,12 +80,12 @@ Shader "Raatstad/Bodem"
             void Surface(float3 pWS, float3 n, float4 vc, float4 ex, out half3 albedo, out half smooth)
             {
                 float3 P = pWS - _Center.xyz; float r = length(P); float3 up = P / r; float h = r - _PlanetR;
-                float3 w = TriW(n);
+                float3 w = TriW(gLightN);   // de textures mengen met de normaal van de belichting (zacht terrein: geen naad per driehoek); de soort volgt de driehoek (n)
                 float3 q = P * _Scale;
                 half4 A = TRI(_BodemA, q, w);
                 half4 B = TRI(_BodemB, q * 0.7, w);
                 half M = TRI(_BodemB, P * _MacroScale, w).a;   // grote vlekken: wat droger of frisser gras, lichtere en donkere plekken
-                half upd = dot(n, up);
+                half upd = dot(n, up) - _SteepBias * _SoilSmooth;   // een zachte normaal is een gemiddelde en dus minder steil: iets steiler rekenen, zodat rots rots blijft
 
                 // gras naar de hoogte (zoals TerrColor): fris, dieper groen tot 5 m, grijsgroen boven de 16 m
                 half3 g = lerp(_Gras0.rgb, _Gras1.rgb, smoothstep(0, 5, h));

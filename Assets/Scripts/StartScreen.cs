@@ -298,7 +298,7 @@ public partial class PlanetBuilder
 
     void SettingsPanel(Rect r)
     {
-        r.height = 14f + 42f + 8 * 40f + 8f; Ui.Panel(r, true, 16f);
+        r.height = 14f + 42f + 10 * 40f + 8f; Ui.Panel(r, true, 16f);
         float x = r.x + 18f, iw = r.width - 36f, y = r.y + 14f;
         PanelHead(r, "INSTELLINGEN", ref y);
         bool welcomeOff = PlayerPrefs.GetInt("raatstad-welkom-uit", 0) == 1;
@@ -312,6 +312,8 @@ public partial class PlanetBuilder
         if (row("Totale chaos", PlanetLife.Chaos ? "aan" : "uit", PlanetLife.Chaos)) PlanetLife.Chaos = !PlanetLife.Chaos;
         if (row("Uitleg bij een nieuwe stad", welcomeOff ? "uit" : "aan", !welcomeOff)) PlayerPrefs.SetInt("raatstad-welkom-uit", welcomeOff ? 0 : 1);
         if (row("Interfacegrootte", Mathf.RoundToInt(sizes[si] * 100f) + "%", false)) Ui.Size = sizes[(si + 1) % 4];
+        if (row("Terrein", PlanetCity.SoilDetailNames[PlanetCity.SoilDetail], PlanetCity.SoilDetail > 0)) PlanetCity.SoilDetail = (PlanetCity.SoilDetail + 1) % PlanetCity.SoilDetailNames.Length;
+        if (row("Terreinlijnen", PlanetCity.SoilWire ? "aan" : "uit", PlanetCity.SoilWire)) PlanetCity.SoilWire = !PlanetCity.SoilWire;
     }
 
     // in het spel: de vensters van het opslaan (bovenop de rest)

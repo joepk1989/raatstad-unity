@@ -6,7 +6,7 @@ using UnityEngine;
 // waterlijn); wat bij het vak hoort (ijs, woestijn, heide, water) komt mee als vertexkleur. Elk hoekpunt krijgt het gewogen
 // gemiddelde van de vakken eromheen (SoilColor), zodat een overgang op de rand tussen twee vakken ligt en daar zacht verloopt.
 // De gewichten hangen alleen af van de plek, dus twee delen (ChunkN) sluiten naadloos aan. De driehoeken houden hun eigen normaal:
-// het blijft low poly. Bomen, struiken en ander groen krijgen Raatstad/Natuur: hun eigen kleur met wat variatie.
+// het blijft low poly, tenzij Terrein op zacht of rond staat (PlanetSoil.Smooth.cs). Bomen, struiken en ander groen krijgen Raatstad/Natuur: hun eigen kleur met wat variatie.
 public static partial class PlanetCity
 {
     static Material soilMat; static readonly Dictionary<string, Material> natureMats = new Dictionary<string, Material>();
@@ -27,7 +27,7 @@ public static partial class PlanetCity
         var m = new Material(sh) { name = "p_bodemmix" };
         m.SetTexture("_BodemA", soilA); m.SetTexture("_BodemB", soilB);
         m.SetVector("_Center", groundRoot != null ? groundRoot.position : Vector3.zero);
-        m.SetFloat("_PlanetR", Planet.R); m.SetFloat("_Sea", SeaLevel); m.SetFloat("_Snow", SnowLine);
+        m.SetFloat("_PlanetR", Planet.R); m.SetFloat("_Sea", SeaLevel); m.SetFloat("_Snow", SnowLine); m.SetFloat("_SoilSmooth", SoilDetail > 0 ? 1f : 0f);
         // de kleuren van de effen materialen (TerrColor, NatureColor), zodat er één bron is
         m.SetColor("_Gras0", new Color(0.64f, 0.78f, 0.45f)); m.SetColor("_Gras1", new Color(0.373f, 0.58f, 0.278f)); m.SetColor("_Gras3", new Color(0.604f, 0.643f, 0.541f));
         m.SetColor("_Aarde", TerrColor("aarde")); m.SetColor("_Zand", TerrColor("zand"));
@@ -86,7 +86,8 @@ public static partial class PlanetCity
         for (int k = 0; k < mb.v.Count; k++) { var so = SoilColor(cells[k], mb.v[k], memo); col.Add(so.c); ext.Add(so.x); }
         var go = new GameObject("Terrein bodem " + ch); go.transform.SetParent(groundRoot, false); made.Add(go); go.layer = Layers.Bodem;
         var mesh = mb.Build(); mesh.SetColors(col); mesh.SetUVs(0, ext);
-        go.AddComponent<MeshFilter>().sharedMesh = mesh; go.AddComponent<MeshRenderer>().sharedMaterial = SoilMat();
+        var mf = go.AddComponent<MeshFilter>(); mf.sharedMesh = mesh; RegisterSoil(mf, mesh, cells);   // low poly, zacht of rond (PlanetSoil.Smooth.cs)
+        go.AddComponent<MeshRenderer>().sharedMaterial = SoilMat();
         go.AddComponent<MeshCollider>().sharedMesh = mesh;
     }
 

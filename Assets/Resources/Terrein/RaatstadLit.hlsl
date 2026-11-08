@@ -56,6 +56,7 @@ float3 TriW(float3 n)
 }
 #define TRI(tex, p, w) (SAMPLE_TEXTURE2D(tex, sampler_BodemA, (p).zy) * (w).x + SAMPLE_TEXTURE2D(tex, sampler_BodemA, (p).xz) * (w).y + SAMPLE_TEXTURE2D(tex, sampler_BodemA, (p).xy) * (w).z)
 
+static float3 gLightN;   // de normaal van de belichting (RAATSTAD_FACE_SURFACE: Surface krijgt de normaal van de driehoek)
 void Surface(float3 pWS, float3 n, float4 vc, float4 ex, out half3 albedo, out half smooth);
 
 half4 RFrag(RVary i) : SV_Target
@@ -64,7 +65,14 @@ half4 RFrag(RVary i) : SV_Target
     UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
     float3 nWS = normalize(i.normalWS);
     half3 albedo; half smooth;
+#ifdef RAATSTAD_FACE_SURFACE
+    // de soort (gras, rots, aarde, sneeuw) naar de helling van de driehoek zelf (low poly), of naar de zachte normaal (RAATSTAD_SOIL_SMOOTH: zacht en rond)
+    float3 nF = normalize(cross(ddy(i.positionWS), ddx(i.positionWS))); if (dot(nF, nWS) < 0) nF = -nF;
+    gLightN = nWS;
+    Surface(i.positionWS, normalize(lerp(nF, nWS, RAATSTAD_SOIL_SMOOTH)), i.color, i.extra, albedo, smooth);
+#else
     Surface(i.positionWS, nWS, i.color, i.extra, albedo, smooth);
+#endif
 
     InputData d = (InputData)0;
     d.positionWS = i.positionWS;
