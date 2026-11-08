@@ -22,7 +22,7 @@ public partial class PlanetLife
         {
             if (a.root == null) continue;
             float dist = Vector3.Distance(a.root.position, at); if (dist > reach * 1.3f) continue;
-            a.downT = Mathf.Lerp(3f, 9f, 1f - dist / (reach * 1.3f)); a.paused = false; a.partner = null;
+            float k = 1f - dist / (reach * 1.3f); L.KnockBlast(a, at, k, Mathf.Lerp(3f, 9f, k));
         }
         L.LastIncident = at; L.LastIncidentT = Time.time;
     }

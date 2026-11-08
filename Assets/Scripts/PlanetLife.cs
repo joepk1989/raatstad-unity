@@ -256,7 +256,7 @@ public partial class PlanetLife : MonoBehaviour
             var a = People[i];
             if (a.greetCool > 0) a.greetCool -= dt; if (a.waveT > 0) a.waveT -= dt;
             if (!PlanetCity.IsWalk(a.cellA)) { RemovePerson(i); continue; }   // de weg is weg
-            if (a.downT > 0f) { a.downT -= dt; PlacePerson(a, 0f); a.root.rotation = Quaternion.AngleAxis(-88f, a.root.right) * a.root.rotation; continue; }   // omvergereden: even liggen
+            if (a.downT > 0f) { if (Ragged(a)) continue; a.downT -= dt; PlacePerson(a, 0f); a.root.rotation = Quaternion.AngleAxis(-88f, a.root.right) * a.root.rotation; continue; }   // omvergereden: even liggen
             if (a.paused)
             {
                 a.pauseT -= dt; if (a.pauseT <= 0f) { a.paused = false; a.partner = null; a.chatT = 0f; }

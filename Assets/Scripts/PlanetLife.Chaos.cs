@@ -367,7 +367,7 @@ public partial class PlanetLife
         foreach (var a in People)
         {
             if (a.downT > 0f) continue; Vector3 d = a.root.position - p; if (Mathf.Abs(Vector3.Dot(d, up)) > 1.2f) continue;
-            if (Mathf.Abs(Vector3.Dot(d, f)) < 2.6f && Mathf.Abs(Vector3.Dot(d, r)) < 1.3f) { a.downT = 5f; a.paused = false; a.partner = null; Knocked++; LastIncident = a.root.position; LastIncidentT = Time.time; if (c.prey == a.root) c.huntT = 0.01f; }
+            if (Mathf.Abs(Vector3.Dot(d, f)) < 2.6f && Mathf.Abs(Vector3.Dot(d, r)) < 1.3f) { KnockByCar(a, c); Knocked++; LastIncident = a.root.position; LastIncidentT = Time.time; if (c.prey == a.root) c.huntT = 0.01f; }
         }
     }
 
@@ -415,7 +415,7 @@ public partial class PlanetLife
         for (int k = 0; k < 22; k++) { Vector3 dir = (Random.onUnitSphere + up * 0.6f).normalized; Emit(firePs, p + up * 0.8f, dir * Random.Range(1.5f, 6.5f), Random.Range(0.6f, 1.2f), Color.white, Random.Range(0.5f, 1f)); }
         for (int k = 0; k < 16; k++) Emit(smokePs, p + up + Random.insideUnitSphere * 1.2f, up * Random.Range(0.8f, 2f) + Random.insideUnitSphere * 1.5f, 1.1f, new Color(0.5f, 0.5f, 0.5f), Random.Range(3f, 4.5f));
         if (!Ambience.Muted) AudioSource.PlayClipAtPoint(boomClip, p, 1f);
-        foreach (var a in People) if (Vector3.Distance(a.root.position, p) < 7f) { a.downT = 6f; a.paused = false; a.partner = null; }
+        foreach (var a in People) { float dd = Vector3.Distance(a.root.position, p); if (dd < 7f) KnockBlast(a, p, 1f - dd / 7f, 6f); }
         foreach (var o in cars)
         {
             if (o == c || o.dead) continue; Vector3 d = o.root.position - p; if (d.magnitude > 5.5f) continue;

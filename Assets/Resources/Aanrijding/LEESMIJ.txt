@@ -1,0 +1,9 @@
+Geluid bij aanrijdingen in Raatstad
+
+Drie opnames overgenomen uit de webversie (joepk1989/raatstad-web, assets/), gebruikt door PlanetLife.Ragdoll.Sound.cs
+met dezelfde stukken [begin, duur] als 13-camera-modus-geluid.js:
+- klap.mp3: een klap op de motorkap (hard en licht)
+- grunts.mp3: kreunen van iemand die geraakt wordt
+- schreeuw.mp3: kreten (paniek, kort, een gruwelkreet bij een ontploffing, de kreet bij bloed)
+
+Bron en licentie staan in de webversie nog open ("nog in te vullen" in de README); vul ze hier ook in zodra ze bekend zijn.
