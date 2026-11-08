@@ -1,6 +1,6 @@
 using UnityEngine;
 
-// Hoogtetest (Nieuwe stad op het startscherm): een lege planeet om wegen, verdiepte wegen, bruggen en tunnels over grote hoogtes en
+// Terreintest (Nieuwe stad op het startscherm): een lege planeet om wegen, verdiepte wegen, bruggen en tunnels over grote hoogtes en
 // dieptes te slepen. De bol is verdeeld in de 20 vlakken van de icosaëder (rond Planet.Starts, zo'n 220 m van midden tot rand); elk
 // vlak heeft één landschap, gemeten in het raakvlak van zijn midden (x naar het oosten, y naar het noorden, in meters). Langs de
 // randen tussen de vlakken loopt het terrein terug naar 0: vlakke stroken om van het ene landschap naar het andere te rijden.
