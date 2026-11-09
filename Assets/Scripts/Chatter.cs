@@ -150,6 +150,7 @@ public class Chatter : MonoBehaviour
         var old = GUI.color;
         foreach (var b in live)
         {
+            if (b.who == null || b.who.root == null) continue;   // persoon net weggehaald (ragdoll, verplaatst): niet elk beeld een fout
             Vector3 sp = cam.WorldToScreenPoint(b.who.Head + b.who.root.up * 0.3f); if (sp.z < 0.5f) continue;
             float d = sp.z; if (d > Range) continue;
             float fade = Mathf.Clamp01((Range - d) / 12f) * Mathf.Clamp01(Mathf.Min(b.t / 0.18f, (b.dur - b.t) / 0.25f));

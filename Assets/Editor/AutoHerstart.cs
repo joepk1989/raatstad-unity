@@ -9,7 +9,7 @@ using UnityEngine;
 static class AutoHerstart
 {
     const string FlagKey = "raatstad-herstart-play", OnKey = "raatstad-autoherstart";
-    static FileSystemWatcher watcher; static volatile bool changed; static double settleAt, testAt;
+    static FileSystemWatcher watcher; static volatile bool changed, quitting; static double settleAt, testAt;
 
     static bool On { get => EditorPrefs.GetBool(OnKey, true); set => EditorPrefs.SetBool(OnKey, value); }
 
@@ -21,10 +21,22 @@ static class AutoHerstart
         watcher.EnableRaisingEvents = true;
         EditorApplication.update += Tick;
         EditorApplication.delayCall += ResumePlay;   // na het hercompileren: Play weer aan als die aan stond
+        EditorApplication.wantsToQuit += StopBeforeQuit;
+        EditorApplication.playModeStateChanged += s => { if (quitting && s == PlayModeStateChange.EnteredEditMode) EditorApplication.delayCall += () => EditorApplication.ExecuteMenuItem("File/Exit"); };
+    }
+
+    // Unity sluiten tijdens Play laat een reservekopie van de scène achter (Temp/__Backupscenes), met bij de volgende
+    // start de vraag "Scene Backup Detected". Daarom eerst Play netjes stoppen en dan pas afsluiten.
+    static bool StopBeforeQuit()
+    {
+        if (!EditorApplication.isPlayingOrWillChangePlaymode) return true;
+        quitting = true; SessionState.SetBool(FlagKey, false); EditorApplication.isPlaying = false;
+        return false;
     }
 
     static void Tick()
     {
+        if (quitting) return;
         // een testverzoek (brugtest.txt, niveautest.txt of wegvoorbeeld.txt): Play starten, de test draait dan vanzelf
         // (pas als alles gecompileerd is; speelt het al, dan eerst stoppen zodat de test bij de start draait)
         if (!changed && !EditorApplication.isCompiling && !EditorApplication.isUpdating && (File.Exists(Path.Combine(Application.persistentDataPath, "brugtest.txt")) || File.Exists(Path.Combine(Application.persistentDataPath, "niveautest.txt")) || File.Exists(Path.Combine(Application.persistentDataPath, "wegvoorbeeld.txt"))))
@@ -52,7 +64,7 @@ static class AutoHerstart
 
     static void ResumePlay()
     {
-        if (!SessionState.GetBool(FlagKey, false)) return;
+        if (quitting || !SessionState.GetBool(FlagKey, false)) return;
         if (EditorApplication.isCompiling || EditorApplication.isUpdating) { EditorApplication.delayCall += ResumePlay; return; }
         if (EditorUtility.scriptCompilationFailed) { SessionState.SetBool(FlagKey, false); return; }   // fouten: niet spelen, eerst de Console
         SessionState.SetBool(FlagKey, false);
