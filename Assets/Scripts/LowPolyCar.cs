@@ -276,6 +276,11 @@ public class CarWheels : MonoBehaviour
     readonly Transform[] axle = new Transform[4], wheel = new Transform[4]; readonly bool[] left = new bool[4], front = new bool[4];
     float roll, steer;
     public void Set(int k, Transform a, Transform w, bool isLeft, bool isFront) { axle[k] = a; wheel[k] = w; left[k] = isLeft; front[k] = isFront; }
+    // vering: het wiel op en neer ten opzichte van zijn plek in het model (m, omhoog positief)
+    readonly float[] baseY = new float[4]; bool hasBase;
+    public float BaseY(int k) { Base(); return baseY[k]; }
+    public void Travel(int k, float dy) { if (axle[k] == null) return; Base(); var p = axle[k].localPosition; p.y = baseY[k] + dy; axle[k].localPosition = p; }
+    void Base() { if (hasBase) return; hasBase = true; for (int k = 0; k < 4; k++) if (axle[k] != null) baseY[k] = axle[k].localPosition.y; }
     public void Drive(float dist, float steerDeg, float dt)
     {
         roll = Mathf.Repeat(roll + dist / 0.36f * Mathf.Rad2Deg, 360f); steer = dt <= 0f ? steerDeg : Mathf.MoveTowards(steer, steerDeg, 160f * dt);

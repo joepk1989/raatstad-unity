@@ -11,14 +11,14 @@ using UnityEngine;
 public partial class PlanetLife
 {
     Car player; Rigidbody prb; float playerSlip, pThrottle, pSteer, pSteerDeg, pFlipT; bool pHand, playerInList; Vector3 pInPos, pInVel, pLastVel;
-    readonly float[] pLen = new float[4]; readonly bool[] pOn = new bool[4];
+    readonly float[] pLen = new float[4], pShow = new float[4]; readonly bool[] pOn = new bool[4];
     public Transform PlayerRoot => player != null ? player.root : null;
     public float PlayerSpeed => prb != null ? Vector3.Dot(prb.linearVelocity, player.root.forward) : 0f;   // m/s, negatief achteruit
     public float PlayerSlip => playerSlip;   // dwars glijden (m/s)
     public bool PlayerAir => player != null && player.air;
     public float PlayerSteer => pSteerDeg;
     public string PlayerWall = "";   // waar de auto het laatst hard tegenaan botste (voor een test)
-    const float PMass = 2900f, PMount = 1.0f, PRest = 0.68f, PSpring = 52000f, PDamp = 5600f, PAntiRoll = 26000f, PMu = 1.15f;
+    const float PMass = 2900f, PMount = 1.0f, PRest = 0.78f, PSpring = 30000f, PDampIn = 2600f, PDampOut = 4200f, PAntiRoll = 9000f, PMu = 1.15f;   // zacht: ~1 Hz, 24 cm inveren bij stilstand, ruim 60 cm slag
     static readonly Vector3[] PWheels = { new Vector3(-0.84f, 0f, 1.95f), new Vector3(0.84f, 0f, 1.95f), new Vector3(-0.84f, 0f, -1.73f), new Vector3(0.84f, 0f, -1.73f) };
     float pWheelR = 0.36f;
     static PhysicsMaterial pMat;
@@ -145,8 +145,8 @@ public partial class PlanetLife
             pOn[k] = WheelHit(mounts[k], -cu, maxLen, out pt[k], out nm[k], out float d);
             if (!pOn[k]) { pLen[k] = PRest; continue; }
             float len = Mathf.Max(0f, d - pWheelR); comp[k] = PRest - len;
-            float f = PSpring * comp[k] + PDamp * (pLen[k] - len) / dt;   // veer en demper
-            if (len < 0.12f) f += (0.12f - len) * PSpring * 8f;   // aanslag
+            float sv = (pLen[k] - len) / dt; float f = PSpring * comp[k] + (sv > 0f ? PDampIn : PDampOut) * sv;   // veer en demper (uitveren trager dan inveren)
+            if (len < 0.14f) f += (0.14f - len) * PSpring * 12f;   // aanslag
             load[k] = Mathf.Max(0f, f); pLen[k] = len; on++;
         }
         // stabilisatorstang: links en rechts samen
@@ -175,7 +175,7 @@ public partial class PlanetLife
             else fLong = idle ? -Mathf.Sign(vl) * m4 * 0.5f : 0f;   // uitrollen
             // wrijvingscirkel: samen nooit meer dan de grip
             float tot = Mathf.Sqrt(fLat * fLat + fLong * fLong); if (tot > grip && tot > 0f) { float s = grip / tot; fLat *= s; fLong *= s; }
-            prb.AddForceAtPosition(wf * fLong + wr * fLat, pt[k] + cu * 0.3f);
+            prb.AddForceAtPosition(wf * fLong + wr * fLat, pt[k] + cu * 0.25f);   // iets boven het wegdek: hij helt in de bocht, maar slaat niet zomaar om
             if (rear) slip = Mathf.Max(slip, Mathf.Abs(vs));
         }
         playerSlip = slip;
@@ -205,6 +205,12 @@ public partial class PlanetLife
     {
         if (player == null || player.wheels == null) return;
         player.wheels.Drive(PlayerSpeed * dt * 0.36f / Mathf.Max(0.2f, pWheelR), pSteerDeg, dt);
+        // de wielen veren zichtbaar mee: het hart van het wiel ligt de veerlengte onder het ophangpunt
+        for (int k = 0; k < 4; k++)
+        {
+            float want = Mathf.Clamp(PMount - pLen[k] - player.wheels.BaseY(k), -0.3f, ModelCar.ArchUp - 0.03f);   // niet door de wielkast
+            pShow[k] = Mathf.Lerp(pShow[k], want, 1f - Mathf.Exp(-dt * 30f)); player.wheels.Travel(k, pShow[k]);
+        }
     }
 }
 

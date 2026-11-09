@@ -8,7 +8,7 @@ using UnityEngine;
 public static class ModelCar
 {
     class Part { public Mesh mesh; public List<(string name, Color c, float metal, float rough, bool emit)> mats = new List<(string, Color, float, float, bool)>(); }
-    class Model { public Part body, wheel; public List<Vector3> wheels = new List<Vector3>(); public float radius = 0.4f; }
+    class Model { public Part body, wheel; public List<Vector3> wheels = new List<Vector3>(); public float radius = 0.4f; public Mesh liner; }
     static readonly Dictionary<string, Model> cache = new Dictionary<string, Model>();
     public static void ResetStatics() { cache.Clear(); }
 
@@ -30,7 +30,74 @@ public static class ModelCar
             cw.Set(k, axle, wheel, c.x < 0f, c.z > 0f);   // het wiel in het bestand is een rechterwiel; links draait de as het om
         }
         cw.Drive(0f, 0f, 0f);
+        // wielkuipen: donker en dicht, zodat je in de wielkast niet de binnenkant van de carrosserie ziet
+        if (M.liner == null) M.liner = Liner(M);
+        var lg = new GameObject("wielkuipen"); lg.transform.SetParent(parent, false); lg.layer = parent.gameObject.layer;
+        lg.AddComponent<MeshFilter>().sharedMesh = M.liner; lg.AddComponent<MeshRenderer>().sharedMaterial = Mats.Get("auto_wielkuip", new Color(0.05f, 0.05f, 0.055f));
         return true;
+    }
+
+    // per wiel een halve koker over het wiel (van iets onder de as voor tot iets onder de as achter) en een wand aan de binnenkant;
+    // beide kanten zichtbaar. De koker ligt binnen de carrosserie en is alleen door de wielkast te zien.
+    public const float ArchUp = 0.2f;   // zoveel ruimte boven de band (het wiel mag niet verder omhoog veren)
+    static Mesh Liner(Model M)
+    {
+        var wb = M.wheel.mesh.bounds; float hw = wb.extents.x;
+        var v = new List<Vector3>(); var t = new List<int>();
+        void Tri(Vector3 a, Vector3 b1, Vector3 c) { for (int side = 0; side < 2; side++) { int i = v.Count; v.Add(a); if (side == 0) { v.Add(b1); v.Add(c); } else { v.Add(c); v.Add(b1); } t.AddRange(new[] { i, i + 1, i + 2 }); } }   // beide kanten, elk met eigen hoekpunten
+        void Quad(Vector3 a, Vector3 b1, Vector3 c, Vector3 d) { Tri(a, b1, c); Tri(a, c, d); }
+        // de vorm van de wielkast van de Cybertruck: een trapezium (gemeten in het model, vanaf het hart van het wiel)
+        var prof = new[] { new Vector2(0.68f, 0.06f), new Vector2(0.42f, 0.70f), new Vector2(-0.42f, 0.70f), new Vector2(-0.68f, 0.06f) };
+        float sc = (M.radius + ArchUp) / 0.68f;
+        foreach (var c in M.wheels)
+        {
+            float sg = Mathf.Sign(c.x), ax = Mathf.Abs(c.x);
+            float xin = ax - hw - 0.1f, xout = ax + hw;   // tot de buitenkant van de band: blijft binnen de huid
+            Vector3 o = new Vector3(0f, c.y, c.z), I = Vector3.right * sg * xin, O = Vector3.right * sg * xout;
+            Vector3 hub = o + I + new Vector3(0f, -0.02f, 0f);
+            for (int k = 0; k + 1 < prof.Length; k++)
+            {
+                Vector3 p = new Vector3(0f, prof[k].y * sc, prof[k].x * sc), q = new Vector3(0f, prof[k + 1].y * sc, prof[k + 1].x * sc);
+                Quad(o + p + I, o + q + I, o + q + O, o + p + O);   // de kuip
+                Tri(hub, o + p + I, o + q + I);   // de binnenwand
+            }
+        }
+        var mesh = new Mesh { name = "wielkuipen" }; mesh.SetVertices(v); mesh.SetTriangles(t, 0); mesh.RecalculateNormals(); mesh.RecalculateBounds();
+        return mesh;
+    }
+
+    // ear clipping in het vlak van de veelhoek: telkens een bolle hoek zonder andere punten erin afknippen
+    static void Triangulate(Vector3[] pv, int[] idx, Vector3 fn, int b0, List<int> tris)
+    {
+        int n = idx.Length;
+        if (n == 3) { tris.Add(b0); tris.Add(b0 + 1); tris.Add(b0 + 2); return; }
+        Vector3 ax = Vector3.Cross(fn, Mathf.Abs(fn.x) < 0.9f ? Vector3.right : Vector3.up).normalized, ay = Vector3.Cross(fn, ax);
+        var p2 = new Vector2[n]; for (int q = 0; q < n; q++) p2[q] = new Vector2(Vector3.Dot(pv[idx[q]], ax), Vector3.Dot(pv[idx[q]], ay));
+        float area = 0f; for (int q = 0; q < n; q++) { Vector2 a = p2[q], b = p2[(q + 1) % n]; area += a.x * b.y - b.x * a.y; }
+        float sg = area >= 0f ? 1f : -1f;
+        var rest = new List<int>(); for (int q = 0; q < n; q++) rest.Add(q);
+        int guard = n * n;
+        while (rest.Count > 3 && guard-- > 0)
+        {
+            bool cut = false;
+            for (int k = 0; k < rest.Count; k++)
+            {
+                int ia = rest[(k + rest.Count - 1) % rest.Count], ib = rest[k], ic = rest[(k + 1) % rest.Count];
+                Vector2 a = p2[ia], b = p2[ib], c = p2[ic];
+                if (((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)) * sg <= 1e-9f) continue;   // hol of plat: geen oor
+                bool inside = false;
+                foreach (int o in rest) { if (o == ia || o == ib || o == ic) continue; if (In(p2[o], a, b, c)) { inside = true; break; } }
+                if (inside) continue;
+                tris.Add(b0 + ia); tris.Add(b0 + ib); tris.Add(b0 + ic); rest.RemoveAt(k); cut = true; break;
+            }
+            if (!cut) break;
+        }
+        if (rest.Count >= 3) for (int q = 1; q < rest.Count - 1; q++) { tris.Add(b0 + rest[0]); tris.Add(b0 + rest[q]); tris.Add(b0 + rest[q + 1]); }   // wat overblijft (of een vreemd vlak): waaier
+    }
+    static bool In(Vector2 p, Vector2 a, Vector2 b, Vector2 c)
+    {
+        float d1 = (p.x - b.x) * (a.y - b.y) - (a.x - b.x) * (p.y - b.y), d2 = (p.x - c.x) * (b.y - c.y) - (b.x - c.x) * (p.y - c.y), d3 = (p.x - a.x) * (c.y - a.y) - (c.x - a.x) * (p.y - a.y);
+        bool neg = d1 < 0f || d2 < 0f || d3 < 0f, pos = d1 > 0f || d2 > 0f || d3 > 0f; return !(neg && pos);
     }
 
     static void Put(Transform parent, Part p, string model)
@@ -76,7 +143,7 @@ public static class ModelCar
                 fn = fn.normalized;   // na het omkeren wijst hij naar buiten, net als Cross(b-a, c-a) in Unity
                 int b0 = verts.Count;
                 for (int q = 0; q < n; q++) { verts.Add(pv[idx[q]]); norms.Add(smooth ? pn[idx[q]] : fn); }
-                for (int q = 1; q < n - 1; q++) { tris[mn].Add(b0); tris[mn].Add(b0 + q); tris[mn].Add(b0 + q + 1); }   // waaier
+                Triangulate(pv, idx, fn, b0, tris[mn]);   // ook holle vlakken (een waaier gaf een driehoek dwars over de wielkast)
             }
             var mesh = new Mesh { name = name }; mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
             mesh.SetVertices(verts); mesh.SetNormals(norms); mesh.subMeshCount = nm;
