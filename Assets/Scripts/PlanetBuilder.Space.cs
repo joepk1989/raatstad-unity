@@ -81,10 +81,16 @@ public partial class PlanetBuilder
         if (!spaceMenuOff) HexMenu(W, H, false); else HexMenuClosed();   // links het raatmenu, meteen in beeld (zonder het beeld te dimmen)
         // onderaan: de navigatie
         string[] lab = { "Naar je stad", "Polen", "Andere kant", "Landen" }; string[] key = { "H", "N", "K", "" };
-        float bw = 0f; foreach (var t in lab) bw += BtnW(t) + 6f; float lw = Mathf.Max(80f, Ui.Width("88° N  188° O", Ui.T.Dim, 11));   // vaste breedte: het paneel verspringt niet als de graden veranderen
+        float bw = 0f; foreach (var t in lab) bw += BtnW(t) + 6f; float lw = Mathf.Max(80f, Ui.Width("88° N  188° O", Ui.T.Dim, 11));
+        // de afmeting van de planeet (ook bij een andere grootte uit de ontwikkelaarsstand)
+        var nl = System.Globalization.CultureInfo.GetCultureInfo("nl-NL"); string size = "Ø " + (2f * Planet.R / 1000f).ToString("0.0", nl) + " km · " + (Planet.Cells.Length).ToString("N0", nl) + " vakken";
+        lw = Mathf.Max(lw, Ui.Width(size, Ui.T.Dim, 11) + 4f);   // vaste breedte: het paneel verspringt niet als de graden veranderen
         var pr = new Rect((W - (14f + lw + 14f + bw + 8f)) * 0.5f, H - 12f - 56f, 14f + lw + 14f + bw + 8f, 56f); Ui.Panel(pr, false, 14f);
         Ui.Label(new Rect(pr.x + 14f, pr.y + 7f, lw, 20f), "PLANEET", Ui.T.Tiny, Ui.Signal, null, 10);
-        Ui.Label(new Rect(pr.x + 14f, pr.y + 27f, lw, 20f), LatLonText(lat, lon), Ui.T.Dim, null, null, 11);
+        Ui.Label(new Rect(pr.x + 14f + Ui.Width("PLANEET", Ui.T.Tiny, 10) + 8f, pr.y + 7f, lw, 20f), LatLonText(lat, lon), Ui.T.Dim, null, null, 10);
+        Ui.Label(new Rect(pr.x + 14f, pr.y + 27f, lw, 20f), size, Ui.T.Dim, null, null, 11);
+        Ui.Tip(new Rect(pr.x, pr.y, 14f + lw + 6f, pr.height), "Planeet " + (Planet.M == Planet.BaseM ? "" : "(ontwikkelaar: M " + Planet.M + ")"),
+            "Straal " + Planet.R.ToString("0", nl) + " m · omtrek " + (2f * Mathf.PI * Planet.R / 1000f).ToString("0.0", nl) + " km · oppervlak " + (4f * Mathf.PI * Planet.R * Planet.R / 1e6f).ToString("0.0", nl) + " km² · vakken van 9 m, 12 vijfhoeken");
         float x = pr.x + 14f + lw + 14f;
         for (int k = 0; k < lab.Length; k++)
         {

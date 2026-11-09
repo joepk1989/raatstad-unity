@@ -8,8 +8,8 @@ using UnityEngine;
 [Serializable] public class PSaveData { public int m; public float r; public List<PCellSave> cells = new List<PCellSave>(); public List<int> links = new List<int>(); public List<int> style = new List<int>(), under = new List<int>(), oneway = new List<int>(), terr = new List<int>(), low = new List<int>(), tunnel = new List<int>(), span = new List<int>(), lower = new List<int>(), precarve = new List<int>(), prelevel = new List<int>(), corner = new List<int>(), center = new List<int>(), bike = new List<int>(), rot = new List<int>(), scorch = new List<int>(); public int startVer, startCell = -1; }   // startVer: de versie van de startstad als de stad nog de ongewijzigde startstad is (anders 0)   // corner: per hoekpunt drie vakken en de verschuiving in cm   // paren: vak/stijl, vak/onder (1 meer, 2 water, 3 kuil, 4 pad, 5 weg), van/naar, vak/terreinhoogte in cm
 public static partial class PlanetCity
 {
-    static string FilePath => Path.Combine(Application.persistentDataPath, "planeet" + Slot + ".json");
-    public static bool SlotExists(int n) => File.Exists(Path.Combine(Application.persistentDataPath, "planeet" + n + ".json"));
+    static string FilePath => Path.Combine(Application.persistentDataPath, "planeet" + Slot + Planet.Suffix + ".json");
+    public static bool SlotExists(int n) => File.Exists(Path.Combine(Application.persistentDataPath, "planeet" + n + Planet.Suffix + ".json"));
 
     public static void Save()
     {

@@ -25,6 +25,13 @@ public partial class PlanetBuilder
         l.Add(new MItem { name = "Vakinfo bij de muis", value = On(Dev.CellInfo), on = Dev.CellInfo, sub = "Nummer, hoogte, vervorming, stapel", act = () => Dev.CellInfo = !Dev.CellInfo });
         l.Add(new MItem { name = "Statistieken", value = On(Dev.Stats), on = Dev.Stats, sub = "Fps, vakken, leven, camera", act = () => Dev.Stats = !Dev.Stats });
         l.Add(new MItem { name = "Meldingen in beeld", value = On(Dev.Log), on = Dev.Log, sub = Dev.Errors + " fouten, " + Dev.Warnings + " waarschuwingen", act = () => Dev.Log = !Dev.Log });
+        {   // planeetgrootte: groter is minder kromming; geldt na opnieuw starten, met eigen steden per grootte (Planet.Suffix)
+            int[] sizes = { 30, 46, 64, 92, 138 }; int want = PlayerPrefs.GetInt("raatstad-dev-planeet", Planet.BaseM); int wi = System.Array.IndexOf(sizes, want); if (wi < 0) wi = 1;
+            string Sz(int mm) => "M " + mm + " · " + Mathf.RoundToInt(Planet.BaseR * mm / Planet.BaseM) + " m" + (mm == Planet.BaseM ? " (origineel)" : "");   // 46 is het origineel en de beste voor het spel
+            l.Add(new MItem { name = "Planeetgrootte", value = Sz(want) + (want != Planet.M ? " (na herstart)" : ""), on = Planet.M != Planet.BaseM, sub = "Klik voor de volgende grootte (" + (10 * want * want + 2).ToString("N0") + " vakken); steden per grootte apart",
+                act = () => { int nx = sizes[(wi + 1) % sizes.Length]; PlayerPrefs.SetInt("raatstad-dev-planeet", nx); PlayerPrefs.Save(); Say("Planeetgrootte " + Sz(nx) + (nx != Planet.M ? ": klik Nu opnieuw starten" : "")); } });
+            if (want != Planet.M) l.Add(new MItem { name = "Nu opnieuw starten", value = Sz(want), sub = "Je stad wordt eerst bewaard; daarna het startscherm met de steden van deze grootte", act = RestartForSize });
+        }
         l.Add(new MItem { name = "Alles opnieuw tekenen", sub = "De hele planeet", act = () => { Dev.Redraw(); Say("Alles opnieuw getekend"); } });
         if (inMenu) l.Add(new MItem { name = "Console", value = "`", sub = "Dezelfde schakelaars in een venster", act = () => { menuOpen = false; devOpen = true; } });
         return l;

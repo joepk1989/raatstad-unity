@@ -7,8 +7,15 @@ using UnityEngine;
 // net als het platte raster. Elk vak heeft een eigen assenstelsel (oost, noord, omhoog) waarin gebouwd wordt.
 public static class Planet
 {
-    public const float R = 600f;      // straal in meters (omtrek 3,8 km; rondlopen duurt een klein uur)
-    public const int M = 46;          // verdeling: 10·M²+2 vakken
+    // verdeling: 10·M²+2 vakken. Standaard M = 46 en straal 600 m (omtrek 3,8 km; rondlopen duurt een klein uur). In de
+    // ontwikkelaarsstand kan de planeet groter (raatstad-dev-planeet, geldt na opnieuw starten); de vakken blijven even groot
+    // (de straal groeit mee) en steden van een andere grootte staan in eigen bestanden (Suffix).
+    public const int BaseM = 46; public const float BaseR = 600f;
+    static int devM = -1;
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)] static void ResetM() { devM = -1; }   // zonder domein-herladen blijven statics staan
+    public static int M { get { if (devM < 0) { int m = PlayerPrefs.GetInt("raatstad-dev-planeet", BaseM); devM = m >= 20 && m <= 400 ? m : BaseM; } return devM; } }
+    public static float R => BaseR * M / BaseM;
+    public static string Suffix => M == BaseM ? "" : "-M" + M;
 
     public class Cell
     {

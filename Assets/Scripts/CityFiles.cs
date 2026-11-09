@@ -12,7 +12,7 @@ using UnityEngine;
 // werkbestand (Slot 0: planeet0.json), opslaan als stad gaat hierlangs (Save).
 public static class CityFiles
 {
-    public static string Dir => Path.Combine(Application.persistentDataPath, "steden");
+    public static string Dir => Path.Combine(Application.persistentDataPath, "steden" + Planet.Suffix);   // een grotere planeet (ontwikkelaar): eigen map
     static string DataPath(string id) => Path.Combine(Dir, id + ".json");
     static string InfoPath(string id) => Path.Combine(Dir, id + ".info.json");
     static string ThumbPath(string id) => Path.Combine(Dir, id + ".png");
@@ -45,6 +45,7 @@ public static class CityFiles
     // de oude slots overnemen (kopie, het origineel blijft staan zoals het is)
     static void Import()
     {
+        if (Planet.Suffix != "") return;   // de oude slots horen bij de gewone planeet
         for (int n = 1; n <= 3; n++)
         {
             string from = "planeet" + n + ".json", src = Path.Combine(Application.persistentDataPath, from);
