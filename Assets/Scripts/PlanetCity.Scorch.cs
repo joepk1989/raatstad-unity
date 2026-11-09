@@ -13,6 +13,9 @@ public static partial class PlanetCity
     public static bool DryPit(int i) => Scorch.Count > 0 && Scorch.TryGetValue(i, out byte s) && (s == ScorchFloor || s == ScorchRim);
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     static void ResetScorch() { Scorch.Clear(); }
+    // het gemiddelde van de hoekpunten van vak i zoals ze getekend worden (een hoekpunt is het laagste van de drie vakken eromheen);
+    // een meteoorkrater legt het midden van zijn vakken daar dichtbij, anders steekt een opgehoogd vak als een punt uit
+    public static float CornerMean(int i) { int m = Planet.Cells[i].corners.Length; float s = 0f; for (int k = 0; k < m; k++) s += CornerBase(i, k); return s / m; }
 
     // de kleur van een driehoekje in een verschroeid vak; vlak (tag null) telt ook mee. Vast per driehoekje (uit de hoogtes), zodat het
     // patroon niet verspringt bij opnieuw tekenen

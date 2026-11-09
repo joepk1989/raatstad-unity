@@ -68,38 +68,44 @@ public partial class PlanetMeteor : MonoBehaviour
     {
         int b = Mathf.Clamp(size, 0, 2), rim = b + 1, outer = b + 2; float D = Depth[b];
         var cells = new List<(int c, int d)> { (c0, 0) }; var seen = new HashSet<int> { c0 }; int from = 0;
-        int[] ring = Ejecta[b]; int maxD = Mathf.Max(outer + 1, rim + ring.Length);
+        int[] ring = Ejecta[b]; int maxD = Mathf.Max(outer + 2, rim + ring.Length);
         for (int d = 1; d <= maxD; d++) { int to = cells.Count; for (int k = from; k < to; k++) foreach (int j in Planet.Cells[cells[k].c].nb) if (seen.Add(j)) cells.Add((j, d)); from = to; }
         // water: de inslag in het water zelf, of een zee, meer of gracht vlak naast de krater (vóór het verwoesten: een meer verdwijnt dan)
-        bool inWater = PlanetCity.G(c0) < PlanetCity.SeaLevel, nearWater = false;
-        foreach (var x in cells) if (x.d <= outer + 1 && (PlanetCity.G(x.c) < PlanetCity.SeaLevel || (PlanetCity.Cells.TryGetValue(x.c, out var wl) && wl.Count > 0 && (wl[0] == "meer" || wl[0] == "water")))) nearWater = true;
+        // echt water, niet alleen laag: de droge kom van een eerdere inslag ligt ook onder het zeeniveau (DryPit), die telt niet
+        bool inWater = IsWater(c0), nearWater = false;
+        foreach (var x in cells) if (x.d <= outer + 1 && IsWater(x.c)) nearWater = true;
         // verschroeid: kale kom, opgeworpen rand, daaromheen een zwarte deken van roet en gruis die naar buiten rafelt; bomen erin verbranden
         foreach (var x in cells)
         {
-            byte v = x.d <= b ? PlanetCity.ScorchFloor : x.d == rim ? PlanetCity.ScorchRim : (byte)ring[x.d - rim - 1];
+            byte v = x.d <= b ? PlanetCity.ScorchFloor : x.d == rim ? PlanetCity.ScorchRim : x.d - rim - 1 < ring.Length ? (byte)ring[x.d - rim - 1] : (byte)0;
+            if (v == 0) continue;
             if (!PlanetCity.Scorch.TryGetValue(x.c, out byte old) || old < v) PlanetCity.Scorch[x.c] = v;
             if (x.d > rim && v >= 50 && PlanetCity.Cells.TryGetValue(x.c, out var tl) && tl.Count == 1 && tl[0] == "park") PlanetCity.Clear(x.c);
             PlanetCity.Touch(x.c);
         }
-        var zone = new List<int>(); foreach (var x in cells) if (x.d <= outer + 1) zone.Add(x.c);   // voor het wegzakken: een ring buiten het puin blijft staan
-        cells.RemoveAll(x => x.d > outer);
-        var before = new Dictionary<int, float>(); foreach (var x in cells) before[x.c] = PlanetCity.G(x.c);   // zoals het eruitzag: de kom zakt daarvandaan weg (PlanetMeteor.Morph.cs)
+        var zone = new List<int>(); foreach (var x in cells) if (x.d <= outer + 2) zone.Add(x.c);   // voor het wegzakken: een ring buiten het puin blijft staan
+        cells.RemoveAll(x => x.d > outer + 1);   // het puin loopt nog een ring verder zacht uit
+        var before = new Dictionary<int, float>(); foreach (var x in cells) before[x.c] = PlanetCity.G(x.c) + PlanetCity.CenterOfs1(x.c);   // zoals het eruitzag: de kom zakt daarvandaan weg (PlanetMeteor.Morph.cs)
         // eerst verwoesten (een weg op een niveau zet zijn terrein terug, een brug geeft zijn water terug: dan nog eens)
         foreach (var x in cells) if (x.d <= rim) for (int n = 0; n < 4 && PlanetCity.Cells.ContainsKey(x.c); n++) if (!PlanetCity.Clear(x.c)) break;
         float baseH = 0f; int nb = 0; foreach (var x in cells) if (x.d <= rim) { baseH += PlanetCity.G(x.c); nb++; } baseH /= nb;
         // de meteoor holt het terrein uit: een diepe kom, ook onder het zeeniveau (droog: PlanetCity.DryPit), met een opgeworpen rand
-        int changed = 0; var bowl = new List<int>();
+        int changed = 0; var bowl = new List<int>(); var shaped = new List<(int c, int d)>();
         foreach (var x in cells)
         {
             if (x.d > rim && PlanetCity.Cells.ContainsKey(x.c) && (PlanetCity.Plateau(x.c) || PlanetCity.IsWalk(x.c))) continue;   // in het puin eromheen blijven gebouwen en wegen staan
             float h = PlanetCity.G(x.c), nh;
             if (x.d <= b) { float u = (float)x.d / rim; nh = Mathf.Lerp(h, baseH, 0.6f) - D * (1f - u * u); bowl.Add(x.c); }   // de kom: in het midden het diepst
-            else if (x.d == rim) nh = Mathf.Max(h, baseH) + D * 0.4f;                                                           // de opgeworpen rand
-            else nh = h + D * (b == 0 ? 0.06f : 0.12f);                                                                          // het puin eromheen
+            else if (x.d == rim) nh = Mathf.Max(h, baseH) + D * 0.3f;                                                           // de opgeworpen rand
+            else if (x.d == outer) nh = h + D * (b == 0 ? 0.08f : 0.12f);                                                         // het puin eromheen
+            else nh = h + D * 0.04f;                                                                                             // en zacht uitlopend
             if (PlanetCity.SetTerr(x.c, nh)) changed++;
-            PlanetCity.Touch(x.c);
+            PlanetCity.Touch(x.c); shaped.Add((x.c, x.d));
         }
-        var delta = new Dictionary<int, float>(); foreach (int c in zone) delta[c] = before.TryGetValue(c, out var h0) ? PlanetCity.G(c) - h0 : 0f;
+        // geen punten: het midden van elk vak dicht bij het gemiddelde van zijn hoekpunten (de kom het meest, het puin het minst)
+        var mid = new List<(int c, float h)>(); foreach (var x in shaped) { float g = PlanetCity.G(x.c), cm = PlanetCity.CornerMean(x.c), keep = x.d <= b ? 0.3f : x.d == rim ? 0.4f : 0.6f; mid.Add((x.c, cm + (g - cm) * keep - g)); }
+        foreach (var m in mid) { if (Mathf.Abs(m.h) > 0.01f) PlanetCity.CenterOfs[m.c] = m.h; else PlanetCity.CenterOfs.Remove(m.c); }
+        var delta = new Dictionary<int, float>(); foreach (int c in zone) delta[c] = before.TryGetValue(c, out var h0) ? PlanetCity.G(c) + PlanetCity.CenterOfs1(c) - h0 : 0f;
         if (I != null) I.BeginMorph(c0, b, delta, (outer + 1) * CellW);
         // water: midden in het water meteen nat; met water vlak naast breekt de wand na een paar seconden door
         if (inWater) foreach (int c in bowl) PlanetCity.Scorch[c] = PlanetCity.ScorchWet;
@@ -110,6 +116,7 @@ public partial class PlanetMeteor : MonoBehaviour
         }
         return changed;
     }
+    static bool IsWater(int c) => PlanetCity.Wet(c) || (PlanetCity.Cells.TryGetValue(c, out var l) && l.Count > 0 && (l[0] == "meer" || l[0] == "water"));
     // de wand breekt door: het water stroomt de kom in (niet als het terrein intussen veranderde, bijvoorbeeld door undo)
     void UpdateFloods(float dt)
     {
@@ -224,7 +231,7 @@ public partial class PlanetMeteor : MonoBehaviour
         var cam = Cam(); float dist = cam != null ? Vector3.Distance(cam.transform.position, at) : 500f;
         shake = Mathf.Max(shake * Mathf.Exp(-shakeT * 2.2f), (0.8f + 0.9f * b) * Mathf.Clamp01(rc * 7f / Mathf.Max(1f, dist))); shakeT = 0f;
         StopRoar(r);
-        bool splash = PlanetCity.G(r.cell) < PlanetCity.SeaLevel;   // midden in het water
+        bool splash = IsWater(r.cell);   // midden in het water
         PlanetLife.Blast(at, rc + CellW);
         r.hit?.Invoke(r.cell, b);
         ImpactSound(at, b, dist, splash, r.shower ? 0.7f : 1f);
