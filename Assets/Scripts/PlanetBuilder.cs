@@ -135,6 +135,7 @@ public partial class PlanetBuilder : MonoBehaviour
         LoadBar(); ApplyItem();
         welcome = PlayerPrefs.GetInt("raatstad-welkom-uit", 0) == 0;
         HomeBoot();   // eerst het startscherm (StartScreen.cs), vanuit de ruimte
+        LoadSettings();   // geluid, leven en raster van de vorige keer (PlanetBuilder.Settings.cs), niet bij een test
     }
 
     void Say(string s) { msg = s; msgT = Time.time + 4f; if (flying) { flyNote = s; flyBadgeT = Time.time; } }   // in de cameramodus op het label
@@ -149,14 +150,14 @@ public partial class PlanetBuilder : MonoBehaviour
     bool rebuilding;
     void Changed() { PlanetCity.Reprofile(PlanetCity.ProfileNewLine); PlanetCity.ProfileNewLine = null; Sounds.After(hasHover ? hoverPoint : focus * Planet.R); PlanetCity.UserEdit(); beautyVer++; PlanetCity.Save(); PlanetCity.RebuildSoon(hasHover ? hover : -1); rebuilding = true; RebuildTick(0f); beautyT = -99f; }   // 0: in dit beeld alleen het deel van de klik
     void RebuildTick(float budget) { if (PlanetCity.RebuildSome(budget)) { PlanetCity.RebuildGrid(); rebuilding = false; } }
-    void ToggleSound() { Babble.Muted = !Babble.Muted; Ambience.Muted = Babble.Muted; Say(Babble.Muted ? "Geluid uit" : "Geluid aan"); }
+    void ToggleSound() { Babble.Muted = !Babble.Muted; Ambience.Muted = Babble.Muted; SaveSettings(); Say(Babble.Muted ? "Geluid uit" : "Geluid aan"); }
     void ToggleHelp()
     {
         helpOpen = !helpOpen; if (!helpOpen) return;
         menuOpen = scoreOpen = welcome = false;
         if (walking) { Cursor.lockState = CursorLockMode.None; Cursor.visible = true; }   // tijdens het lopen: de muis los om het venster te kunnen sluiten
     }
-    void ToggleGrid() { PlanetCity.GridOn = !PlanetCity.GridOn; PlanetCity.ShowGrid(PlanetCity.GridOn && !walking); Say(PlanetCity.GridOn ? "Raster aan (G)" : "Raster uit (G)"); }
+    void ToggleGrid() { PlanetCity.GridOn = !PlanetCity.GridOn; PlanetCity.ShowGrid(PlanetCity.GridOn && !walking); SaveSettings(); Say(PlanetCity.GridOn ? "Raster aan (G)" : "Raster uit (G)"); }
     void GoCentre() { centreT = -99f; CityCentre(); if (hasCentre) { focus = centre; Say("Naar het midden van de stad (H)"); } }
     // naar de andere kant van de bol: het punt recht tegenover waar je nu kijkt (K, nog een keer: terug)
     void GoOpposite()
@@ -541,7 +542,7 @@ public partial class PlanetBuilder : MonoBehaviour
         if (linePlan != null) ShowPlan(linePlan);
         ghostKey = null;
     }
-    void ToggleLights() { PlanetCity.Lights = !PlanetCity.Lights; PlanetCity.TouchAll(); PlanetCity.Rebuild(); Say(PlanetCity.Lights ? "Verkeerslichten aan" : "Verkeerslichten uit"); }
+    void ToggleLights() { PlanetCity.Lights = !PlanetCity.Lights; PlanetCity.TouchAll(); PlanetCity.Rebuild(); SaveSettings(); Say(PlanetCity.Lights ? "Verkeerslichten aan" : "Verkeerslichten uit"); }
 
     void SwitchSlot(int n)
     {
@@ -1042,8 +1043,8 @@ public partial class PlanetBuilder : MonoBehaviour
         if (hit >= 0 && Weather.I != null) { if (hit == 6) { Weather.I.Wissel = true; Say("Weer: wisselend"); } else { Weather.I.Set((Weather.Kind)hit, true); Say("Weer: " + Weather.Names[hit]); } }
         y += 40f;
         Ui.Label(new Rect(x, y, 90f, 30f), "BEELD", Ui.T.Tiny); float cx = r.xMax - 16f;
-        float w3 = Ui.Width("Auto's", Ui.T.Bold) + 22f; if (Ui.Button(new Rect(cx - w3, y, w3, 30f), "Auto's", PlanetLife.CarsOn)) PlanetLife.CarsOn = !PlanetLife.CarsOn; cx -= w3 + 6f;
-        float w2 = Ui.Width("Mensen", Ui.T.Bold) + 22f; if (Ui.Button(new Rect(cx - w2, y, w2, 30f), "Mensen", PlanetLife.PeopleOn)) PlanetLife.PeopleOn = !PlanetLife.PeopleOn; cx -= w2 + 6f;
+        float w3 = Ui.Width("Auto's", Ui.T.Bold) + 22f; if (Ui.Button(new Rect(cx - w3, y, w3, 30f), "Auto's", PlanetLife.CarsOn)) { PlanetLife.CarsOn = !PlanetLife.CarsOn; SaveSettings(); } cx -= w3 + 6f;
+        float w2 = Ui.Width("Mensen", Ui.T.Bold) + 22f; if (Ui.Button(new Rect(cx - w2, y, w2, 30f), "Mensen", PlanetLife.PeopleOn)) { PlanetLife.PeopleOn = !PlanetLife.PeopleOn; SaveSettings(); } cx -= w2 + 6f;
         float w1 = Ui.Width("Raster", Ui.T.Bold) + 22f; if (Ui.Button(new Rect(cx - w1, y, w1, 30f), "Raster", PlanetCity.GridOn)) ToggleGrid();
     }
 
@@ -1327,51 +1328,6 @@ public partial class PlanetBuilder : MonoBehaviour
     static string RowIcon(string n) => n == "Groen" ? "bewolkt" : n == "Bereikbaar" ? "huis" : n == "Wegennet" ? "kompas" : n == "Afwisseling" ? "stad" : n == "Levendig" ? "lopen" : n == "Water" ? "regen" : n == "Voorzieningen" ? "stad" : n == "Blikvangers" ? "licht" : "raster";
 
     // ---- het menu: in het midden, met kaarten per groep (zoals de webversie)
-    void Menu(float W, float H)
-    {
-        Ui.DimBack(0.25f);
-        float w = 440f, h = 924f; var r = new Rect((W - w) * 0.5f, Mathf.Max(16f, (H - h) * 0.5f), w, h); Ui.Panel(r, true, 16f);
-        float x = r.x + 18f, iw = w - 36f, y = r.y + 14f, half = (iw - 8f) * 0.5f;
-        Ui.Tex(new Rect(x, y + 3f, 20f, 23f), Ui.Hex(Ui.Signal, Ui.Signal, 0f, true)); Ui.Label(new Rect(x + 30f, y, 200f, 28f), "MENU", Ui.T.Title);
-        if (Ui.RoundButton(new Rect(r.xMax - 18f - 30f, y - 1f, 30f, 30f), "sluit")) menuOpen = false; y += 40f;
-        int blocks = beauty != null ? beauty.blocks : PlanetCity.Cells.Count;
-        Ui.CardButton(new Rect(x, y, iw, 50f), CityName, blocks + " blokken · stad nu open", true, "stad"); y += 56f;
-        Ui.Label(new Rect(x, y, iw, 18f), "Je stad wordt elke 3 minuten vanzelf bewaard, en als je het spel sluit.", Ui.T.Dim, null, null, 11); y += 28f;
-        System.Action<string> section = s => { Ui.Label(new Rect(x, y, iw, 16f), s, Ui.T.Tiny); y += 20f; };
-        section("STEDEN");
-        HomeMenuCards(x, y, iw, half);   // opslaan, opslaan als, naar het startscherm (StartScreen.cs)
-        if (Ui.CardButton(new Rect(x + half + 8f, y + 56f, half, 48f), "Lege bouwgrond", "Zelf vanaf nul (Ctrl+Z terug)", false, "leeg")) { Empty(); menuOpen = false; }
-        y += 2 * 56f + 8f;
-        section("GEREEDSCHAP");
-        if (Ui.CardButton(new Rect(x, y, half, 48f), "Voorbeeldstad hier", "Ringweg, huizen en een meer", false, "huis")) { Sample(); menuOpen = false; }
-        if (Ui.CardButton(new Rect(x + half + 8f, y, half, 48f), "Naar het midden", "Camera terug naar je stad (H)", false, "kompas")) { GoCentre(); menuOpen = false; }
-        if (Ui.CardButton(new Rect(x, y + 56f, half, 48f), "Naar de polen", "Noord- en zuidpool (N)", false, "kompas")) { GoPole(); menuOpen = false; }
-        if (Ui.CardButton(new Rect(x + half + 8f, y + 56f, half, 48f), "Startstad", "Opnieuw beginnen rond een vlag", false, "stad")) { StartTown(); menuOpen = false; }
-        if (Ui.CardButton(new Rect(x, y + 112f, half, 48f), "Hele planeet vol", "Stadjes overal, platteland ertussen (Ctrl+Z terug)", false, "stad")) { FillPlanet(); menuOpen = false; }
-        if (Ui.CardButton(new Rect(x + half + 8f, y + 112f, half, 48f), "Meteoor", "Inslag op het midden van het beeld", false, "onweer")) { Meteor(); menuOpen = false; }
-        AiMenuCards(x, y + 168f, half);   // AI-bouwer: starten, pauzeren, stoppen en het tempo (PlanetBuilder.AI.cs)
-        Ui.Label(new Rect(x + 2f, y + 224f, iw, 16f), "METEOOR", Ui.T.Tiny);
-        int mz = Ui.Seg(new Rect(x, y + 242f, iw - 128f, 30f), new[] { "Klein · 1", "Middel · 7", "Groot · 19" }, meteorSize); if (mz >= 0) meteorSize = mz;
-        if (Ui.Button(new Rect(x + iw - 120f, y + 242f, 120f, 30f), "Meteorenregen")) { MeteorShower(); menuOpen = false; }   // een halve minuut (PlanetBuilder.Meteor.cs)
-        y += 5 * 56f + 8f;
-        section("LEVEN EN INSTELLINGEN");
-        if (Ui.CardButton(new Rect(x, y, half, 48f), "Mensen", PlanetLife.PeopleOn ? "aan" : "uit", PlanetLife.PeopleOn, "mensen")) PlanetLife.PeopleOn = !PlanetLife.PeopleOn;
-        if (Ui.CardButton(new Rect(x + half + 8f, y, half, 48f), "Auto's", PlanetLife.CarsOn ? "aan" : "uit", PlanetLife.CarsOn, "auto")) PlanetLife.CarsOn = !PlanetLife.CarsOn;
-        if (Ui.CardButton(new Rect(x, y + 56f, half, 48f), "Verkeerslichten", PlanetCity.Lights ? "aan" : "uit", PlanetCity.Lights, "licht")) ToggleLights();
-        if (Ui.CardButton(new Rect(x + half + 8f, y + 56f, half, 48f), "Geluid", Babble.Muted ? "uit" : "aan", !Babble.Muted, Babble.Muted ? "stil" : "geluid")) ToggleSound();
-        if (Ui.CardButton(new Rect(x, y + 112f, half, 48f), "Bediening", "Alle toetsen op een rij (?)", false, "boek")) { helpOpen = true; menuOpen = false; }
-        if (Ui.CardButton(new Rect(x + half + 8f, y + 112f, half, 48f), "Welkom", "Het beginscherm", false, "zon")) { welcome = true; menuOpen = false; }
-        if (Ui.CardButton(new Rect(x, y + 168f, half, 48f), "Totale chaos", PlanetLife.Chaos ? "racers, ontwijkers en jagers" : "uit: netjes verkeer", PlanetLife.Chaos, "auto")) { PlanetLife.Chaos = !PlanetLife.Chaos; Say(PlanetLife.Chaos ? "Totale chaos: racers, ontwijkers en jagers op de weg" : "Netjes verkeer"); }
-        var sz = new Rect(x + half + 8f, y + 168f, half, 48f); Ui.Label(new Rect(sz.x + 2f, sz.y, sz.width, 16f), "INTERFACEGROOTTE", Ui.T.Tiny);
-        float[] sizes = { 0.9f, 1f, 1.15f, 1.3f }; int si = 0; for (int k = 1; k < 4; k++) if (Mathf.Abs(sizes[k] - Ui.Size) < Mathf.Abs(sizes[si] - Ui.Size)) si = k;
-        int hs = Ui.Seg(new Rect(sz.x, sz.y + 18f, sz.width, 30f), new[] { "90%", "100%", "115%", "130%" }, si); if (hs >= 0 && hs != si) Ui.Size = sizes[hs];
-        Ui.Label(new Rect(x + 2f, y + 224f, iw, 16f), "BOUWMUZIEK", Ui.T.Tiny);   // de ruimte heeft altijd haar eigen muziek
-        int ms = Ui.Seg(new Rect(x, y + 242f, iw, 30f), BuildMusic.StyleNames, BuildMusic.Style); if (ms >= 0 && ms != BuildMusic.Style) { BuildMusic.SetStyle(ms); Say("Bouwmuziek: " + BuildMusic.StyleNames[ms]); }
-        y += 5 * 56f + 4f;
-        Ui.Label(new Rect(x, y, iw, 16f), "Ware grootte: een vak is 15,6 m breed, een verdieping 3 m, de planeet 3,8 km rond.", Ui.T.Dim, null, null, 11);
-        if (Ui.DimClick()) menuOpen = false;
-    }
-
     // ---- bediening: alle toetsen en de muis op een rij, in twee kolommen (zoals het venster ? van de webversie, 15b-sneltoetsen.js)
     // "#Kop" is een kopje; anders "toetsen|uitleg". In de toetsen is elk woord met een hoofdletter of een teken een toets,
     // een woord met een kleine letter (muis, wiel, slepen) gewone tekst, en "/" betekent "of".
@@ -1436,8 +1392,8 @@ public partial class PlanetBuilder : MonoBehaviour
         "P|tijd stilzetten en verder",
         "O|ander weer (Shift+O: vorige)",
         "G|raster aan en uit",
-        "M|menu",
-        "`|ontwikkelaarsconsole (ook Instellingen › Ontwikkelaar)",
+        "M|menu: opslaan, gereedschap en instellingen (beeld, geluid, leven, planeet)",
+        "`|ontwikkelaarsconsole (dezelfde schakelaars: Instellingen › Ontwikkelaar)",
         "F8|melding voor Claude: beeld, plek en stad bewaren",
         "?|dit overzicht",
         "Esc|venster sluiten",

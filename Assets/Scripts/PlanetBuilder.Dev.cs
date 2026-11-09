@@ -2,38 +2,34 @@ using System.Collections.Generic;
 using UnityEngine;
 
 // De ontwikkelaarsconsole (toets `): de schakelaars van Dev (vijfhoeken en vervorming, hoekpunten, vakinfo, statistieken, log),
-// alles opnieuw tekenen, en de laatste meldingen uit de log. Dezelfde schakelaars staan in het raatmenu onder Instellingen › Ontwikkelaar.
+// alles opnieuw tekenen, en de laatste meldingen uit de log. Dezelfde schakelaars staan onder Instellingen › Ontwikkelaar
+// (startscherm en raatmenu, PlanetBuilder.Settings.cs). De planeetgrootte staat onder Instellingen › Planeet.
 public partial class PlanetBuilder
 {
-    bool devOpen, hexDev; int devScroll;   // devScroll: de eerste zichtbare schakelaar in de console   // hexDev: in het raatmenu toont Instellingen de ontwikkelaarskeuzes
+    bool devOpen; int devScroll;   // devScroll: de eerste zichtbare schakelaar in de console
 
     void DevKeys() { if (Inp.Down(K.Backquote)) devOpen = !devOpen; }
 
-    // de keuzes (ook voor het raatmenu)
-    List<MItem> DevItems(bool inMenu)
+    // de keuzes (ook voor Instellingen › Ontwikkelaar); withConsole: met de knop naar de console (in het spel, niet op het startscherm)
+    List<MItem> DevItems(bool withConsole)
     {
         string On(bool b) => b ? "aan" : "uit";
         var l = new List<MItem>();
-        if (inMenu) l.Add(new MItem { name = "‹ Terug", sub = "Naar de gewone instellingen", act = () => { hexDev = false; hexSubT = Time.unscaledTime; } });
+        l.Add(new MItem { head = true, name = "Weergave" });
         l.Add(new MItem { name = "Vijfhoeken en vervorming", value = On(Dev.Pentagons), on = Dev.Pentagons, sub = "Oranje vijfhoeken met baken, de grond kleurt mee met de vervorming", act = () => Dev.Pentagons = !Dev.Pentagons });
         l.Add(new MItem { name = "Startplekken", value = On(Dev.Starts), on = Dev.Starts, sub = "De twintig startplekken met paal, vlag en bordje", act = () => Dev.Starts = !Dev.Starts });
-        l.Add(new MItem { name = "Terrein door wegen", value = On(PlanetCity.RoadShape), on = PlanetCity.RoadShape, sub = "Uit: geen dijken onder wegen; waar het terrein hoger ligt wordt het met een talud afgegraven", act = () => { PlanetCity.RoadShape = !PlanetCity.RoadShape; Dev.Redraw(); Say("Terrein door wegen " + On(PlanetCity.RoadShape)); } });
-        l.Add(new MItem { name = "Talud langs wegen", value = On(PlanetCity.RoadSlopes), on = PlanetCity.RoadSlopes, sub = "Uit: de kant naast de weg bijna loodrecht in plaats van een schuin talud", act = () => { PlanetCity.RoadSlopes = !PlanetCity.RoadSlopes; Dev.Redraw(); Say("Talud langs wegen " + On(PlanetCity.RoadSlopes)); } });
-        l.Add(new MItem { name = "Naden langs wegen", value = On(PlanetCity.Seams), on = PlanetCity.Seams, sub = "Stroken langs de randen van vakken die een kier afdekken; uit laat zien waar het terrein niet aansluit", act = () => { PlanetCity.Seams = !PlanetCity.Seams; Dev.Redraw(); Say("Naden " + On(PlanetCity.Seams)); } });
-        l.Add(new MItem { name = "Terrein v2", value = On(PlanetCity.Ground2), on = PlanetCity.Ground2, sub = "De bodem van elk vak uit de hoogtefunctie H, met randpunten die twee buren delen (stap 2 van Terrein v2): geen kieren, geen naden", act = () => { PlanetCity.Ground2 = !PlanetCity.Ground2; PlanetCity.Reprofile(); Dev.Redraw(); Say("Terrein v2 " + On(PlanetCity.Ground2)); } });
         l.Add(new MItem { name = "Hoekpunten", value = On(Dev.Verts), on = Dev.Verts, sub = "Bij het terreingereedschap rond de muis", act = () => Dev.Verts = !Dev.Verts });
         l.Add(new MItem { name = "Vakinfo bij de muis", value = On(Dev.CellInfo), on = Dev.CellInfo, sub = "Nummer, hoogte, vervorming, stapel", act = () => Dev.CellInfo = !Dev.CellInfo });
         l.Add(new MItem { name = "Statistieken", value = On(Dev.Stats), on = Dev.Stats, sub = "Fps, vakken, leven, camera", act = () => Dev.Stats = !Dev.Stats });
         l.Add(new MItem { name = "Meldingen in beeld", value = On(Dev.Log), on = Dev.Log, sub = Dev.Errors + " fouten, " + Dev.Warnings + " waarschuwingen", act = () => Dev.Log = !Dev.Log });
-        {   // planeetgrootte: groter is minder kromming; geldt na opnieuw starten, met eigen steden per grootte (Planet.Suffix)
-            int[] sizes = { 30, 46, 64, 92, 138 }; int want = PlayerPrefs.GetInt("raatstad-dev-planeet", Planet.BaseM); int wi = System.Array.IndexOf(sizes, want); if (wi < 0) wi = 1;
-            string Sz(int mm) => "M " + mm + " · " + Mathf.RoundToInt(Planet.BaseR * mm / Planet.BaseM) + " m" + (mm == Planet.BaseM ? " (origineel)" : "");   // 46 is het origineel en de beste voor het spel
-            l.Add(new MItem { name = "Planeetgrootte", value = Sz(want) + (want != Planet.M ? " (na herstart)" : ""), on = Planet.M != Planet.BaseM, sub = "Klik voor de volgende grootte (" + (10 * want * want + 2).ToString("N0") + " vakken); steden per grootte apart",
-                act = () => { int nx = sizes[(wi + 1) % sizes.Length]; PlayerPrefs.SetInt("raatstad-dev-planeet", nx); PlayerPrefs.Save(); Say("Planeetgrootte " + Sz(nx) + (nx != Planet.M ? ": klik Nu opnieuw starten" : "")); } });
-            if (want != Planet.M) l.Add(new MItem { name = "Nu opnieuw starten", value = Sz(want), sub = "Je stad wordt eerst bewaard; daarna het startscherm met de steden van deze grootte", act = RestartForSize });
-        }
+        l.Add(new MItem { head = true, name = "Terreinproeven (niet onthouden)" });
+        l.Add(new MItem { name = "Terrein door wegen", value = On(PlanetCity.RoadShape), on = PlanetCity.RoadShape, sub = "Uit: geen dijken onder wegen; hoger terrein wordt met een talud afgegraven", act = () => { PlanetCity.RoadShape = !PlanetCity.RoadShape; Dev.Redraw(); Say("Terrein door wegen " + On(PlanetCity.RoadShape)); } });
+        l.Add(new MItem { name = "Talud langs wegen", value = On(PlanetCity.RoadSlopes), on = PlanetCity.RoadSlopes, sub = "Uit: de kant naast de weg bijna loodrecht in plaats van een schuin talud", act = () => { PlanetCity.RoadSlopes = !PlanetCity.RoadSlopes; Dev.Redraw(); Say("Talud langs wegen " + On(PlanetCity.RoadSlopes)); } });
+        l.Add(new MItem { name = "Naden langs wegen", value = On(PlanetCity.Seams), on = PlanetCity.Seams, sub = "Stroken die kieren afdekken; uit laat zien waar het terrein niet aansluit", act = () => { PlanetCity.Seams = !PlanetCity.Seams; Dev.Redraw(); Say("Naden " + On(PlanetCity.Seams)); } });
+        l.Add(new MItem { name = "Terrein v2", value = On(PlanetCity.Ground2), on = PlanetCity.Ground2, sub = "Bodem uit de hoogtefunctie H, randen gedeeld met de buren: geen kieren of naden", act = () => { PlanetCity.Ground2 = !PlanetCity.Ground2; PlanetCity.Reprofile(); Dev.Redraw(); Say("Terrein v2 " + On(PlanetCity.Ground2)); } });
+        l.Add(new MItem { head = true, name = "Hulpmiddelen" });
         l.Add(new MItem { name = "Alles opnieuw tekenen", sub = "De hele planeet", act = () => { Dev.Redraw(); Say("Alles opnieuw getekend"); } });
-        if (inMenu) l.Add(new MItem { name = "Console", value = "`", sub = "Dezelfde schakelaars in een venster", act = () => { menuOpen = false; devOpen = true; } });
+        if (withConsole) l.Add(new MItem { name = "Console", value = "`", sub = "Dezelfde schakelaars in een venster, met de log", act = () => { menuOpen = false; devOpen = true; } });
         return l;
     }
 
@@ -94,7 +90,7 @@ public partial class PlanetBuilder
         if (Ui.RoundButton(new Rect(r.xMax - 18f - 28f, y, 28f, 28f), "sluit")) devOpen = false;
         y += 40f; float lw = 330f;
         // de schakelaars: wat niet past schuift met het muiswiel (alleen hele regels, met een balkje rechts ervan)
-        var items = DevItems(false); float top = y, room = r.yMax - 12f - top; int fit = Mathf.Max(1, Mathf.FloorToInt((room + 4f) / 40f)), max = Mathf.Max(0, items.Count - fit);
+        var items = DevItems(false); items.RemoveAll(m => m.head || m.note); float top = y, room = r.yMax - 12f - top; int fit = Mathf.Max(1, Mathf.FloorToInt((room + 4f) / 40f)), max = Mathf.Max(0, items.Count - fit);
         var lr0 = new Rect(x, top, lw + 14f, room); if (lr0.Contains(Ui.Mouse) && Inp.Scroll != 0f) devScroll -= Mathf.RoundToInt(Mathf.Sign(Inp.Scroll));
         devScroll = Mathf.Clamp(devScroll, 0, max);
         for (int k = devScroll; k < Mathf.Min(items.Count, devScroll + fit); k++) { var m = items[k]; if (HexRow(new Rect(x, y, lw, 36f), m.name, null, m.value, m.on)) m.act?.Invoke(); y += 40f; }
@@ -111,7 +107,7 @@ public partial class PlanetBuilder
         else LogLines(W, H, Mathf.FloorToInt((lr.height - 12f) / 17f), new Rect(lr.x + 10f, lr.y + 6f, lr.width - 20f, lr.height - 12f));
     }
 
-    // opnieuw starten voor een andere planeetgrootte: in de editor Play uit en meteen weer aan (bij het stoppen wordt de stad bewaard,
+    // opnieuw starten voor een andere planeetgrootte (Instellingen › Planeet, PlanetBuilder.Settings.cs): in de editor Play uit en meteen weer aan (bij het stoppen wordt de stad bewaard,
     // StartScreen.OnApplicationQuit); in een gebouwd spel kan dat niet, dan vragen we het spel zelf opnieuw te starten
     void RestartForSize()
     {

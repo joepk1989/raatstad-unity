@@ -26,7 +26,7 @@ public partial class PlanetBuilder
                 new Sub { name = "Meteoor", sub = MeteorSub, act = () => Meteor() },
                 new Sub { name = "Meteorenregen", sub = "Een halve minuut lang, van alle kanten", act = () => MeteorShower() },
                 new Sub { name = "Totale chaos", sub = PlanetLife.Chaos ? "Aan: racers, ontwijkers en jagers" : "Uit: netjes verkeer", on = PlanetLife.Chaos,
-                          act = () => { PlanetLife.Chaos = !PlanetLife.Chaos; Say(PlanetLife.Chaos ? "Totale chaos: racers, ontwijkers en jagers" : "Netjes verkeer"); } } };
+                          act = () => { PlanetLife.Chaos = !PlanetLife.Chaos; SaveSettings(); Say(PlanetLife.Chaos ? "Totale chaos: racers, ontwijkers en jagers" : "Netjes verkeer"); } } };
             case 1: return new[] {
                 new Sub { name = "Mooiste stad", sub = "Elkaar uitdagen, om beurten scoren" },
                 new Sub { name = "Bouwbereik", sub = "Hoe meer je bouwt, hoe groter je bereik" },

@@ -8,7 +8,7 @@ using UnityEngine;
 // Nieuwe planeten maken en spelmodi kiezen gebeurt op het startscherm, niet hier.
 public partial class PlanetBuilder
 {
-    class MItem { public string name, sub, icon, value; public System.Action act; public System.Func<List<MItem>> kids; public bool on, danger; }
+    class MItem { public string name, sub, icon, value; public System.Action act; public System.Func<List<MItem>> kids; public bool on, danger, head, note; }   // head: een kopje, note: alleen uitleg (niet aan te klikken)
     int hexOpen = -1; float hexT = -99f, hexSubT = -99f; bool hexWasOpen; bool spaceMenuOff;   // in de ruimte het menu weggeklikt (hamburger of M)
     // rechts (in het spel, onder de knop Menu) is het menu gespiegeld: alles wordt eerst links uitgerekend en dan omgeklapt
     bool hexRight; Rect Mx(Rect r) => hexRight ? new Rect(Ui.W - r.xMax, r.y, r.width, r.height) : r;
@@ -35,20 +35,7 @@ public partial class PlanetBuilder
             if (aiOn) g.Add(new MItem { name = "AI-bouwer stoppen", sub = PlanetAI.Moves + " zetten gedaan", danger = true, act = () => { menuOpen = false; AiStop(); } });
             else g.Add(new MItem { name = "Tempo AI-bouwer", value = AiTempoNames[aiTempo], act = () => aiTempo = (aiTempo + 1) % AiTempoNames.Length });
             return g; } });
-        l.Add(new MItem { name = "Instellingen", sub = "Leven, geluid en beeld", icon = "zon", kids = () => {
-            if (hexDev) return DevItems(true);   // Instellingen › Ontwikkelaar (PlanetBuilder.Dev.cs)
-            float[] sizes = { 0.9f, 1f, 1.15f, 1.3f }; int si = 0; for (int k = 1; k < 4; k++) if (Mathf.Abs(sizes[k] - Ui.Size) < Mathf.Abs(sizes[si] - Ui.Size)) si = k;
-            return new List<MItem> {
-                new MItem { name = "Mensen", value = PlanetLife.PeopleOn ? "aan" : "uit", on = PlanetLife.PeopleOn, act = () => PlanetLife.PeopleOn = !PlanetLife.PeopleOn },
-                new MItem { name = "Auto's", value = PlanetLife.CarsOn ? "aan" : "uit", on = PlanetLife.CarsOn, act = () => PlanetLife.CarsOn = !PlanetLife.CarsOn },
-                new MItem { name = "Verkeerslichten", value = PlanetCity.Lights ? "aan" : "uit", on = PlanetCity.Lights, act = () => ToggleLights() },
-                new MItem { name = "Totale chaos", value = PlanetLife.Chaos ? "aan" : "uit", on = PlanetLife.Chaos, act = () => { PlanetLife.Chaos = !PlanetLife.Chaos; Say(PlanetLife.Chaos ? "Totale chaos: racers, ontwijkers en jagers op de weg" : "Netjes verkeer"); } },
-                new MItem { name = "Geluid", value = Babble.Muted ? "uit" : "aan", on = !Babble.Muted, act = () => ToggleSound() },
-                new MItem { name = "Bouwmuziek", value = BuildMusic.StyleNames[BuildMusic.Style], act = () => { int ms = (BuildMusic.Style + 1) % BuildMusic.StyleNames.Length; BuildMusic.SetStyle(ms); Say("Bouwmuziek: " + BuildMusic.StyleNames[ms]); } },
-                new MItem { name = "Interfacegrootte", value = Mathf.RoundToInt(sizes[si] * 100f) + "%", act = () => Ui.Size = sizes[(si + 1) % 4] },
-                new MItem { name = "Terrein", value = PlanetCity.SoilDetailNames[PlanetCity.SoilDetail], sub = "Medium en high poly: glooiend terrein met 9 of 25 keer zoveel driehoeken. Wegen, sokkels en taluds blijven strak", act = () => { PlanetCity.SoilDetail = (PlanetCity.SoilDetail + 1) % PlanetCity.SoilDetailNames.Length; Say("Terrein " + PlanetCity.SoilDetailNames[PlanetCity.SoilDetail]); } },
-                new MItem { name = "Terreinlijnen", value = PlanetCity.SoilWire ? "aan" : "uit", on = PlanetCity.SoilWire, sub = "De driehoeken van het terrein als dunne lijnen", act = () => { PlanetCity.SoilWire = !PlanetCity.SoilWire; Say("Terreinlijnen " + (PlanetCity.SoilWire ? "aan" : "uit")); } },
-                new MItem { name = "Ontwikkelaar ›", sub = "Vijfhoeken, hoekpunten, vakinfo, statistieken, log", act = () => { hexDev = true; hexSubT = Time.unscaledTime; } } }; } });
+        l.Add(new MItem { name = "Instellingen", sub = "Beeld, geluid, leven, planeet en meer", icon = "zon", kids = SettingsMenuItems });   // in secties (PlanetBuilder.Settings.cs)
         l.Add(new MItem { name = "Bediening", sub = "Alle toetsen op een rij (?)", icon = "menu", act = () => { menuOpen = false; helpOpen = true; } });
         return l;
     }
@@ -61,7 +48,7 @@ public partial class PlanetBuilder
         var items = MainItems(!overlay);
         hexRight = false;   // links, onder de hamburger linksboven (gespiegeld rechts kan nog, maar links bleek fijner)
         int hit = Tiles(items, G + 70f, H * 0.5f + 10f, hexT, hexOpen, overlay ? "MENU" : "RAATSTAD", 60f, 18, out float subX, out float mid, out float R, out float cy);
-        if (hit >= 0) { hexDev = false; var m = items[hit]; if (m.kids != null) { hexOpen = hexOpen == hit ? -1 : hit; hexSubT = Time.unscaledTime; } else { hexOpen = -1; m.act?.Invoke(); } }
+        if (hit >= 0) { hexSec = -1; var m = items[hit]; if (m.kids != null) { hexOpen = hexOpen == hit ? -1 : hit; hexSubT = Time.unscaledTime; } else { hexOpen = -1; m.act?.Invoke(); } }
         if (hexOpen >= 0 && hexOpen < items.Count && items[hexOpen].kids != null)
             SubHex(items[hexOpen].kids(), hexOpenMid, R, subX, cy, Time.unscaledTime);
         if (overlay && Ui.DimClick()) { if (hexOpen >= 0) hexOpen = -1; else menuOpen = false; }   // ernaast klikken: eerst de keuzes dicht, dan het menu
@@ -107,14 +94,24 @@ public partial class PlanetBuilder
     // de keuzes van een groep: kleine zeshoekjes op een boog evenwijdig aan de eerste, rond de hoogte van die groep
     void SubHex(List<MItem> kids, float mid, float R, float cx, float cy, float now)
     {
-        const float step = 54f, TS = 34f; float da = step / R, span = (kids.Count - 1) * 0.5f * da;
-        float lim = (Ui.H * 0.5f - 60f) / R; mid = Mathf.Clamp(mid, -lim + span, lim - span);   // binnen het scherm houden
+        // gelijke afstand in de hoogte (ook bij een lange lijst geen keuzes over elkaar), dichter op elkaar als het niet past
+        const float TS = 34f; float limY = Ui.H * 0.5f - 95f;   // onderaan vrij van de bouwbalk
+        float step = Mathf.Min(54f, 2f * limY / Mathf.Max(1, kids.Count - 1)), half = (kids.Count - 1) * 0.5f * step;
+        float y0 = Mathf.Clamp(Mathf.Sin(mid) * R, -limY + half, Mathf.Max(-limY + half, limY - half));   // binnen het scherm houden
+        float AngOf(int j) => Mathf.Asin(Mathf.Clamp((y0 - half + j * step) / R, -0.98f, 0.98f));
         Vector2 At(float ang) => new Vector2(cx - Mathf.Cos(ang) * R, cy + Mathf.Sin(ang) * R);
         float maxW = 0f; foreach (var m in kids) maxW = Mathf.Max(maxW, Mathf.Max(Ui.Width(m.name, Ui.T.Bold, 15) + (m.value != null ? Ui.Width(m.value, Ui.T.Bold, 13) + 30f : 0f), Ui.Width(m.sub ?? "", Ui.T.Dim, 12)));
         for (int j = 0; j < kids.Count; j++)
         {
             var m = kids[j]; float e = Ease((now - hexSubT - j * 0.04f) / 0.22f); if (e <= 0f) continue;
-            var p = At(mid - span + j * da); p.x += (1f - e) * -24f;
+            var p = At(AngOf(j)); p.x += (1f - e) * -24f;
+            if (m.head || m.note)   // een kopje of uitleg: alleen tekst, op de plek van een keuze
+            {
+                var o = GUI.color; GUI.color = new Color(1f, 1f, 1f, e); float nx = p.x + TS * 0.5f + 14f;
+                if (m.head) Shadowed(Mx(new Rect(nx, p.y - 9f, maxW + 20f, 18f)), m.name.ToUpper(), Ui.T.Tiny, Ui.Signal, 11, hexRight);
+                else Shadowed(Mx(new Rect(nx, p.y - 16f, maxW + 20f, 32f)), m.name, Ui.T.Dim, new Color(Ui.Ink.r, Ui.Ink.g, Ui.Ink.b, 0.85f), 12, hexRight);
+                GUI.color = o; continue;
+            }
             var hit = Mx(new Rect(p.x - TS * 0.5f, p.y - TS * 0.5f, TS + 14f + maxW + 10f, TS)); bool hv = hit.Contains(Ui.Mouse) && e >= 1f;
             var old = GUI.color; GUI.color = new Color(1f, 1f, 1f, e);
             Color ac = m.danger ? new Color(0.94f, 0.48f, 0.42f) : Ui.Signal;

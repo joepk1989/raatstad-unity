@@ -172,7 +172,7 @@ public partial class PlanetBuilder
             new MItem { name = "Nieuwe stad", sub = "Startstad, leeg, natuur of de hele planeet vol", icon = "stad", act = () => { page = page == Page.New ? Page.Main : Page.New; nameEdit = CityFiles.FreeName("Nieuwe stad"); } },
             new MItem { name = "Stad openen", sub = n == 0 ? "Nog geen steden" : n == 1 ? "1 stad bewaard" : n + " steden bewaard", icon = "boek", act = n > 0 ? () => { page = page == Page.Open ? Page.Main : Page.Open; listOfs = 0; } : (System.Action)null },
             new MItem { name = "Spelmodus", sub = Modes[mode].name, icon = "kompas", act = () => page = page == Page.Modes ? Page.Main : Page.Modes },
-            new MItem { name = "Instellingen", sub = "Geluid, muziek, interface en verkeer", icon = "zon", act = () => page = page == Page.Settings ? Page.Main : Page.Settings },
+            new MItem { name = "Instellingen", sub = "Beeld, geluid, leven, planeet en meer", icon = "zon", act = () => page = page == Page.Settings ? Page.Main : Page.Settings },
             new MItem { name = "Afsluiten", icon = "sluit", act = () => Quit() } };
         int open = page == Page.New ? 1 : page == Page.Open ? 2 : page == Page.Modes ? 3 : page == Page.Settings ? 4 : -1;
         float cy = H * 0.5f + 30f; hexRight = false;
@@ -192,7 +192,7 @@ public partial class PlanetBuilder
         else if (page == Page.Open) OpenPanel(pr, H);
         else if (page == Page.Modes) ModesPanel(pr);
         else if (page == Page.Settings) SettingsPanel(pr);
-        Shadowed(new Rect(56f, H - 34f, 500f, 16f), "Ware grootte: een vak is 15,6 m breed, de planeet 3,8 km rond.", Ui.T.Dim, new Color(Ui.Ink.r, Ui.Ink.g, Ui.Ink.b, 0.7f), 11);
+        Shadowed(new Rect(56f, H - 34f, 500f, 16f), "Ware grootte: een vak is 15,6 m breed, de planeet " + Km(2f * Mathf.PI * Planet.R) + " km rond.", Ui.T.Dim, new Color(Ui.Ink.r, Ui.Ink.g, Ui.Ink.b, 0.7f), 11);
     }
 
     void PanelHead(Rect r, string title, ref float y)
@@ -296,25 +296,7 @@ public partial class PlanetBuilder
         Ui.Label(new Rect(x, y, iw, 24f), "Alleen de vrije modus werkt nu.", Ui.T.Dim, null, null, 11);
     }
 
-    void SettingsPanel(Rect r)
-    {
-        r.height = 14f + 42f + 10 * 40f + 8f; Ui.Panel(r, true, 16f);
-        float x = r.x + 18f, iw = r.width - 36f, y = r.y + 14f;
-        PanelHead(r, "INSTELLINGEN", ref y);
-        bool welcomeOff = PlayerPrefs.GetInt("raatstad-welkom-uit", 0) == 1;
-        float[] sizes = { 0.9f, 1f, 1.15f, 1.3f }; int si = 0; for (int k = 1; k < 4; k++) if (Mathf.Abs(sizes[k] - Ui.Size) < Mathf.Abs(sizes[si] - Ui.Size)) si = k;
-        System.Func<string, string, bool, bool> row = (nm, val, on) => { bool c = HexRow(new Rect(x, y, iw, 34f), nm, null, val, on); y += 40f; return c; };
-        if (row("Geluid", Babble.Muted ? "uit" : "aan", !Babble.Muted)) { Babble.Muted = !Babble.Muted; Ambience.Muted = Babble.Muted; }
-        if (row("Bouwmuziek", BuildMusic.StyleNames[BuildMusic.Style], false)) BuildMusic.SetStyle((BuildMusic.Style + 1) % BuildMusic.StyleNames.Length);
-        if (row("Mensen", PlanetLife.PeopleOn ? "aan" : "uit", PlanetLife.PeopleOn)) PlanetLife.PeopleOn = !PlanetLife.PeopleOn;
-        if (row("Auto's", PlanetLife.CarsOn ? "aan" : "uit", PlanetLife.CarsOn)) PlanetLife.CarsOn = !PlanetLife.CarsOn;
-        if (row("Verkeerslichten", PlanetCity.Lights ? "aan" : "uit", PlanetCity.Lights)) PlanetCity.Lights = !PlanetCity.Lights;   // getekend bij het openen van een stad
-        if (row("Totale chaos", PlanetLife.Chaos ? "aan" : "uit", PlanetLife.Chaos)) PlanetLife.Chaos = !PlanetLife.Chaos;
-        if (row("Uitleg bij een nieuwe stad", welcomeOff ? "uit" : "aan", !welcomeOff)) PlayerPrefs.SetInt("raatstad-welkom-uit", welcomeOff ? 0 : 1);
-        if (row("Interfacegrootte", Mathf.RoundToInt(sizes[si] * 100f) + "%", false)) Ui.Size = sizes[(si + 1) % 4];
-        if (row("Terrein", PlanetCity.SoilDetailNames[PlanetCity.SoilDetail], PlanetCity.SoilDetail > 0)) PlanetCity.SoilDetail = (PlanetCity.SoilDetail + 1) % PlanetCity.SoilDetailNames.Length;
-        if (row("Terreinlijnen", PlanetCity.SoilWire ? "aan" : "uit", PlanetCity.SoilWire)) PlanetCity.SoilWire = !PlanetCity.SoilWire;
-    }
+    // SettingsPanel: de instellingen in tabbladen (PlanetBuilder.Settings.cs)
 
     // in het spel: de vensters van het opslaan (bovenop de rest)
     void HomeDialogs(float W, float H)
@@ -345,13 +327,6 @@ public partial class PlanetBuilder
         }
     }
 
-    // het menu in het spel: de steden (in plaats van de drie oude slots)
-    void HomeMenuCards(float x, float y, float iw, float half)
-    {
-        if (Ui.CardButton(new Rect(x, y, half, 48f), "Opslaan", "Nu bewaren (ook elke 3 min)", false, "boek")) { menuOpen = false; Say(SaveCity(false) ? (CityFiles.Current?.name ?? "Stad") + " opgeslagen" : "Opslaan lukte niet"); }
-        if (Ui.CardButton(new Rect(x + half + 8f, y, half, 48f), "Opslaan als", "Als nieuwe stad bewaren", false, "boek")) { menuOpen = false; dialog = 1; nameEdit = CityFiles.FreeName(CityFiles.Current != null ? CityFiles.Current.name : "Nieuwe stad"); }
-        if (Ui.CardButton(new Rect(x, y + 56f, half, 48f), "Naar het startscherm", "Andere stad openen of nieuw", false, "huis")) { menuOpen = false; dialog = 2; }
-    }
     string CityName => CityFiles.Current != null ? CityFiles.Current.name : "Stad";
 
     void Quit()
