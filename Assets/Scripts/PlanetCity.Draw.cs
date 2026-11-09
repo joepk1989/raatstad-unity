@@ -73,7 +73,7 @@ public static partial class PlanetCity
         UpdateCuts(); var todo = new List<int>(dirty); dirty.Clear(); gridV = null;   // alles nieuw: het raster ook helemaal
         for (int k = 0; k < todo.Count; k++) { BuildChunk(todo[k]); if (k % 6 == 5) { prog?.Invoke((k + 1f) / todo.Count); yield return null; } }
         foreach (int ch in new List<int>(dirty)) BuildChunk(ch); dirty.Clear();   // wat er intussen nog bij kwam
-        RebuildRoads();
+        RebuildRoads(); SyncModules();
     }
     // Rebuild in stukjes voor een klik: eerst het deel waar het gebeurde (Focus) en de wegen, de rest met een tijdbudget per beeld;
     // zo staat wat je bouwt meteen in beeld. true als alles bij is. Bij een nieuwe wijziging opnieuw beginnen (RebuildSoon).
@@ -82,7 +82,7 @@ public static partial class PlanetCity
     public static bool RebuildSome(float budgetMs)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew(); bool first = !midRebuild;
-        if (first) { UpdateCuts(); if (dirty.Count == 0) return true; midRebuild = true; }
+        if (first) { SyncModules(); UpdateCuts(); if (dirty.Count == 0) return true; midRebuild = true; }
         var order = new List<int>(dirty); int fc = Focus >= 0 ? Focus / ChunkN : 0; order.Sort((a, b) => Mathf.Abs(a - fc).CompareTo(Mathf.Abs(b - fc)));   // het deel van de klik eerst
         foreach (int ch in order) { BuildChunk(ch); lastBuilt.Add(ch); dirty.Remove(ch); if (sw.ElapsedMilliseconds >= budgetMs) break; }
         if (first) RebuildRoads();
@@ -92,7 +92,7 @@ public static partial class PlanetCity
     public static void Rebuild()
     {
         midRebuild = false;
-        UpdateCuts();
+        SyncModules(); UpdateCuts();
         if (dirty.Count == 0) return;
         foreach (int ch in dirty) { BuildChunk(ch); lastBuilt.Add(ch); }
         dirty.Clear();
@@ -130,6 +130,7 @@ public static partial class PlanetCity
     // Eén vak tekenen: de stapel blokken (vanaf blok 'from'; het bouwvoorbeeld tekent alleen het nieuwe blok bovenop)
     static void BuildCell(Dictionary<string, MeshBuilder> mb, int i, List<string> list, List<(Vector3 pos, Quaternion rot, int hash)> mills, int from)
     {
+        if (IsModItem(list[0])) return;   // een module tekent zichzelf (PlanetCity.Modules.cs)
         System.Func<string, MeshBuilder> M = k => { if (!mb.TryGetValue(k, out var x)) { x = new MeshBuilder(); mb[k] = x; } return x; };
         var fr = new Frame(i);
             if (list[0] == "weg") { if (Under.ContainsKey(i)) { UnderMesh(mb, fr, i, i * 73856093); BridgePillar(M, fr, i); } return; }   // de weg zelf tekent het wegennet (PlanetRoads.cs); hier alleen wat onder een brug ligt
@@ -166,7 +167,7 @@ public static partial class PlanetCity
                     case "woning":
                         { string mu = "muur" + ((hash >> 3) & 3), dk = "dak" + ((hash >> 7) & 1);
                         Wall(M(mu), fr, 0.78f, h0, h1); Windows(M("glas"), fr, 0.78f, h + 1.0f, h + 2.0f, 0.18f, 0.40f); Windows(M("glas"), fr, 0.78f, h + 1.0f, h + 2.0f, 0.60f, 0.82f);
-                        if (top) { Roof(M(dk), fr, 0.84f, h1); Top(M(dk), fr, 0.84f, h1 - 0.02f); } else Top(M(mu), fr, 0.78f, h1); }
+                        if (top) { if (!HouseRoof(M(dk), M("plat"), M("glas"), fr, 0.84f, h1, hash)) { Roof(M(dk), fr, 0.84f, h1); Top(M(dk), fr, 0.84f, h1 - 0.02f); } } else Top(M(mu), fr, 0.78f, h1); }   // het dak uit SketchUp (PlanetCity.Daken.cs)
                         break;
                     case "kantoor":
                         Wall(M("kantoor"), fr, 0.9f, h0, h1); Windows(M("glas"), fr, 0.9f, h + 0.5f, h + 1.2f, 0.08f, 0.92f); Windows(M("glas"), fr, 0.9f, h + 1.7f, h + 2.4f, 0.08f, 0.92f);

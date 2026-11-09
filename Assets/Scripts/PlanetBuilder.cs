@@ -96,7 +96,7 @@ public partial class PlanetBuilder : MonoBehaviour
         if (it.id == "weg") PlanetCity.DragStyle = 0; else if (it.id == "weg:breed") PlanetCity.DragStyle = 1; else if (it.id == "weg:laan") PlanetCity.DragStyle = 2;
         if (it.block == "terrein") terrMode = it.id[2] - '0';
     }
-    void SelectSlot(int k) { slot = k; eraser = false; ApplyItem(); nameT = Time.time + 1.6f; }
+    void SelectSlot(int k) { ModExit(); slot = k; eraser = false; ApplyItem(); nameT = Time.time + 1.6f; }
     // een blok kiezen (lade of wiel): de categorie onthoudt het, er wordt niets overschreven
     void Pick(string id)
     {
@@ -107,6 +107,7 @@ public partial class PlanetBuilder : MonoBehaviour
     Vector2 midAt; int midCell = -1;
     void Pipet(int i)
     {
+        if (ModPipet(i)) return;   // een module: die in je hand (PlanetBuilder.Modules.cs)
         string top = null;
         if (PlanetCity.Cells.TryGetValue(i, out var l)) for (int k = l.Count - 1; k >= 0; k--) if (l[k] != "wegdeel") { top = l[k]; break; }
         if (top == null && PlanetCity.IsHalf(i)) top = "weg";   // een half vak zonder bebouwing: de schuine weg erover
@@ -233,6 +234,7 @@ public partial class PlanetBuilder : MonoBehaviour
 
     void Update()
     {
+        if (Raatmaker.IsOpen) return;   // de Raatmaker heeft de muis en het toetsenbord (Raatmaker.cs)
         if (loading != null) { LoadCam(); return; }   // de planeet wordt gevuld: geen bediening, de camera draait om de bol
         if (HomeUpdate()) return;   // het startscherm of een venster van het opslaan (StartScreen.cs); ook vanzelf opslaan
         if (ReportUpdate()) return;   // F8: een melding voor Claude, het spel staat dan stil (Meldingen.cs)
@@ -242,6 +244,7 @@ public partial class PlanetBuilder : MonoBehaviour
         if (Inp.Down(K.P)) { DayNight.ToggleFreeze(); Say(DayNight.Speed > 0f ? "De tijd loopt weer (P)" : "Pauze: de tijd staat stil (P)"); }
         if (Inp.Down(K.O) && Weather.I != null) Say("Weer: " + Weather.I.Cycle(Inp.Held(K.Shift) ? -1 : 1) + " (O, Shift+O terug)");
         if (flying) { FlyUpdate(); return; }   // cameramodus: alleen vliegen, kijken en een foto
+        if (DriveUpdate()) return;   // zelf rijden (J, PlanetBuilder.Drive.cs)
         if (Inp.Down(K.L)) ToggleWalk();
         if (Inp.Down(K.Slash)) ToggleHelp();
         DevKeys();   // ` : de ontwikkelaarsconsole (PlanetBuilder.Dev.cs)
@@ -254,6 +257,7 @@ public partial class PlanetBuilder : MonoBehaviour
         if (SpaceUpdate()) return;   // in de ruimte: navigeren, niet bouwen (PlanetBuilder.Space.cs)
         if (CursorUpdate()) return;   // Aanwijzen (V): opties en oproepen in plaats van bouwen (PlanetBuilder.Cursor.cs)
         if (AiUpdate()) return;   // AI-bouwer: het startvak kiezen (PlanetBuilder.AI.cs)
+        if (ModUpdate()) return;   // modules neerzetten (PlanetBuilder.Modules.cs)
 
         // Tab vasthouden: het keuzewiel bij de muis; kant op bewegen en loslaten kiest. Kort tikken: de lade van de categorie open of dicht
         if (Inp.Down(K.Tab)) { wheelOpen = true; wheelAt = Ui.Mouse; wheelT = Time.unscaledTime; }
@@ -822,10 +826,10 @@ public partial class PlanetBuilder : MonoBehaviour
         distSeen = dist;
     }
 
-    // lopen: geen enkel bouwvoorbeeld in beeld (ook niet van de AI-bouwer, die gewoon door kan bouwen)
+    // lopen: geen enkel bouwvoorbeeld in beeld (ook niet van modules of de AI-bouwer, die gewoon door kan bouwen)
     void WalkHide()
     {
-        outline.enabled = false; ShowBrush(-1); ShowVerts(-1); ShowPlan(null); ShowGhost(-1);
+        outline.enabled = false; ShowBrush(-1); ShowVerts(-1); ShowPlan(null); ShowGhost(-1); ModGhost(-1);
         AiLines(null); if (aiPin != null) aiPin.gameObject.SetActive(false);
     }
     void ToggleWalk()
@@ -927,18 +931,20 @@ public partial class PlanetBuilder : MonoBehaviour
     const float G = 16f;   // marge langs de randen
     void OnGUI()
     {
+        if (Raatmaker.IsOpen) return;   // de Raatmaker tekent zijn eigen scherm (Raatmaker.cs)
         Ui.Begin(); float W = Ui.W, H = Ui.H;
         if (loading != null) { LoadingGui(W, H); Ui.End(); return; }
         if (home) { HomeGui(W, H); Ui.End(); return; }   // het startscherm (StartScreen.cs)
         if (Time.time - beautyT > 3f) { int was = beauty != null ? beauty.score : -1; beauty = Beauty.Compute(); beautyT = Time.time; if (was >= 0 && beauty.score > was) Sounds.Fx("coin"); }   // muntje als de schoonheid stijgt
         fpsN++; if (Time.time - fpsT > 0.5f) { fps = fpsN / (Time.time - fpsT); fpsN = 0; fpsT = Time.time; }
         if (flying) { if (!photoFrame) FlyGui(W, H); ReportGui(W, H); Ui.End(); return; }   // cameramodus: geen interface
+        if (driving) { DriveGui(W, H); ReportGui(W, H); Ui.End(); return; }   // rijden: alleen de snelheidsmeter
 
         if (!inSpace) CentreArrow(W, H);   // in de ruimte staat je stad als marker op de bol
         if (!walking) { TopLeft(); Incidents(); } TopRight(W);   // lopen: zo min mogelijk in beeld, de stad zelf is het beeld
         if (walking) WalkHint(W, H);
         else if (inSpace) SpaceGui(W, H);   // in de ruimte: de planeet als kaart, geen bouwbalk
-        else { Hotbar(W, H); Tools(H); if (!catOpen && !cursorMode) Options(W, H); }
+        else { Hotbar(W, H); Tools(H); if (!catOpen && !cursorMode && !modOn) Options(W, H); ModGui(W, H); }
         if (!inSpace || walking) ModeSwitch(W, H);
         if (todOpen) TodPanel(W);
         if (catOpen && !walking) Catalogue(W, H);
@@ -1418,6 +1424,14 @@ public partial class PlanetBuilder : MonoBehaviour
         "Spatie|springen",
         "muis|rondkijken (klik om te vangen)",
         "Esc|muis loslaten",
+        "#Rijden",
+        "J|instappen op de weg bij de muis, en uitstappen (ook Esc)",
+        "W S  pijltjes|gas, remmen en achteruit",
+        "A D|sturen",
+        "Spatie|handrem (slippen)",
+        "C  wiel|camera: achter de auto of als bestuurder",
+        "R|weer rechtop (na over de kop slaan)",
+        "W S  A D|in de lucht: kantelen en rollen",
         "#Altijd",
         "P|tijd stilzetten en verder",
         "O|ander weer (Shift+O: vorige)",

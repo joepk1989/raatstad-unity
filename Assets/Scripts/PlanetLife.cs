@@ -273,9 +273,11 @@ public partial class PlanetLife : MonoBehaviour
         }
         if (Chaos != chaosWas) { chaosWas = Chaos; foreach (var c in cars) GivePersona(c); }
         MakeChaosClips();
+        PlayerIn();   // de auto van de speler doet mee in de botsingen en wordt gezien door de andere bestuurders (PlayerCar.cs)
         for (int i = cars.Count - 1; i >= 0; i--)
         {
             var c = cars[i];
+            if (c == player) continue;
             if (c.dead || (!c.free && (!PlanetCity.IsRoad(c.b) || (c.c == c.b && c.s > 0.5f)))) { Destroy(c.root.gameObject); cars.RemoveAt(i); continue; }   // ontploft, weg weg, of doodlopend eenrichtingsstuk
             if (c.free) UpdateFree(c, dt);
             else
@@ -287,6 +289,7 @@ public partial class PlanetLife : MonoBehaviour
             if (c.audio != null) c.audio.volume = Ambience.Muted ? 0f : 0.35f;
         }
         Collide();   // altijd: auto's zijn vaste lichamen, ook netjes verkeer kan elkaar een duw geven
+        PlayerOut();
 
         UpdateBikes(dt, targetR);
 

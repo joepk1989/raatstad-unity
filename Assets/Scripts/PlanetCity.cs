@@ -15,7 +15,7 @@ public static partial class PlanetCity
     static readonly Dictionary<int, Transform> chunks = new Dictionary<int, Transform>();
     static readonly HashSet<int> dirty = new HashSet<int>();
 
-    public static void ResetAll() { Cells = new Dictionary<int, List<string>>(); Terr.Clear(); RoadH.Clear(); CornerOfs.Clear(); CenterOfs.Clear(); cnA = cnB = edN = null; Links.Clear(); partners.Clear(); Style.Clear(); Bike.Clear(); Rot.Clear(); DragBike = false; Under.Clear(); Low.Clear(); OneWay.Clear(); TunnelLinks.Clear(); LowerLinks.Clear(); DragUnder = false; DragLevel = 0; DragStyle = 0; DragOneWay = false; Lights = true; StartVer = 0; StartCell = -1; startFresh = false; chunks.Clear(); groundChunks.Clear(); dirty.Clear(); root = null; groundRoot = null; grid = null; equator = null; GridOn = true; Slot = 1; roadPieces.Clear(); roadRoot = null; }
+    public static void ResetAll() { Cells = new Dictionary<int, List<string>>(); Terr.Clear(); CornerOfs.Clear(); CenterOfs.Clear(); cnA = cnB = edN = null; Links.Clear(); partners.Clear(); Style.Clear(); Bike.Clear(); Rot.Clear(); DragBike = false; Under.Clear(); Low.Clear(); OneWay.Clear(); TunnelLinks.Clear(); LowerLinks.Clear(); DragUnder = false; DragLevel = 0; DragStyle = 0; DragOneWay = false; Lights = true; StartVer = 0; StartCell = -1; startFresh = false; chunks.Clear(); groundChunks.Clear(); dirty.Clear(); root = null; groundRoot = null; grid = null; equator = null; GridOn = true; Slot = 1; roadPieces.Clear(); roadRoot = null; }
     public static bool IsRoad(int i) => Cells.TryGetValue(i, out var l) && l.Count > 0 && l[0] == "weg";
     public static bool IsPath(int i) => Cells.TryGetValue(i, out var l) && l.Count == 1 && l[0] == "pad";
     public static bool IsWalk(int i) => IsRoad(i) || IsPath(i);
@@ -43,6 +43,7 @@ public static partial class PlanetCity
     public static bool Clear(int i)
     {
         if (!Cells.TryGetValue(i, out var l)) return false;
+        if (HasModule(i)) return RemoveModuleAt(i);   // een module: het bovenste exemplaar met al zijn vakken (PlanetCity.Modules.cs)
         if (IsHalf(i)) { if (l.Count <= 1) return ClearOver(i); l.RemoveRange(1, l.Count - 1); Touch(i); return true; }   // eerst wat op de vrije helft staat, daarna de schuine weg erover
         if (Under.TryGetValue(i, out var under)) { RestoreUnder(i, under); return true; }   // een brug: het water of de kuil komt terug
         if (IsRot(i)) ClearRoundabout(i);
@@ -59,6 +60,7 @@ public static partial class PlanetCity
     // plaatsen; geeft een melding terug als het niet kan (anders null)
     public static string Place(int i, string type, bool autoLink = true)
     {
+        if (HasModule(i)) return "Hier staat een module: rechtermuisknop haalt hem weg";
         if (!Cells.TryGetValue(i, out var l)) { l = new List<string>(); Cells[i] = l; }
         if (TreesYield(l, type)) l.Clear();   // bomen op het terrein wijken voor alles wat je bouwt (een weg of pad door een bos, een huis in een bos)
         if (l.Count == 1 && IsWild(l[0]) && type != l[0]) l.Clear();   // ijs, woestijn, heide, palmen en rotsen wijken voor alles (PlanetWild.cs)
@@ -196,6 +198,7 @@ public static partial class PlanetCity
     public static bool RemoveTop(int i)
     {
         if (!Cells.TryGetValue(i, out var l) || l.Count == 0) return false;
+        if (HasModule(i)) return RemoveModuleAt(i);
         if (IsHalf(i) && l.Count <= 1) return ClearOver(i);
         if (Under.TryGetValue(i, out var under)) { RestoreUnder(i, under); return true; }
         bool walk = IsWalk(i); l.RemoveAt(l.Count - 1); if (l.Count == 0) { Cells.Remove(i); Style.Remove(i); Bike.Remove(i); Unlink(i); if (walk) RestoreLevel(i); } Touch(i); return true;
@@ -223,6 +226,7 @@ public static partial class PlanetCity
     // Kan blok 'type' op vak i? null = ja, anders de reden. Dezelfde regels als Place (voor blokken, niet voor wegen), zonder iets te veranderen.
     public static string CanPlace(int i, string type)
     {
+        if (HasModule(i)) return "Hier staat een module";
         if (type == "rotonde") return RotOf(i) >= 0 ? null : RotFree(i) ? null : "Hier staat iets in de weg";
         if (RotOf(i) >= 0 && !IsRot(i)) return "Hier ligt een rotonde: op de ring kun je niet bouwen";
         if (!Cells.TryGetValue(i, out var l) || l.Count == 0 || TreesYield(l, type)) return null;
