@@ -79,6 +79,8 @@ Shader "Raatstad/Bodem"
 
             void Surface(float3 pWS, float3 n, float4 vc, float4 ex, out half3 albedo, out half smooth)
             {
+                half sliver = step(50, ex.w); ex.w -= 100 * sliver;   // een splinter (PlanetSoil.SoilMesh): de soort naar de grond eromheen, geen kale aarde
+                n = normalize(lerp(n, gLightN, sliver));
                 float3 P = pWS - _Center.xyz; float r = length(P); float3 up = P / r; float h = r - _PlanetR;
                 float3 w = TriW(gLightN);   // de textures mengen met de normaal van de belichting (zacht terrein: geen naad per driehoek); de soort volgt de driehoek (n)
                 float3 q = P * _Scale;

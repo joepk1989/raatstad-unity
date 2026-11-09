@@ -1,10 +1,9 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-// Terrein low poly, zacht, rond of extra rond (Instellingen > Terrein, onthouden in PlayerPrefs).
+// Terrein low poly, medium poly of high poly (Instellingen > Terrein, onthouden in PlayerPrefs; low poly is de standaard).
 // - Low poly: elke driehoek zijn eigen normaal (zoals altijd).
-// - Zacht: gedeelde normalen per hoekpunt; de vorm blijft hetzelfde, alleen de belichting loopt vloeiend door.
-// - Rond (en extra rond): ook de vorm wordt afgerond: elke bodemdriehoek van een gewoon vak wordt in 9 (25) stukjes verdeeld op een gebogen vlak
+// - Medium en high poly (Rond): gedeelde normalen per hoekpunt en ook de vorm wordt afgerond: elke bodemdriehoek van een gewoon vak wordt in 9 (25) stukjes verdeeld op een gebogen vlak
 //   door de zachte normalen van zijn drie hoekpunten (PN-driehoek). Dezelfde hoogtes per vak, alleen glooiend in plaats van puntig.
 // De normaal komt uit een veld dat alleen van de plek afhangt (zoals SoilColor): per vak de helling van het vlak door de middens
 // van zijn buren, gemengd naar de afstand tot die middens. Een gebogen rand hangt alleen af van zijn twee eindpunten en hun normalen,
@@ -16,30 +15,32 @@ using UnityEngine;
 // bodem een eigen fijne mesh; omschakelen tekent niets anders opnieuw (FillSoil per bestaand deel).
 public static partial class PlanetCity
 {
-    public static readonly string[] SoilDetailNames = { "low poly", "zacht", "rond", "extra rond" };
-    const string SmoothKey = "raatstad-terrein-zacht";
+    public static readonly string[] SoilDetailNames = { "low poly", "medium poly", "high poly" };
+    const string SmoothKey = "raatstad-terrein-detail";   // (de oude sleutel raatstad-terrein-zacht had vier standen)
     static int soilDetail = -1;
     public static int SoilDetail
     {
-        get { if (soilDetail < 0) soilDetail = Mathf.Clamp(PlayerPrefs.GetInt(SmoothKey, 0), 0, 3); return soilDetail; }
+        get { if (soilDetail < 0) soilDetail = Mathf.Clamp(PlayerPrefs.GetInt(SmoothKey, 0), 0, 2); return soilDetail; }
         set
         {
-            value = Mathf.Clamp(value, 0, 3); if (value == SoilDetail) return;
+            value = Mathf.Clamp(value, 0, 2); if (value == SoilDetail) return;
             soilDetail = value; PlayerPrefs.SetInt(SmoothKey, value); PlayerPrefs.Save();
             if (soilMat != null) soilMat.SetFloat("_SoilSmooth", value > 0 ? 1f : 0f);   // de soort ook naar de zachte normaal (Bodem.shader)
             var t0 = Time.realtimeSinceStartup; int n = 0; statSmooth = statTris = statCell = statCrease = 0; StatBulge = 0f;
             var dead = new List<MeshFilter>();
             foreach (var kv in soilMeshes) { if (kv.Key == null) { dead.Add(kv.Key); continue; } FillSoil(kv.Key, kv.Value); n++; }
             foreach (var m in dead) soilMeshes.Remove(m);
-            Debug.Log("Terrein " + SoilDetailNames[value] + ": " + n + " delen, " + statSmooth + " van " + statTris + " driehoeken zacht (vak niet: " + statCell + ", knik: " + statCrease + "), afwijking hooguit " + StatBulge.ToString("0.00") + " m, in " + ((Time.realtimeSinceStartup - t0) * 1000f).ToString("0") + " ms");
+            Debug.Log("Terrein " + SoilDetailNames[value] + ": " + n + " delen, " + statSmooth + " van " + statTris + " driehoeken zacht (vak niet: " + statCell + ", knik: " + statCrease + "), nog rond te maken: " + roundTodo.Count + ", in " + ((Time.realtimeSinceStartup - t0) * 1000f).ToString("0") + " ms");
         }
     }
     public static bool SmoothSoil => SoilDetail > 0;
     const float SmoothCrease = 50f;   // graden: een driehoek die verder van het veld afwijkt houdt zijn eigen normaal (een berghelling wijkt tot zo'n 40° af)
-    static int RoundN => SoilDetail >= 3 ? 5 : 3;   // Rond: elke rand in 3 stukjes, een driehoek in 9; extra rond: in 5, een driehoek in 25
+    static int RoundN => SoilDetail >= 2 ? 5 : 3;   // medium poly: elke rand in 3 stukjes, een driehoek in 9; high poly: in 5, een driehoek in 25
     static int statSmooth, statTris, statCell, statCrease; public static float StatBulge;   // hoeveel Rond hooguit van de grove driehoek afwijkt (m)
 
-    class SoilPart { public Mesh coarse, fine, wire; public Vector3[] v; public int[] cells; }
+    // v, tris, cells: de grove mesh; nFlat: de normaal per driehoek; sn: de zachte normaal per hoekpunt (ook voor de vorm van Rond);
+    // nSmooth: de normalen van Zacht; state per driehoek: 0 strak, 1 zacht, 2 knik; curve per driehoek: bit 0-2 welke rand gebogen is
+    class SoilPart { public Mesh coarse, fine, wire; public Vector3[] v, nFlat, sn, nSmooth; public int[] tris, cells; public byte[] state, curve; public Color[] col; public List<Vector4> ext; }
 
     // Terreinlijnen (Instellingen, onthouden in PlayerPrefs): dunne donkere lijnen langs elke driehoek van de bodem, in elke stand
     const string WireKey = "raatstad-terrein-lijnen";
@@ -71,21 +72,61 @@ public static partial class PlanetCity
     }
     static readonly Dictionary<MeshFilter, SoilPart> soilMeshes = new Dictionary<MeshFilter, SoilPart>();   // de bodem per deel (zolang het deel bestaat)
 
+    // Rond bouwen kost tijd (9 of 25 keer zoveel driehoeken). Daarom: per beeld hooguit RoundNowMs meteen (een klik: het deel staat
+    // direct rond in beeld), de rest staat eerst zacht (grove mesh) en wordt in de volgende beelden rond, het dichtst bij de camera
+    // eerst (SoilTick, RoundTickMs per beeld). Laden en omschakelen wachten er dus niet op.
+    const float RoundNowMs = 10f, RoundTickMs = 6f;
+    static readonly List<MeshFilter> roundTodo = new List<MeshFilter>(); static int roundFrame = -1; static float roundUsed; static SoilRunner soilRunner;
+    public static int RoundPending => roundTodo.Count;
+
     // na het bouwen van een deel (SoilMesh): coarse is de grove mesh met kleuren (ook de collider), cells het vak per hoekpunt
     static void RegisterSoil(MeshFilter mf, Mesh coarse, List<int> cells)
     {
         if (soilMeshes.Count > 0) { var dead = new List<MeshFilter>(); foreach (var k in soilMeshes.Keys) if (k == null) dead.Add(k); foreach (var k in dead) soilMeshes.Remove(k); }
-        var part = new SoilPart { coarse = coarse, v = coarse.vertices, cells = cells.ToArray() }; soilMeshes[mf] = part;
+        var part = new SoilPart { coarse = coarse, v = coarse.vertices, tris = coarse.triangles, cells = cells.ToArray() }; soilMeshes[mf] = part;
         FillSoil(mf, part);
     }
 
     static void FillSoil(MeshFilter mf, SoilPart part)
     {
         if (part.fine != null) { Object.Destroy(part.fine); part.fine = null; }
-        int d = SoilDetail;
-        if (d >= 2) { part.fine = RoundMesh(part); mf.sharedMesh = part.fine; }
-        else { ApplySoilNormals(part.coarse, part.cells, d == 1); mf.sharedMesh = part.coarse; }
+        int d = SoilDetail; roundTodo.Remove(mf);
+        if (d == 0) { if (part.nFlat == null) Flat(part); part.coarse.normals = part.nFlat; mf.sharedMesh = part.coarse; }
+        else
+        {
+            if (part.sn == null) Prepare(part);
+            if (Time.frameCount != roundFrame) { roundFrame = Time.frameCount; roundUsed = 0f; }
+            if (roundUsed < RoundNowMs) { var sw = System.Diagnostics.Stopwatch.StartNew(); part.fine = RoundMesh(part); mf.sharedMesh = part.fine; roundUsed += (float)sw.Elapsed.TotalMilliseconds; }
+            else
+            {
+                part.coarse.normals = part.nSmooth; mf.sharedMesh = part.coarse;
+                { roundTodo.Add(mf); if (soilRunner == null && Application.isPlaying) { var go = new GameObject("Bodem rond"); Object.DontDestroyOnLoad(go); soilRunner = go.AddComponent<SoilRunner>(); } }
+            }
+        }
         if (SoilWire || part.wire != null) Wire(mf, part);
+    }
+
+    // per beeld: een paar wachtende delen rond maken, het dichtst bij de camera eerst
+    public static void SoilTick()
+    {
+        if (roundTodo.Count == 0) return;
+        if (SoilDetail < 1) { roundTodo.Clear(); return; }
+        var cam = Camera.main; Vector3 cp = cam != null ? cam.transform.position : Vector3.zero;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (roundTodo.Count > 0 && sw.Elapsed.TotalMilliseconds < RoundTickMs)
+        {
+            int best = -1; float bd = float.MaxValue;
+            for (int k = roundTodo.Count - 1; k >= 0; k--)
+            {
+                var f = roundTodo[k]; if (f == null || !soilMeshes.ContainsKey(f)) { roundTodo.RemoveAt(k); if (best > k) best--; continue; }
+                float dd = (soilMeshes[f].coarse.bounds.center + f.transform.position - cp).sqrMagnitude; if (dd < bd) { bd = dd; best = k; }
+            }
+            if (best < 0) break;
+            var mf = roundTodo[best]; roundTodo.RemoveAt(best); var part = soilMeshes[mf];
+            if (part.fine != null) Object.Destroy(part.fine);
+            part.fine = RoundMesh(part); mf.sharedMesh = part.fine;
+            if (SoilWire || part.wire != null) Wire(mf, part);
+        }
     }
 
     // mag de bodem van vak i zacht en rond worden? (geen weg, pad, bebouwing, geul, gracht of tunnel)
@@ -126,25 +167,20 @@ public static partial class PlanetCity
         return s.sqrMagnitude > 1e-10f ? s.normalized : d;
     }
 
-    // Zacht of low poly: de normalen van de grove mesh (de hoekpunten zijn niet gedeeld)
-    static void ApplySoilNormals(Mesh mesh, int[] cells, bool smooth)
+    static void Flat(SoilPart part)
     {
-        var v = mesh.vertices; var nr = new Vector3[v.Length]; var tris = mesh.triangles;
-        var memo = smooth ? new Dictionary<int, Vector3>() : null; var ok = smooth ? new Dictionary<int, bool>() : null;
-        float cosC = Mathf.Cos(SmoothCrease * Mathf.Deg2Rad);
+        var v = part.v; var tris = part.tris; var nr = new Vector3[v.Length]; Dictionary<int, Vector3> memo = null;
         for (int t = 0; t + 2 < tris.Length; t += 3)
         {
-            int a = tris[t], b = tris[t + 1], c = tris[t + 2];
-            Vector3 fn = Vector3.Cross(v[b] - v[a], v[c] - v[a]).normalized;
+            int a = tris[t], b = tris[t + 1], c = tris[t + 2]; Vector3 fn = Vector3.Cross(v[b] - v[a], v[c] - v[a]).normalized;
+            if (Sliver(v[a], v[b], v[c]) && a < part.cells.Length)   // een splinter: belicht als de grond eromheen (geen lichte of donkere kras)
+            {
+                if (memo == null) memo = new Dictionary<int, Vector3>();
+                Vector3 sn = SmoothNormal(part.cells[a], (v[a] + v[b] + v[c]) / 3f, memo); if (Vector3.Dot(sn, fn) > 0f) fn = sn;
+            }
             nr[a] = nr[b] = nr[c] = fn;
-            statTris++; if (!smooth || a >= cells.Length) continue;
-            int ci = cells[a]; if (!ok.TryGetValue(ci, out bool can)) { can = SmoothCell(ci); ok[ci] = can; }
-            if (!can) { statCell++; continue; }
-            Vector3 na = SmoothNormal(ci, v[a], memo), nb = SmoothNormal(ci, v[b], memo), nc = SmoothNormal(ci, v[c], memo);
-            if (Vector3.Dot(na, fn) < cosC || Vector3.Dot(nb, fn) < cosC || Vector3.Dot(nc, fn) < cosC) { statCrease++; continue; }   // een knik: strak laten
-            nr[a] = na; nr[b] = nb; nr[c] = nc; statSmooth++;
         }
-        mesh.normals = nr;
+        part.nFlat = nr;
     }
 
     // ligt de rand a-b op de grens van vak i met een buur? Dan die buur (anders -1: een rand binnen het vak)
@@ -156,53 +192,80 @@ public static partial class PlanetCity
         return bd - di < 0.4f ? best : -1;
     }
 
-    // Rond: de fijne mesh van een deel
-    static Mesh RoundMesh(SoilPart part)
+    // Zacht en Rond: eenmaal per deel de zachte normalen op de hoekpunten van de grove mesh, wat strak blijft en welke randen buigen.
+    // Alles op een fijner punt (Rond) wordt hieruit gemengd: een rand hangt zo alleen af van zijn twee eindpunten (naadloos).
+    static void Prepare(SoilPart part)
     {
-        var v = part.v; var cells = part.cells; var tris = part.coarse.triangles;
-        var memoN = new Dictionary<int, Vector3>(); var memoS = new Dictionary<int, Soil>(); var ok = new Dictionary<int, bool>();
+        if (part.nFlat == null) Flat(part);
+        var v = part.v; var tris = part.tris; var cells = part.cells; int nt = tris.Length / 3;
+        var memo = new Dictionary<int, Vector3>(); var ok = new Dictionary<int, bool>();
         bool Ok(int ci) { if (!ok.TryGetValue(ci, out bool can)) { can = SmoothCell(ci); ok[ci] = can; } return can; }
         float cosC = Mathf.Cos(SmoothCrease * Mathf.Deg2Rad);
-        var V = new List<Vector3>(v.Length * 3); var N = new List<Vector3>(v.Length * 3); var C = new List<Color>(v.Length * 3); var X = new List<Vector4>(v.Length * 3); var T = new List<int>(tris.Length * 6);
-        void Vert(Vector3 p, Vector3 n, int ci) { var so = SoilColor(ci, p, memoS); V.Add(p); N.Add(n); C.Add(so.c); X.Add(so.x); }
-        int RN = RoundN; var idx = new int[RN + 1, RN + 1];
-        for (int t = 0; t + 2 < tris.Length; t += 3)
+        var sn = new Vector3[v.Length]; var ns = (Vector3[])part.nFlat.Clone(); var state = new byte[nt]; var curve = new byte[nt];
+        for (int q = 0; q < nt; q++)
         {
-            int ia = tris[t], ib = tris[t + 1], ic = tris[t + 2]; int ci = cells[ia];
-            Vector3 P1 = v[ia], P2 = v[ib], P3 = v[ic]; Vector3 fn = Vector3.Cross(P2 - P1, P3 - P1).normalized;
-            statTris++;
-            if (!Ok(ci))   // strak: de driehoek zoals hij is
-            {
-                statCell++; int b0 = V.Count; Vert(P1, fn, ci); Vert(P2, fn, ci); Vert(P3, fn, ci); T.Add(b0); T.Add(b0 + 1); T.Add(b0 + 2); continue;
-            }
-            Vector3 N1 = SmoothNormal(ci, P1, memoN), N2 = SmoothNormal(ci, P2, memoN), N3 = SmoothNormal(ci, P3, memoN);
-            bool crease = Vector3.Dot(N1, fn) < cosC || Vector3.Dot(N2, fn) < cosC || Vector3.Dot(N3, fn) < cosC; if (crease) statCrease++; else statSmooth++;
+            int a = tris[q * 3], b = tris[q * 3 + 1], c = tris[q * 3 + 2]; statTris++;
+            int ci = a < cells.Length ? cells[a] : -1; if (ci < 0 || !Ok(ci)) { statCell++; continue; }
+            Vector3 fn = part.nFlat[a]; Vector3 na = SmoothNormal(ci, v[a], memo), nb = SmoothNormal(ci, v[b], memo), nc = SmoothNormal(ci, v[c], memo);
+            sn[a] = na; sn[b] = nb; sn[c] = nc;
+            if (Vector3.Dot(na, fn) < cosC || Vector3.Dot(nb, fn) < cosC || Vector3.Dot(nc, fn) < cosC) { state[q] = 2; statCrease++; }   // een knik: eigen normaal
+            else { state[q] = 1; ns[a] = na; ns[b] = nb; ns[c] = nc; statSmooth++; }
             // een rand blijft recht als het vak aan de overkant strak blijft (dan sluit die er precies op aan)
-            bool Curve(Vector3 a, Vector3 b) { int j = BorderCell(ci, a, b); return j < 0 || Ok(j); }
-            bool c12 = Curve(P1, P2), c23 = Curve(P2, P3), c31 = Curve(P3, P1);
-            Vector3 Ctl(Vector3 Pi, Vector3 Pj, Vector3 Ni, bool curve) => (2f * Pi + Pj - (curve ? Vector3.Dot(Pj - Pi, Ni) * Ni : Vector3.zero)) / 3f;
-            Vector3 b210 = Ctl(P1, P2, N1, c12), b120 = Ctl(P2, P1, N2, c12), b021 = Ctl(P2, P3, N2, c23), b012 = Ctl(P3, P2, N3, c23), b102 = Ctl(P3, P1, N3, c31), b201 = Ctl(P1, P3, N1, c31);
+            bool Curve(Vector3 x, Vector3 y) { int j = BorderCell(ci, x, y); return j < 0 || Ok(j); }
+            curve[q] = (byte)((Curve(v[a], v[b]) ? 1 : 0) | (Curve(v[b], v[c]) ? 2 : 0) | (Curve(v[c], v[a]) ? 4 : 0));
+        }
+        part.sn = sn; part.nSmooth = ns; part.state = state; part.curve = curve;
+        part.col = part.coarse.colors; part.ext = new List<Vector4>(); part.coarse.GetUVs(0, part.ext);
+    }
+
+    // Rond: de fijne mesh van een deel. Plek op een gebogen vlak (PN-driehoek); normaal, kleur en extra gemengd uit de drie hoekpunten.
+    static Mesh RoundMesh(SoilPart part)
+    {
+        var v = part.v; var tris = part.tris; var state = part.state; var sn = part.sn; var col = part.col; var ext = part.ext; int nt = tris.Length / 3;
+        int RN = RoundN, per = (RN + 1) * (RN + 2) / 2, nv = 0, ni = 0;
+        for (int q = 0; q < nt; q++) { if (state[q] == 0) { nv += 3; ni += 3; } else { nv += per; ni += RN * RN * 3; } }
+        var V = new Vector3[nv]; var N = new Vector3[nv]; var C = new Color[nv]; var X = new Vector4[nv]; var T = new int[ni]; int o = 0, ti = 0;
+        bool hasC = col != null && col.Length == v.Length, hasX = ext != null && ext.Count == v.Length;
+        var idx = new int[RN + 1, RN + 1]; float inv = 1f / RN;
+        for (int q = 0; q < nt; q++)
+        {
+            int ia = tris[q * 3], ib = tris[q * 3 + 1], ic = tris[q * 3 + 2]; Vector3 P1 = v[ia], P2 = v[ib], P3 = v[ic], fn = part.nFlat[ia];
+            Color C1 = hasC ? col[ia] : default, C2 = hasC ? col[ib] : default, C3 = hasC ? col[ic] : default;
+            Vector4 X1 = hasX ? ext[ia] : default, X2 = hasX ? ext[ib] : default, X3 = hasX ? ext[ic] : default;
+            if (state[q] == 0)   // strak: de driehoek zoals hij is
+            {
+                V[o] = P1; V[o + 1] = P2; V[o + 2] = P3; N[o] = N[o + 1] = N[o + 2] = fn; C[o] = C1; C[o + 1] = C2; C[o + 2] = C3; X[o] = X1; X[o + 1] = X2; X[o + 2] = X3;
+                T[ti++] = o; T[ti++] = o + 1; T[ti++] = o + 2; o += 3; continue;
+            }
+            Vector3 N1 = sn[ia], N2 = sn[ib], N3 = sn[ic]; bool smooth = state[q] == 1; byte cv = part.curve[q];
+            bool c12 = (cv & 1) != 0, c23 = (cv & 2) != 0, c31 = (cv & 4) != 0;
+            Vector3 b210 = (2f * P1 + P2 - (c12 ? Vector3.Dot(P2 - P1, N1) * N1 : Vector3.zero)) / 3f, b120 = (2f * P2 + P1 - (c12 ? Vector3.Dot(P1 - P2, N2) * N2 : Vector3.zero)) / 3f;
+            Vector3 b021 = (2f * P2 + P3 - (c23 ? Vector3.Dot(P3 - P2, N2) * N2 : Vector3.zero)) / 3f, b012 = (2f * P3 + P2 - (c23 ? Vector3.Dot(P2 - P3, N3) * N3 : Vector3.zero)) / 3f;
+            Vector3 b102 = (2f * P3 + P1 - (c31 ? Vector3.Dot(P1 - P3, N3) * N3 : Vector3.zero)) / 3f, b201 = (2f * P1 + P3 - (c31 ? Vector3.Dot(P3 - P1, N1) * N1 : Vector3.zero)) / 3f;
             Vector3 E = (b210 + b120 + b021 + b012 + b102 + b201) / 6f, Vm = (P1 + P2 + P3) / 3f, b111 = E + (E - Vm) * 0.5f;
             for (int r = 0; r <= RN; r++)
                 for (int s = 0; s <= RN - r; s++)
                 {
-                    float u = r / (float)RN, w2 = s / (float)RN, w = 1f - u - w2;   // u bij P2, w2 bij P3, w bij P1
+                    float u = r * inv, w2 = s * inv, w = 1f - u - w2;   // u bij P2, w2 bij P3, w bij P1
                     Vector3 p;
                     if (r == 0 && s == 0) p = P1; else if (r == RN) p = P2; else if (s == RN) p = P3;
                     else p = P1 * (w * w * w) + P2 * (u * u * u) + P3 * (w2 * w2 * w2) + b210 * (3f * w * w * u) + b120 * (3f * w * u * u) + b201 * (3f * w * w * w2)
                          + b021 * (3f * u * u * w2) + b102 * (3f * w * w2 * w2) + b012 * (3f * u * w2 * w2) + b111 * (6f * u * w2 * w);
-                    StatBulge = Mathf.Max(StatBulge, (p - (P1 * w + P2 * u + P3 * w2)).magnitude);
-                    idx[r, s] = V.Count; Vert(p, crease ? fn : SmoothNormal(ci, p, memoN), ci);
+                    idx[r, s] = o; V[o] = p; N[o] = smooth ? (N1 * w + N2 * u + N3 * w2).normalized : fn;
+                    C[o] = C1 * w + C2 * u + C3 * w2; X[o] = X1 * w + X2 * u + X3 * w2; o++;
                 }
             for (int r = 0; r < RN; r++)
                 for (int s = 0; s < RN - r; s++)
                 {
-                    T.Add(idx[r, s]); T.Add(idx[r + 1, s]); T.Add(idx[r, s + 1]);
-                    if (s + 1 < RN - r) { T.Add(idx[r + 1, s]); T.Add(idx[r + 1, s + 1]); T.Add(idx[r, s + 1]); }
+                    T[ti++] = idx[r, s]; T[ti++] = idx[r + 1, s]; T[ti++] = idx[r, s + 1];
+                    if (s + 1 < RN - r) { T[ti++] = idx[r + 1, s]; T[ti++] = idx[r + 1, s + 1]; T[ti++] = idx[r, s + 1]; }
                 }
         }
         var m = new Mesh { indexFormat = UnityEngine.Rendering.IndexFormat.UInt32, name = "bodem rond" };
-        m.SetVertices(V); m.SetNormals(N); m.SetColors(C); m.SetUVs(0, X); m.SetTriangles(T, 0); m.RecalculateBounds();
+        m.SetVertices(V); m.SetNormals(N); m.SetColors(C); m.SetUVs(0, X); m.SetTriangles(T, 0, false); m.RecalculateBounds();
         return m;
     }
 }
+
+// maakt per beeld een paar wachtende delen van de bodem rond (PlanetCity.SoilTick)
+public class SoilRunner : MonoBehaviour { void Update() => PlanetCity.SoilTick(); }

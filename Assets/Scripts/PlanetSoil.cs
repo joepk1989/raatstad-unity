@@ -78,12 +78,22 @@ public static partial class PlanetCity
         return memo.TryGetValue(i, out var own) ? own : CellSoil(i);
     }
 
+    const float SliverW = 1.2f;   // m: smaller dan dit is een splinter
+    static bool Sliver(Vector3 a, Vector3 b, Vector3 c)
+    {
+        float l = Mathf.Max((b - a).sqrMagnitude, Mathf.Max((c - b).sqrMagnitude, (a - c).sqrMagnitude)); if (l < 1e-8f) return true;
+        return Vector3.Cross(b - a, c - a).magnitude / Mathf.Sqrt(l) < SliverW;   // de hoogte op de langste zijde
+    }
+
     // de bodem van een deel als één mesh (de driehoeken met hun vak, cells parallel aan de hoekpunten)
     static void SoilMesh(MeshBuilder mb, List<int> cells, int ch, List<GameObject> made)
     {
         if (mb.v.Count == 0) return;
         var memo = new Dictionary<int, Soil>(); var col = new List<Color>(mb.v.Count); var ext = new List<Vector4>(mb.v.Count);
         for (int k = 0; k < mb.v.Count; k++) { var so = SoilColor(cells[k], mb.v[k], memo); col.Add(so.c); ext.Add(so.x); }
+        // een splinter (een driehoek smaller dan SliverW, zoals langs de knik van een talud) krijgt een merk in ext.w (+100): de shader maakt
+        // er geen kale aarde van en belicht hem als de grond eromheen, anders staan er bruine krassen in het gras (Bodem.shader, Flat)
+        for (int t = 0; t + 2 < mb.t.Count; t += 3) { int a = mb.t[t], b = mb.t[t + 1], c = mb.t[t + 2]; if (!Sliver(mb.v[a], mb.v[b], mb.v[c])) continue; foreach (int q in new[] { a, b, c }) { var e = ext[q]; e.w += 100f; ext[q] = e; } }
         var go = new GameObject("Terrein bodem " + ch); go.transform.SetParent(groundRoot, false); made.Add(go); go.layer = Layers.Bodem;
         var mesh = mb.Build(); mesh.SetColors(col); mesh.SetUVs(0, ext);
         var mf = go.AddComponent<MeshFilter>(); mf.sharedMesh = mesh; RegisterSoil(mf, mesh, cells);   // low poly, zacht of rond (PlanetSoil.Smooth.cs)
