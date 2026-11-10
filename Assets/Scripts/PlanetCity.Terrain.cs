@@ -198,13 +198,33 @@ public static partial class PlanetCity
         bool cull = RoadH.Count > 0; float loH = Mathf.Min(hc0, Mathf.Min(h1, h2)), hiH = Mathf.Max(hc0, Mathf.Max(h1, h2));
         if (cull)
         {
-            foreach (var q in segsUse)
+            // de hoogtes die hier kunnen voorkomen: het terrein, en de wegen waarvan het talud deze driehoek bij die hoogtes haalt (herhaald,
+            // want een weg die meedoet kan een volgende binnen bereik brengen); een verre weg op een andere hoogte telt zo niet mee
+            for (int it = 0; it < 4; it++)
             {
-                SegLins(c, q, out Lin T0, out Lin S0, out float len0); if (len0 < 1e-3f) continue;
-                if (Mathf.Abs(T0.a) > q.hw + FieldReach + c.radius + 1f || S0.a < -c.radius - FieldReach - 1f || S0.a > len0 + c.radius + FieldReach + 1f) continue;
-                loH = Mathf.Min(loH, Mathf.Min(q.ha, q.hb)); hiH = Mathf.Max(hiH, Mathf.Max(q.ha, q.hb));
+                float lo2 = loH, hi2 = hiH;
+                foreach (var q in segsUse)
+                {
+                    SegLins(c, q, out Lin T0, out Lin S0, out float len0); if (len0 < 1e-3f) continue;
+                    if (Mathf.Abs(T0.a) > q.hw + FieldReach + c.radius + 1f || S0.a < -c.radius - FieldReach - 1f || S0.a > len0 + c.radius + FieldReach + 1f) continue;
+                    float a0 = T0.a, a1 = T0.At(L1), a2 = T0.At(L2), b0 = S0.a, b1 = S0.At(L1), b2 = S0.At(L2);
+                    float amin = Mathf.Min(a0, Mathf.Min(a1, a2)), amax = Mathf.Max(a0, Mathf.Max(a1, a2)), bmin = Mathf.Min(b0, Mathf.Min(b1, b2)), bmax = Mathf.Max(b0, Mathf.Max(b1, b2));
+                    float dl = amin > 0f ? amin : amax < 0f ? -amax : 0f, ds = bmin > len0 ? bmin - len0 : bmax < 0f ? -bmax : 0f;
+                    float df = Mathf.Max(0f, Mathf.Max(Mathf.Max(q.ha, q.hb) - loH, hiH - Mathf.Min(q.ha, q.hb)));
+                    if (q.wall ? (dl > q.hw + WallOut + 0.2f || ds > EndSlack + 0.2f) : Mathf.Max(dl - q.hw, ds) > (df + 0.3f) / FK + 0.2f) continue;
+                    lo2 = Mathf.Min(lo2, Mathf.Min(q.ha, q.hb)); hi2 = Mathf.Max(hi2, Mathf.Max(q.ha, q.hb));
+                }
+                foreach (var q in capsUse)
+                {
+                    if ((o3 - q.c).magnitude > q.hw * 1.2f + FieldReach + c.radius + 1f) continue;
+                    float dlow = float.MinValue; foreach (var n in q.n) { float a0 = Vector3.Dot(o3 - q.c, n), ex = Vector3.Dot(c.east, n), ny = Vector3.Dot(c.north, n); dlow = Mathf.Max(dlow, Mathf.Min(a0, Mathf.Min(a0 + ex * L1.x + ny * L1.y, a0 + ex * L2.x + ny * L2.y))); }
+                    float tilt = q.g.magnitude * (q.hw + c.radius * 2f + 2f);   // (een schuine kop: zijn hoogte in deze driehoek ligt binnen deze marge van h)
+                    float df = Mathf.Max(0f, Mathf.Max(q.h + tilt - loH, hiH - q.h + tilt));
+                    if (dlow - q.hw > (q.wall ? q.wo + 0.2f : (df + 0.3f) / FK + 0.2f)) continue;
+                    lo2 = Mathf.Min(lo2, q.h - tilt); hi2 = Mathf.Max(hi2, q.h + tilt);
+                }
+                if (lo2 >= loH - 1e-4f && hi2 <= hiH + 1e-4f) break; loH = lo2; hiH = hi2;
             }
-            foreach (var q in capsUse) { if ((o3 - q.c).magnitude > q.hw * 1.2f + FieldReach + c.radius + 1f) continue; loH = Mathf.Min(loH, q.h); hiH = Mathf.Max(hiH, q.h); }
         }
         foreach (var q in segsUse)
         {
@@ -254,7 +274,7 @@ public static partial class PlanetCity
             {
                 float dlow = float.MinValue;   // de zeshoekige afstand van de driehoek tot het hart is minstens dit
                 foreach (var n in q.n) { float a0 = Vector3.Dot(o3 - q.c, n), ex = Vector3.Dot(c.east, n), ny = Vector3.Dot(c.north, n); dlow = Mathf.Max(dlow, Mathf.Min(a0, Mathf.Min(a0 + ex * L1.x + ny * L1.y, a0 + ex * L2.x + ny * L2.y))); }
-                float diffc = Mathf.Max(0f, Mathf.Max(q.h - loH, hiH - q.h));
+                float tiltc = q.g.magnitude * (q.hw + c.radius * 2f + 2f), diffc = Mathf.Max(0f, Mathf.Max(q.h + tiltc - loH, hiH - q.h + tiltc));
                 if (dlow - q.hw > (q.wall ? q.wo + 0.2f : (diffc + 0.3f) / FK + 0.2f)) continue;
             }
             lc.Add(q);
@@ -264,7 +284,8 @@ public static partial class PlanetCity
                 Lin N = new Lin { a = Vector3.Dot(o3 - q.c, n), x = Vector3.Dot(c.east, n), y = Vector3.Dot(c.north, n) };
                 Vector3 pn = Vector3.Cross(q.dir, n).normalized; Lin P = new Lin { a = Vector3.Dot(o3 - q.c, pn), x = Vector3.Dot(c.east, pn), y = Vector3.Dot(c.north, pn) };
                 if (q.wall) { lines.AddRange(new[] { N - Lin.C(q.hw), N, P, N - Lin.C(q.hw + q.wo) }); continue; }   // sokkel- of bakkop: de wegrand, de graten, de wand (eigen mesh)
-                Lin toe = N - Lin.C(q.hw) - (B - Lin.C(q.h - 0.05f)) * (sg / FK);   // de voet: waar wegdek + talud het terrein raakt
+                Lin HL = new Lin { a = q.h - 0.05f + Vector3.Dot(o3 - q.c, q.g), x = Vector3.Dot(c.east, q.g), y = Vector3.Dot(c.north, q.g) };   // het vlak van de kop (schuin bij een kruispunt)
+                Lin toe = N - Lin.C(q.hw) - (B - HL) * (sg / FK);   // de voet: waar wegdek + talud het terrein raakt
                 var fc = RoadH.Count > 0 ? new List<Lin> { N - Lin.C(q.hw), toe, N, P, N - Lin.C(q.hw + FieldReach) } : new List<Lin> { N - Lin.C(q.hw), toe, N, P, N - Lin.C(q.hw + FieldReach + 0.02f) };   // (ook het bereik van het veld: daarbuiten een klif)
                 lines.AddRange(fc);   // de zijde, de voet, de graat naar de hoek, de vouw in een bocht
             }
@@ -360,15 +381,32 @@ public static partial class PlanetCity
     static readonly List<Seg> segs = new List<Seg>();
     // de kop van een doodlopende weg: een zeshoek (vijfhoek) rond het hart van het vak, zijden recht tegenover de buren, met de
     // grond op weghoogte tot op hw van het hart en daarbuiten onder 45° terug, net als langs de weg
-    struct Cap { public Vector3 c, dir; public Vector3[] n; public float h, hw, wo; public int ic; public bool wall; }   // wall: sokkel- of bakkop (zie Seg); wo: de wand zo ver buiten de wegrand (WallOut, of minder als dat op een vakrand valt)
+    // g (nieuwe opbouw): de kop van een kruispunt helt mee met zijn armen: de hoogte op punt w is h + g·(w - c), een schuin vlak door de knoop
+    struct Cap { public Vector3 c, dir, g; public Vector3[] n; public float h, hw, wo; public int ic; public bool wall; }   // wall: sokkel- of bakkop (zie Seg); wo: de wand zo ver buiten de wegrand (WallOut, of minder als dat op een vakrand valt)
     static readonly List<Cap> caps = new List<Cap>();
     static bool HasField => segs.Count > 0 || caps.Count > 0;
     const float SteepUp = 0.766f;   // cos 40°: een talud steiler dan 40° is kale aarde, flauwer is gras
-    static void AddCap(int i, float h, float hw)
+    static void AddCap(int i, float h, float hw, Vector3 g = default)
     {
         var cell = Planet.Cells[i]; var n = new Vector3[cell.nb.Length];
         for (int k = 0; k < n.Length; k++) n[k] = Tan(Planet.Cells[cell.nb[k]].dir - cell.dir, cell.dir);
-        caps.Add(new Cap { c = cell.dir * Planet.R, dir = cell.dir, n = n, h = h, hw = hw, ic = i });
+        caps.Add(new Cap { c = cell.dir * Planet.R, dir = cell.dir, n = n, h = h, hw = hw, ic = i, g = g });
+    }
+    // De helling van de kop van kruispunt i (nieuwe opbouw): het vlak door de knoop dat het best bij de hellingen van alle armen past
+    // (kleinste kwadraten; ook een arm die een brug of tunnel in gaat). Zonder dit was de kop een vlakke plaat, verlaagd naar de laagste
+    // arm, en stond er aan zijn rand een sprong van meters naar een stijgende arm.
+    static Vector3 CapSlope(int i)
+    {
+        var cell = Planet.Cells[i]; float axx = 0f, axy = 0f, ayy = 0f, bx = 0f, by = 0f; int n = 0;
+        foreach (int j in Partners(i))
+        {
+            if (!IsRoad(j)) continue; Vector3 d = Planet.Cells[j].dir * Planet.R - cell.dir * Planet.R; float dist = d.magnitude; if (dist < 1f) continue;
+            Vector3 t = Tan(d, cell.dir); float x = Vector3.Dot(t, cell.east), y = Vector3.Dot(t, cell.north), sl = (G(j) - G(i)) / dist;
+            axx += x * x; axy += x * y; ayy += y * y; bx += sl * x; by += sl * y; n++;
+        }
+        float det = axx * ayy - axy * axy; if (n < 3 || Mathf.Abs(det) < 0.05f) return Vector3.zero;
+        Vector3 g = cell.east * ((bx * ayy - by * axy) / det) + cell.north * ((by * axx - bx * axy) / det);
+        return Vector3.ClampMagnitude(g, 0.12f);
     }
     // zeshoekige afstand tot het hart, in het raakvlak van de kop. Ver weg (de bol kromt onder het raakvlak door, aan de overkant van
     // de planeet komt er bijna 0 uit) telt de gewone afstand: anders tilt een kop met alle koppen in gebruik (UseAll) de grond aan de
@@ -500,7 +538,7 @@ public static partial class PlanetCity
         foreach (var q in lc) { if (!q.wall) continue; g++; foreach (var n in q.n) Add(new Lin { a = Vector3.Dot(o3 - q.c, n) - q.hw - q.wo, x = Vector3.Dot(c.east, n), y = Vector3.Dot(c.north, n) }); }
         return res;
     }
-    static float FieldReach => RoadH.Count > 0 ? 20f / FK : Mathf.Min(14f / FK, 40f);   // tot zover reikt een talud (14 m hoogteverschil; met een profiel 20 m, zodat het ook in een steile dalwand onder een brug het terrein haalt: op de grens eindigt het anders hard). Nieuwe opbouw (ontwerp 8.3): een stuk is maaiveld tot 6 m hoogteverschil in het hart (SplitWalls), daarboven een wand (sokkel of bak), een brug of een tunnel; het talud van een maaiveldstuk mag verder reiken, zodat het ook dwars op een helling en in de kegel voorbij het eind het terrein haalt
+    static float FieldReach => RoadH.Count > 0 ? 40f / FK : Mathf.Min(14f / FK, 40f);   // tot zover reikt een talud (14 m hoogteverschil; met een profiel 40 m, zodat het ook in een steile dalwand onder een brug het terrein haalt: op de grens eindigt het anders hard; dat kost in vlak land niets, want een stuk doet alleen mee waar zijn talud kan komen (FieldLines)). Nieuwe opbouw (ontwerp 8.3): een stuk is maaiveld tot 6 m hoogteverschil in het hart (SplitWalls), daarboven een wand (sokkel of bak), een brug of een tunnel; het talud van een maaiveldstuk mag verder reiken, zodat het ook dwars op een helling en in de kegel voorbij het eind het terrein haalt
     static float FK => RoadSlopes ? FieldK : 8f;   // de steilte van de kant; Talud uit: bijna loodrecht (83°), geen sprong (een sprong kan het raster niet tekenen: gaten)   // tot zover naast de weg kan de grond nog omhoog of omlaag lopen (45°: twee niveaus plus de marge)
     public static void SetFieldK(float k)
     {
@@ -548,7 +586,7 @@ public static partial class PlanetCity
     static void UseAll() { segsUse = segs; flatsUse = flats; capsUse = caps; }
     static float GroundField(Vector3 dir, float base_, out bool slope, List<Seg> segs, List<Cap> caps)   // slope: het punt ligt op de schuine kant van een weg
     {
-        float h = base_; Vector3 w = dir * Planet.R; slope = false; float onLevelH = float.MaxValue, lowRoad = float.MaxValue;   // op de weg zelf van een weg op een niveau: de laagste daarvan; en de laagste weg die hier de grond omlaag haalt
+        float h = base_; Vector3 w = dir * Planet.R; slope = false; float roof = float.MaxValue; bool roofSlope = false; float onLevelH = float.MaxValue, lowRoad = float.MaxValue;   // op de weg zelf van een weg op een niveau: de laagste daarvan; en de laagste weg die hier de grond omlaag haalt
         for (int pass = 0; pass < 2; pass++)
         {
             foreach (var q in segs)
@@ -573,19 +611,21 @@ public static partial class PlanetCity
                     rise = Mathf.Max(0f, lat - q.hw) * FK;   // de kant
                 }
                 if (lat <= q.hw && over <= EndSlack) onLevelH = Mathf.Min(onLevelH, hr);
+                if (pass == 0 && RoadH.Count > 0 && hr - 0.05f + rise < roof) { roof = hr - 0.05f + rise; roofSlope = rise > 0f; }   // het dak van dit stuk: de grond komt nergens boven het wegdek plus het talud (doorlopend, zie onderaan)
                 if (!RoadShape && pass == 0) continue;   // terrein door wegen uit: niets opvullen (geen dijk), wel afgraven met een talud
                 if (pass == 0 && hr > base_ + 0.01f) { float v = hr - rise - 0.05f; if (v > h) { h = v; slope = rise > 0f; } }        // talud (5 cm onder het wegdek: geen streepje gras op de weg)
                 else if (pass == 1 && hr - 0.05f < base_) { float v = hr + rise - 0.05f; lowRoad = Mathf.Min(lowRoad, hr); if (v < h) { h = v; slope = rise > 0f; } }   // uitgraving: pas als het wegdek (5 cm onder de weg) onder het terrein ligt, dan loopt het veld zonder sprong door
             }
             foreach (var q in caps)
             {
-                float cd = CapDist(q, w) - q.hw, rise = Mathf.Max(0f, cd) * FK;
+                float cd = CapDist(q, w) - q.hw, rise = Mathf.Max(0f, cd) * FK, qh = q.h + Vector3.Dot(w - q.c, q.g);   // (qh: de kop van een kruispunt is een schuin vlak)
                 if (q.wall) { if (cd > q.wo + wallBias) continue; rise = 0f; }   // sokkel- of bakkop (nieuwe opbouw): de strook tot wo (WallOut), daarbuiten het terrein, de wand is een eigen mesh
                 else if (cd > FieldReach + (RoadH.Count > 0 ? wallBias : 0f)) continue;
-                if (cd <= 0f) onLevelH = Mathf.Min(onLevelH, q.h);
+                if (cd <= 0f) onLevelH = Mathf.Min(onLevelH, qh);
+                if (pass == 0 && RoadH.Count > 0 && qh - 0.05f + rise < roof) { roof = qh - 0.05f + rise; roofSlope = rise > 0f; }
                 if (!RoadShape && pass == 0) continue;
-                if (pass == 0 && q.h > base_ + 0.01f) { float v = q.h - rise - 0.05f; if (v > h) { h = v; slope = rise > 0f; } }   // een kop ligt net als de weg 5 cm onder het wegdek
-                else if (pass == 1 && q.h - 0.05f < base_) { float v = q.h + rise - 0.05f; if (v < h) { h = v; slope = rise > 0f; } }
+                if (pass == 0 && qh > base_ + 0.01f) { float v = qh - rise - 0.05f; if (v > h) { h = v; slope = rise > 0f; } }   // een kop ligt net als de weg 5 cm onder het wegdek
+                else if (pass == 1 && qh - 0.05f < base_) { float v = qh + rise - 0.05f; if (v < h) { h = v; slope = rise > 0f; } }
             }
         }
         // gewone wegen erbij: onder de weg de hoogte van die weg, ernaast hooguit het talud hoger of lager (zacht, zonder sprong),
@@ -602,7 +642,11 @@ public static partial class PlanetCity
         }
         // op een weg zelf (binnen zijn strook) nooit hoger dan die weg: anders legt het talud of de kop van een hogere weg ernaast een
         // plaat gras over het asfalt (waar twee stroken elkaar raken wint de laagste weg, net als onder een brug)
-        if (onLevelH < float.MaxValue && h > onLevelH - 0.05f) h = onLevelH - 0.05f;
+        // Nieuwe opbouw: dezelfde regel doorlopend. Het dak van elke weg en kop is zijn wegdek plus het talud omhoog (het vlak van de
+        // uitgraving); de grond blijft eronder. De harde klem liet de grond op de rand van de strook of van een kruispuntkop los: een
+        // sprongetje waar de talud of kop van een andere weg hoger lag (kieren op de rand van een kruispunt op een helling).
+        if (RoadH.Count > 0) { if (h > roof) { h = roof; slope = roofSlope; } }
+        else if (onLevelH < float.MaxValue && h > onLevelH - 0.05f) h = onLevelH - 0.05f;
         if (spans.Count > 0 && SpanBottom(w, out float sb)) h = Mathf.Min(h, sb);   // onder het dek van een brug over een dal
         if (carved.Count > 0 && cuts.Count > 0) h = Mathf.Min(h, Carve(dir));
         return h;

@@ -276,6 +276,7 @@ public static partial class PlanetCity
         float RH(int x)
         {
             var ps = new List<int>(); foreach (int j in Partners(x)) if (IsRoad(j) && !IsBore(x, j)) ps.Add(j);
+            if (RoadH.Count > 0) { int nr = 0; foreach (int j in Partners(x)) if (IsRoad(j)) nr++; if (nr >= 3) return G(x); }   // nieuwe opbouw: een kruispunt op zijn knoophoogte, de kop helt mee (CapSlope)
             if (ps.Count >= 3) { float lo = 0f; foreach (int j in ps) lo = Mathf.Min(lo, G(j) - G(x)); return G(x) + lo * 0.6f; }   // een kruising helt naar zijn armen (Frame.H): de kop zo laag als de laagste arm op 8 m
             if (ps.Count != 2 || !Capped(x)) return G(x);
             return Mathf.Min(G(x), (G(ps[0]) + 2f * G(x) + G(ps[1])) * 0.25f);
@@ -290,7 +291,7 @@ public static partial class PlanetCity
                 AddWalkSeg(segs, new Seg { a = ad * Planet.R, b = Planet.Cells[b].dir * Planet.R, ha = RH(a), hb = RH(b), hw = hw, capA = Capped(a), capB = uneven.Contains(b) && Capped(b), ia = a, ib = b });
             }
             // een kruising tekent zijn stoep verder dan de gewone breedte (afgeronde hoeken, een spitse kruising loopt door): de kop ruimer
-            if (Capped(a)) AddCap(a, RH(a), na <= 1 ? hw + HeadExtra(a) : na >= 3 ? hw + 4f : hw);
+            if (Capped(a)) AddCap(a, RH(a), na <= 1 ? hw + HeadExtra(a) : na >= 3 ? hw + 4f : hw, RoadH.Count > 0 && na >= 3 ? CapSlope(a) : Vector3.zero);
         }
         // Een brug over een dal: van het hart van elk landhoofdvak tot het landhoofd ligt de grond op weghoogte, met het talud ernaast
         // (anders ligt het terrein van de helling over de weg naar de brug); onder het dek blijft het lager (SpanBottom in GroundField).

@@ -281,9 +281,10 @@ public static partial class PlanetCity
         {
             Lin best = Lin.C(float.MinValue); float bd = float.MinValue;
             foreach (var n in q.n) { Lin N = new Lin { a = Vector3.Dot(o3 - q.c, n), x = Vector3.Dot(c.east, n), y = Vector3.Dot(c.north, n) }; float d = N.At(p); if (d > bd) { bd = d; best = N; } }
-            if (q.wall) { if (bd > q.hw + q.wo) continue; res.Add(Lin.C(q.h - 0.05f)); continue; }   // sokkel- of bakkop: binnen de wand vlak, erbuiten niets
+            Lin HC = new Lin { a = q.h + Vector3.Dot(o3 - q.c, q.g), x = Vector3.Dot(c.east, q.g), y = Vector3.Dot(c.north, q.g) };   // het vlak van de kop (schuin bij een kruispunt)
+            if (q.wall) { if (bd > q.hw + q.wo) continue; res.Add(HC - Lin.C(0.05f)); continue; }   // sokkel- of bakkop: binnen de wand vlak, erbuiten niets
             Lin side = bd > q.hw ? (best - Lin.C(q.hw)) * FK : Lin.C(0f);
-            res.Add(Lin.C(q.h) - side - Lin.C(0.05f)); res.Add(Lin.C(q.h) + side - Lin.C(0.05f));
+            res.Add(HC - side - Lin.C(0.05f)); res.Add(HC + side - Lin.C(0.05f));
         }
         if (RoadShape) foreach (var q in flatsUse)
         {
