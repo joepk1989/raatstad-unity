@@ -28,15 +28,15 @@ public partial class PlanetBuilder
         l.Add(new SetSec { name = "Beeld", sub = "Interface, terrein en raster", items = () => {
             int si = 0; for (int k = 1; k < UiSizes.Length; k++) if (Mathf.Abs(UiSizes[k] - Ui.Size) < Mathf.Abs(UiSizes[si] - Ui.Size)) si = k;
             return new List<MItem> {
-                new MItem { name = "Interfacegrootte", value = Mathf.RoundToInt(UiSizes[si] * 100f) + "%", sub = "Knoppen, tekst en vensters", act = () => Ui.Size = UiSizes[(si + 1) % UiSizes.Length] },
-                new MItem { name = "Terreindetail", value = PlanetCity.SoilDetailNames[PlanetCity.SoilDetail], on = PlanetCity.SoilDetail > 0, sub = "Low poly: strakke vlakken. Medium en high poly: glooiend, 9 of 25 keer zoveel driehoeken",
-                            act = () => { PlanetCity.SoilDetail = (PlanetCity.SoilDetail + 1) % PlanetCity.SoilDetailNames.Length; Say("Terreindetail " + PlanetCity.SoilDetailNames[PlanetCity.SoilDetail]); } },
+                new MItem { name = "Interfacegrootte", sub = "Knoppen, tekst en vensters", opts = new[] { "90%", "100%", "115%", "130%" }, sel = si, pick = k => Ui.Size = UiSizes[k] },
+                new MItem { name = "Terreindetail", sub = "Low poly: strakke vlakken. Medium en high poly: glooiend, 9 of 25 keer zoveel driehoeken",
+                            opts = PlanetCity.SoilDetailNames, sel = PlanetCity.SoilDetail, pick = k => { PlanetCity.SoilDetail = k; Say("Terreindetail " + PlanetCity.SoilDetailNames[k]); } },
                 new MItem { name = "Terreinlijnen", value = OnOff(PlanetCity.SoilWire), on = PlanetCity.SoilWire, sub = "De driehoeken van het terrein als dunne lijnen", act = () => { PlanetCity.SoilWire = !PlanetCity.SoilWire; Say("Terreinlijnen " + OnOff(PlanetCity.SoilWire)); } },
                 new MItem { name = "Raster", value = OnOff(PlanetCity.GridOn), on = PlanetCity.GridOn, sub = "De randen van de vakken (G)", act = () => { if (game) ToggleGrid(); else { PlanetCity.GridOn = !PlanetCity.GridOn; SaveSettings(); } } } }; } });
         l.Add(new SetSec { name = "Geluid", sub = "Geluid en bouwmuziek", items = () => new List<MItem> {
             new MItem { name = "Geluid", value = OnOff(!Babble.Muted), on = !Babble.Muted, sub = "Stemmen, verkeer, natuur en effecten", act = () => { if (game) ToggleSound(); else { Babble.Muted = !Babble.Muted; Ambience.Muted = Babble.Muted; SaveSettings(); } } },
-            new MItem { name = "Bouwmuziek", value = BuildMusic.StyleNames[BuildMusic.Style], sub = "Muziek tijdens het bouwen; de ruimte heeft haar eigen muziek",
-                        act = () => { int ms = (BuildMusic.Style + 1) % BuildMusic.StyleNames.Length; BuildMusic.SetStyle(ms); Say("Bouwmuziek: " + BuildMusic.StyleNames[ms]); } } } });
+            new MItem { name = "Bouwmuziek", sub = "Muziek tijdens het bouwen; de ruimte heeft haar eigen muziek",
+                        opts = BuildMusic.StyleNames, sel = BuildMusic.Style, pick = k => { BuildMusic.SetStyle(k); Say("Bouwmuziek: " + BuildMusic.StyleNames[k]); } } } });
         l.Add(new SetSec { name = "Leven", sub = "Mensen, auto's en verkeer", items = () => new List<MItem> {
             new MItem { name = "Mensen", value = OnOff(PlanetLife.PeopleOn), on = PlanetLife.PeopleOn, sub = "Voetgangers en fietsers", act = () => { PlanetLife.PeopleOn = !PlanetLife.PeopleOn; SaveSettings(); } },
             new MItem { name = "Auto's", value = OnOff(PlanetLife.CarsOn), on = PlanetLife.CarsOn, sub = "Verkeer op de wegen", act = () => { PlanetLife.CarsOn = !PlanetLife.CarsOn; SaveSettings(); } },
@@ -45,12 +45,12 @@ public partial class PlanetBuilder
                         act = () => { PlanetLife.Chaos = !PlanetLife.Chaos; SaveSettings(); Say(PlanetLife.Chaos ? "Totale chaos: racers, ontwijkers en jagers op de weg" : "Netjes verkeer"); } } } });
         l.Add(new SetSec { name = "Planeet", sub = "Planeetgrootte", items = () => {
             int want = WantSize, wi = System.Array.IndexOf(PlanetSizes, want);
+            var names = new string[PlanetSizes.Length]; for (int k = 0; k < names.Length; k++) names[k] = PlanetSizes[k] + (PlanetSizes[k] == Planet.BaseM ? " (origineel)" : "");
             float rond = 2f * Mathf.PI * Planet.BaseR * want / Planet.BaseM;
             var p = new List<MItem> {
-                new MItem { name = "Planeetgrootte", value = SizeName(want) + (want != Planet.M ? " · na herstart" : ""), on = want != Planet.BaseM,
-                            sub = (10 * want * want + 2).ToString("N0").Replace(',', '.') + " vakken, " + Km(rond) + " km rond. Klik voor de volgende grootte",
-                            act = () => { int nx = PlanetSizes[(wi + 1) % PlanetSizes.Length]; PlayerPrefs.SetInt("raatstad-dev-planeet", nx); PlayerPrefs.Save(); Say("Planeetgrootte " + SizeName(nx) + (nx != Planet.M ? ": geldt na opnieuw starten" : "")); } },
-                new MItem { note = true, name = "Geldt pas na opnieuw starten.\nElke grootte heeft eigen steden; die van " + Planet.M + " blijven bewaard." } };
+                new MItem { name = "Planeetgrootte", sub = "Groter is minder kromming", opts = names, sel = wi,
+                            pick = k => { int nx = PlanetSizes[k]; PlayerPrefs.SetInt("raatstad-dev-planeet", nx); PlayerPrefs.Save(); Say("Planeetgrootte " + SizeName(nx) + (nx != Planet.M ? ": geldt na opnieuw starten" : "")); } },
+                new MItem { note = true, name = (10 * want * want + 2).ToString("N0").Replace(',', '.') + " vakken, " + Km(rond) + " km rond. Geldt pas na opnieuw starten" + (want != Planet.M ? " (nu " + Planet.M + ")" : "") + ".\nElke grootte heeft eigen steden; die van " + Planet.M + " blijven bewaard." } };
             if (want != Planet.M) p.Add(new MItem { name = "Nu opnieuw starten", value = SizeName(want), sub = game ? "Je stad wordt eerst bewaard; daarna het startscherm met de steden van deze grootte" : "Daarna het startscherm met de steden van deze grootte", act = RestartForSize });
             return p; } });
         l.Add(new SetSec { name = "Uitleg", sub = "Welkom en bediening", items = () => {
@@ -96,7 +96,7 @@ public partial class PlanetBuilder
     }
 
     // ---- het startscherm: tabbladen bovenin, eronder de instellingen van het open tabblad
-    static float SetRowH(MItem m) => m.head ? 24f : m.note ? 38f : m.sub != null ? 42f : 36f;
+    static float SetRowH(MItem m) => m.head ? 24f : m.note ? 38f : m.opts != null ? 84f : m.sub != null ? 42f : 36f;
     void SettingsPanel(Rect r)
     {
         var secs = SettingsSections(); setTab = Mathf.Clamp(setTab, 0, secs.Count - 1);
@@ -112,6 +112,13 @@ public partial class PlanetBuilder
         {
             float h = SetRowH(m);
             if (m.head) Ui.Label(new Rect(x + 2f, y + 6f, iw, 16f), m.name.ToUpper(), Ui.T.Tiny);
+            else if (m.opts != null)   // naam en uitleg, eronder de keuzes naast elkaar
+            {
+                const float TS = 30f; Ui.Tex(new Rect(x + 4f, y + 21f - TS * 0.45f, TS, TS * 0.9f), Ui.Hex(new Color(0.07f, 0.09f, 0.12f, 0.92f), new Color(1f, 1f, 1f, 0.3f), 1.2f));
+                float tx = x + 46f; Ui.Label(new Rect(tx, y + 4f, iw - 46f, 20f), m.name, Ui.T.Bold, null, null, 14);
+                if (m.sub != null) Ui.Label(new Rect(tx, y + 24f, iw - 46f, 16f), m.sub, Ui.T.Dim, null, null, 11);
+                int c = Ui.Seg(new Rect(tx, y + 44f, iw - 46f, 32f), m.opts, m.sel); if (c >= 0 && c != m.sel) { Sounds.Fx("click"); m.pick?.Invoke(c); }
+            }
             else if (m.note) Ui.Label(new Rect(x + 46f, y, iw - 46f, 36f), m.name, Ui.T.Dim, null, TextAnchor.UpperLeft, 11);
             else if (HexRow(new Rect(x, y, iw, h - 6f), m.name, m.sub, m.value, m.on, m.act == null)) m.act?.Invoke();
             y += h;

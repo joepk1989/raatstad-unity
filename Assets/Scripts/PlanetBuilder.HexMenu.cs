@@ -8,7 +8,7 @@ using UnityEngine;
 // Nieuwe planeten maken en spelmodi kiezen gebeurt op het startscherm, niet hier.
 public partial class PlanetBuilder
 {
-    class MItem { public string name, sub, icon, value; public System.Action act; public System.Func<List<MItem>> kids; public bool on, danger, head, note; }   // head: een kopje, note: alleen uitleg (niet aan te klikken)
+    class MItem { public string name, sub, icon, value; public System.Action act; public System.Func<List<MItem>> kids; public bool on, danger, head, note; public string[] opts; public int sel = -1; public System.Action<int> pick; }   // head: een kopje, note: alleen uitleg (niet aan te klikken); opts: keuzes naast elkaar, direct te kiezen (pick)
     int hexOpen = -1; float hexT = -99f, hexSubT = -99f; bool hexWasOpen; bool spaceMenuOff;   // in de ruimte het menu weggeklikt (hamburger of M)
     // rechts (in het spel, onder de knop Menu) is het menu gespiegeld: alles wordt eerst links uitgerekend en dan omgeklapt
     bool hexRight; Rect Mx(Rect r) => hexRight ? new Rect(Ui.W - r.xMax, r.y, r.width, r.height) : r;
@@ -101,6 +101,7 @@ public partial class PlanetBuilder
         float AngOf(int j) => Mathf.Asin(Mathf.Clamp((y0 - half + j * step) / R, -0.98f, 0.98f));
         Vector2 At(float ang) => new Vector2(cx - Mathf.Cos(ang) * R, cy + Mathf.Sin(ang) * R);
         float maxW = 0f; foreach (var m in kids) maxW = Mathf.Max(maxW, Mathf.Max(Ui.Width(m.name, Ui.T.Bold, 15) + (m.value != null ? Ui.Width(m.value, Ui.T.Bold, 13) + 30f : 0f), Ui.Width(m.sub ?? "", Ui.T.Dim, 12)));
+        foreach (var m in kids) if (m.opts != null) { float ow = 0f; foreach (var o in m.opts) ow += Ui.Width(o, Ui.T.Bold, 12) + 16f; maxW = Mathf.Max(maxW, ow); }
         for (int j = 0; j < kids.Count; j++)
         {
             var m = kids[j]; float e = Ease((now - hexSubT - j * 0.04f) / 0.22f); if (e <= 0f) continue;
@@ -117,6 +118,20 @@ public partial class PlanetBuilder
             Color ac = m.danger ? new Color(0.94f, 0.48f, 0.42f) : Ui.Signal;
             Ui.Tex(Mx(new Rect(p.x - TS * 0.5f, p.y - TS * 0.45f, TS, TS * 0.9f)), Ui.Hex(hv ? ac : m.on ? new Color(ac.r, ac.g, ac.b, 0.35f) : new Color(0.07f, 0.09f, 0.12f, 0.92f), hv || m.on ? ac : new Color(1f, 1f, 1f, 0.3f), 1.2f));
             float tx = p.x + TS * 0.5f + 14f;
+            if (m.opts != null)   // de naam, eronder de keuzes naast elkaar: een klik kiest meteen
+            {
+                Shadowed(Mx(new Rect(tx, p.y - 17f, maxW + 20f, 20f)), m.name, Ui.T.Bold, hv ? ac : Ui.Ink, 15, hexRight);
+                float ox = tx - 6f;
+                for (int q = 0; q < m.opts.Length; q++)
+                {
+                    float ow = Ui.Width(m.opts[q], Ui.T.Bold, 12) + 12f; var cr = Mx(new Rect(ox, p.y + 2f, ow, 19f)); bool sel = q == m.sel, ch = cr.Contains(Ui.Mouse) && e >= 1f;
+                    if (sel || ch) Ui.Box(cr, sel ? Ui.Signal : new Color(1f, 1f, 1f, 0.14f), Color.clear, 6f);
+                    Ui.Label(cr, m.opts[q], Ui.T.Bold, sel ? Ui.SignalInk : ch ? Ui.Signal : Ui.Ink, TextAnchor.MiddleCenter, 12);
+                    Ui.Hit(cr); if (GUI.Button(cr, GUIContent.none, GUIStyle.none) && !sel) { Sounds.Fx("click"); m.pick?.Invoke(q); }
+                    ox += ow + 4f;
+                }
+                GUI.color = old; Ui.Hit(hit); continue;
+            }
             bool two = m.sub != null;
             string val = m.value == null ? "" : "   <color=" + (m.on || m.value == "aan" ? "#F2B233" : "#A8B2AB") + ">" + m.value + "</color>";   // de waarde in dezelfde regel, ook gespiegeld goed leesbaar
             Shadowed(Mx(new Rect(tx, two ? p.y - 17f : p.y - 10f, maxW + 20f, 20f)), m.name + val, Ui.T.Bold, hv ? ac : Ui.Ink, 15, hexRight);
