@@ -93,6 +93,8 @@ public static partial class PlanetCity
     }
 
     // ---------- stap 2: de bodem uit H, met gedeelde randpunten per vakrand ----------
+    public static bool Ground2Merge = true;   // stukken met hetzelfde vlak samenvoegen (ontwerp 8.5 punt 3); uit: om te vergelijken
+    public static long Ground2Tris;           // teller: driehoeken die Ground2Cell tekende (voor de test)
     public static bool Ground2;   // schakelaar Terrein v2 (ontwikkelaarsmodus): de bodem van elk vak uit de hoogtefunctie, de randen gedeeld met de buren
 
     // De hoogte van het maaiveld (v2) op punt dir met de gewone terreinhoogte basis daar: de hoogtefunctie langs wegen (alleen in de
@@ -216,6 +218,21 @@ public static partial class PlanetCity
             foreach (var kk in ks) { if (kk.step) { all.Add(new EPt { t = kk.t - dq, h = HAt(kk.t - dq) }); all.Add(new EPt { t = kk.t + dq, h = HAt(kk.t + dq) }); } else all.Add(new EPt { t = kk.t, h = HAt(kk.t) }); }
         }
         all.Add(pts[pts.Count - 1]);
+        // Punten waar de rand niet knikt weg (een snijlijn die de rand kruist zonder dat de hoogte er verandert): elk randpunt wordt in
+        // beide buren een hoekpunt met een driehoek naar het midden, dus een waaier van dunne driehoeken in vlak gras. Een punt mag weg
+        // als het (en alle punten die sinds het laatste behouden punt al weg zijn) binnen 3 mm van de rechte lijn naar het volgende ligt;
+        // een wandpaar blijft.
+        if (all.Count > 2)
+        {
+            var kept = new List<EPt> { all[0] }; int last = 0;
+            for (int v = 1; v + 1 < all.Count; v++)
+            {
+                bool drop = all[v].side == 0 && all[v + 1].t - all[last].t > 1e-6f;
+                for (int w = last + 1; w <= v && drop; w++) { float hl = Mathf.Lerp(all[last].h, all[v + 1].h, (all[w].t - all[last].t) / (all[v + 1].t - all[last].t)); if (Mathf.Abs(hl - all[w].h) > 0.003f) drop = false; }
+                if (!drop) { kept.Add(all[v]); last = v; }
+            }
+            kept.Add(all[all.Count - 1]); all = kept;
+        }
         return all;
     }
     // De knikken van f op het stuk van t0 tot t1 (f(t0) = f0, f(t1) = f1; len: de lengte van het hele stuk in meters). De hoogtefunctie
@@ -346,7 +363,7 @@ public static partial class PlanetCity
             var ls = new List<Seg>(); var lc = new List<Cap>(); var spI = RoadH.Count == 0 && spanNear.Count > 0 && spanNear.TryGetValue(i, out var spl) ? spl : null;   // (nieuwe opbouw: geen deklijnen, zie EdgeProfile0)
             if (field) foreach (var f in FieldLines(c, k, hc0, h1, h2, ls, lc)) Split(f);
             foreach (var f in SpanLines(c, spI)) Split(f);
-            var wg = new List<int>(); var wl = field ? WallLins(c, ls, lc, wg) : new List<Lin>();   // de wanden hier (sokkels en bakken), binnenkant negatief; wg: per lijn de strook of kop
+            var wg = new List<int>(); var wnq = new List<bool>(); var wl = field ? WallLins(c, ls, lc, wg, wnq) : new List<Lin>();   // de wanden hier (sokkels en bakken), binnenkant negatief; wg: per lijn de strook of kop
             Lin B2 = new Lin { a = hc0, x = ((h1 - hc0) * L2.y - (h2 - hc0) * L1.y) / det, y = ((h2 - hc0) * L1.x - (h1 - hc0) * L2.x) / det };
             if (cn) foreach (var n in near) foreach (var f in new[] { n.sd - Lin.C(-0.01f), n.sd - Lin.C(n.fl), n.sd - Lin.C(n.fl + n.rl), n.sd - Lin.C(n.end), n.t - Lin.C(n.q.hw), n.t - Lin.C(-n.q.hw) }) Split(f);
             var prof = plat ? null : EdgeProfile(i, k);
@@ -374,6 +391,74 @@ public static partial class PlanetCity
                     if (!split) done.Add(pl);
                 }
                 polys = done;
+            }
+            // Samenvoegen (ontwerp 8.5 punt 3): de snijlijnen zijn oneindige lijnen van alle wegstukken binnen bereik, dus ook waar de
+            // hoogtefunctie niet knikt is de grond in repen gesneden (een spinnenweb van dunne driehoeken). Twee veelhoeken met een hele
+            // zijde gemeen die in hetzelfde vlak liggen (binnenpunten van de een op het vlak van de ander, binnen 4 mm) en samen bol
+            // blijven worden weer één veelhoek. Een wand of knik scheidt ze vanzelf: dan klopt het vlak niet.
+            if (Ground2Merge && polys.Count > 1 && (field || cn))
+            {
+                var P2 = polys; var Hn = new List<List<Vector3>>(P2.Count);   // per veelhoek: binnenpunten (x, y, hoogte)
+                foreach (var pl in P2)
+                {
+                    Vector2 ctr = Vector2.zero; foreach (var v in pl) ctr += v; ctr /= pl.Count; var l = new List<Vector3>(pl.Count + 1);
+                    foreach (var v in pl) { Vector2 q = Vector2.Lerp(v, ctr, 0.15f); l.Add(new Vector3(q.x, q.y, HQ(q))); }
+                    l.Add(new Vector3(ctr.x, ctr.y, HQ(ctr))); Hn.Add(l);
+                }
+                bool SamePlane(List<Vector3> A, List<Vector3> B)   // het vlak door de drie wijdste punten van A; A en B liggen erop
+                {
+                    Vector3 a0 = A[0], a1 = A[0], a2 = A[0]; float best = -1f;
+                    foreach (var v in A) { float d = (v.x - a0.x) * (v.x - a0.x) + (v.y - a0.y) * (v.y - a0.y); if (d > best) { best = d; a1 = v; } }
+                    best = -1f; foreach (var v in A) { float ar = Mathf.Abs((a1.x - a0.x) * (v.y - a0.y) - (a1.y - a0.y) * (v.x - a0.x)); if (ar > best) { best = ar; a2 = v; } }
+                    if (best < 0.02f) return false;   // te smal om een vlak te bepalen
+                    Vector3 nrm = Vector3.Cross(a1 - a0, a2 - a0); if (Mathf.Abs(nrm.z) < 1e-9f) return false;
+                    foreach (var v in A) if (Mathf.Abs(a0.z - (nrm.x * (v.x - a0.x) + nrm.y * (v.y - a0.y)) / nrm.z - v.z) > 0.004f) return false;
+                    foreach (var v in B) if (Mathf.Abs(a0.z - (nrm.x * (v.x - a0.x) + nrm.y * (v.y - a0.y)) / nrm.z - v.z) > 0.004f) return false;
+                    return true;
+                }
+                bool Same(Vector2 a, Vector2 b) => (a - b).sqrMagnitude < 1e-6f;
+                List<Vector2> Join(List<Vector2> A, List<Vector2> B)   // A en B langs hun gemeenschappelijke zijde, of null (geen hele zijde gemeen, of niet bol)
+                {
+                    int na = A.Count, nb = B.Count, ei = -1, ej = -1;
+                    for (int x = 0; x < na && ei < 0; x++) for (int y = 0; y < nb; y++) if (Same(A[x], B[(y + 1) % nb]) && Same(A[(x + 1) % na], B[y])) { ei = x; ej = y; break; }
+                    if (ei < 0) return null;
+                    var r = new List<Vector2>(na + nb - 2);
+                    for (int k = 0; k < na; k++) r.Add(A[(ei + 1 + k) % na]);
+                    for (int k = 0; k < nb - 2; k++) r.Add(B[(ej + 2 + k) % nb]);
+                    // punten op een rechte lijn weg, dan moet de rest bol zijn (één draairichting)
+                    for (int k = r.Count - 1; k >= 0 && r.Count > 3; k--)
+                    {
+                        Vector2 u = r[k] - r[(k + r.Count - 1) % r.Count], w = r[(k + 1) % r.Count] - r[k];
+                        if (Mathf.Abs(u.x * w.y - u.y * w.x) < 1e-4f * Mathf.Max(1e-3f, u.magnitude * w.magnitude) && Vector2.Dot(u, w) > 0f) r.RemoveAt(k);
+                    }
+                    if (r.Count < 3) return null; int sg = 0;
+                    for (int k = 0; k < r.Count; k++)
+                    {
+                        Vector2 u = r[k] - r[(k + r.Count - 1) % r.Count], w = r[(k + 1) % r.Count] - r[k]; float cr = u.x * w.y - u.y * w.x;
+                        if (Mathf.Abs(cr) < 1e-5f) continue; int sn = cr > 0f ? 1 : -1; if (sg == 0) sg = sn; else if (sn != sg) return null;
+                    }
+                    return r;
+                }
+                for (int pass = 0; pass < 10; pass++)
+                {
+                    bool any = false; var edges = new Dictionary<(int, int, int, int), int>();
+                    for (int a = 0; a < P2.Count; a++)
+                    {
+                        if (P2[a] == null) continue; bool merged = false;
+                        for (int e = 0; !merged && e < P2[a].Count; e++)
+                        {
+                            Vector2 v0 = P2[a][e], v1 = P2[a][(e + 1) % P2[a].Count];
+                            int x0 = Mathf.RoundToInt(v0.x * 1000f), y0 = Mathf.RoundToInt(v0.y * 1000f), x1 = Mathf.RoundToInt(v1.x * 1000f), y1 = Mathf.RoundToInt(v1.y * 1000f);
+                            var key = x0 < x1 || (x0 == x1 && y0 <= y1) ? (x0, y0, x1, y1) : (x1, y1, x0, y0);
+                            if (!edges.TryGetValue(key, out int b) || b == a || P2[b] == null) { edges[key] = a; continue; }
+                            if (!SamePlane(Hn[a], Hn[b]) && !SamePlane(Hn[b], Hn[a])) continue;
+                            var j = Join(P2[b], P2[a]); if (j == null) continue;
+                            P2[b] = j; Hn[b].AddRange(Hn[a]); P2[a] = null; merged = true; any = true;
+                        }
+                    }
+                    if (!any) break;
+                }
+                var keep = new List<List<Vector2>>(); foreach (var pl in P2) if (pl != null) keep.Add(pl); polys = keep;
             }
             // Aan elkaar rijgen: een buurveelhoek is langs een andere lijn gesneden, dus zijn hoekpunt ligt midden op een zijde van deze
             // (een T-kruising); op een knik is dat een kier. Elk hoekpunt dat op een zijde van een andere veelhoek ligt komt daar ook in.
@@ -453,7 +538,7 @@ public static partial class PlanetCity
                     for (int v = 0; v < n; v++)
                     {
                         int v1 = (v + 1) % n; if (bv[v] <= 0f || bv[v1] <= 0f) continue; Lin w = default; bool found = false;   // een zijde aan de binnenkant van een wand
-                        foreach (var wq in wl) if (Mathf.Abs(wq.At(pl[v].q)) < 0.045f && Mathf.Abs(wq.At(pl[v1].q)) < 0.045f) { w = wq; found = true; break; }
+                        for (int x = 0; x < wl.Count; x++) if (!wnq[x] && Mathf.Abs(wl[x].At(pl[v].q)) < 0.045f && Mathf.Abs(wl[x].At(pl[v1].q)) < 0.045f) { w = wl[x]; found = true; break; }
                         if (!found) continue;
                         float la = HOf(v, -1e-3f), lb = HOf(v1, -1e-3f); if (Mathf.Abs(la - H[v]) < 1e-3f && Mathf.Abs(lb - H[v1]) < 1e-3f) continue;
                         Vector3 outw = (c.east * w.x + c.north * w.y).normalized; if (la + lb > H[v] + H[v1]) outw = -outw;   // naar de lage kant: het terrein (sokkel) of de strook (bak)
@@ -471,7 +556,7 @@ public static partial class PlanetCity
                     Refine2(a, b, m2, Pa, Pb, Pm, ha, hb, hm, bias, depth + 1); Refine2(b, cc, m2, Pb, Pc, Pm, hb, hc2, hm, bias, depth + 1); Refine2(cc, a, m2, Pc, Pa, Pm, hc2, ha, hm, bias, depth + 1);
                     return;
                 }
-                emit(Pa, Pb, Pc, ha, hb, hc2, steep);
+                Ground2Tris++; emit(Pa, Pb, Pc, ha, hb, hc2, steep);
             }
         }
     }

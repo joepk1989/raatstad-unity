@@ -1002,6 +1002,11 @@ public class WegVoorbeeld : MonoBehaviour
         // de schakelaar
         PlanetCity.Ground2 = false; PlanetCity.Reprofile(); int off = PlanetCity.RoadH.Count;
         PlanetCity.Ground2 = true; PlanetCity.Reprofile(); log.Append("schakelaar uit: RoadH ").Append(off).Append("; weer aan: RoadH ").Append(PlanetCity.RoadH.Count).AppendLine();
+        {   // de bodem zonder en met samenvoegen: driehoeken en tijd
+            PlanetCity.Ground2Merge = false; PlanetCity.Ground2Tris = 0; var sw0 = System.Diagnostics.Stopwatch.StartNew(); PlanetCity.TouchAll(); PlanetCity.Rebuild(); long n0 = PlanetCity.Ground2Tris, t0m = sw0.ElapsedMilliseconds;
+            PlanetCity.Ground2Merge = true; PlanetCity.Ground2Tris = 0; var sw1 = System.Diagnostics.Stopwatch.StartNew(); PlanetCity.TouchAll(); PlanetCity.Rebuild(); long n1 = PlanetCity.Ground2Tris;
+            log.Append("bodem: ").Append(n0).Append(" driehoeken in ").Append(t0m).Append(" ms zonder samenvoegen, ").Append(n1).Append(" in ").Append(sw1.ElapsedMilliseconds).AppendLine(" ms met");
+        }
         PlanetCity.TouchAll(); PlanetCity.Rebuild(); PlanetCity.Rebuild(); PlanetCity.RebuildGrid(); yield return null; yield return null;
         File.WriteAllText(Path.Combine(Dir, "inspel.txt"), log.ToString());
         var centers = new List<int>(); foreach (var kv in PlanetCity.Cells) { if (!PlanetCity.IsRoad(kv.Key)) continue; bool far = true; foreach (int c in centers) if (Vector3.Distance(Planet.Cells[c].dir, Planet.Cells[kv.Key].dir) * Planet.R < 40f) { far = false; break; } if (far) centers.Add(kv.Key); }

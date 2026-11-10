@@ -191,10 +191,37 @@ public static partial class PlanetCity
         int m = c.corners.Length; Vector2 L1 = c.local[k], L2 = c.local[(k + 1) % m]; float det = L1.x * L2.y - L1.y * L2.x; var lines = new List<Lin>(); if (Mathf.Abs(det) < 1e-6f) return lines;
         Vector3 o3 = c.dir * Planet.R;
         Lin B = new Lin { a = hc0, x = ((h1 - hc0) * L2.y - (h2 - hc0) * L1.y) / det, y = ((h2 - hc0) * L1.x - (h1 - hc0) * L2.x) / det };
+        // Nieuwe opbouw: een stuk of kop doet alleen mee als zijn talud deze driehoek kan bereiken. Het talud loopt met FK weg van de weg,
+        // dus het reikt hooguit (hoogteverschil / FK) ver; met een weg die op het terrein ligt is dat een halve meter. Het hoogteverschil is
+        // dat met alles wat hier kan liggen: het terrein van de driehoek en de andere wegen in de buurt (een weg snijdt ook in de dijk van een
+        // andere weg). Zonder dit sneed elk stuk binnen 30 m het vak in repen, ook in vlak gras (een spinnenweb van driehoeken).
+        bool cull = RoadH.Count > 0; float loH = Mathf.Min(hc0, Mathf.Min(h1, h2)), hiH = Mathf.Max(hc0, Mathf.Max(h1, h2));
+        if (cull)
+        {
+            foreach (var q in segsUse)
+            {
+                SegLins(c, q, out Lin T0, out Lin S0, out float len0); if (len0 < 1e-3f) continue;
+                if (Mathf.Abs(T0.a) > q.hw + FieldReach + c.radius + 1f || S0.a < -c.radius - FieldReach - 1f || S0.a > len0 + c.radius + FieldReach + 1f) continue;
+                loH = Mathf.Min(loH, Mathf.Min(q.ha, q.hb)); hiH = Mathf.Max(hiH, Mathf.Max(q.ha, q.hb));
+            }
+            foreach (var q in capsUse) { if ((o3 - q.c).magnitude > q.hw * 1.2f + FieldReach + c.radius + 1f) continue; loH = Mathf.Min(loH, q.h); hiH = Mathf.Max(hiH, q.h); }
+        }
         foreach (var q in segsUse)
         {
             SegLins(c, q, out Lin T, out Lin S, out float len); if (len < 1e-3f) continue;
             if (Mathf.Abs(T.a) > q.hw + FieldReach + c.radius + 1f || S.a < -c.radius - FieldReach - 1f || S.a > len + c.radius + FieldReach + 1f) continue;
+            if (cull)
+            {
+                float t0 = T.a, t1 = T.At(L1), t2 = T.At(L2), s0 = S.a, s1 = S.At(L1), s2 = S.At(L2);
+                float tmin = Mathf.Min(t0, Mathf.Min(t1, t2)), tmax = Mathf.Max(t0, Mathf.Max(t1, t2)), smin = Mathf.Min(s0, Mathf.Min(s1, s2)), smax = Mathf.Max(s0, Mathf.Max(s1, s2));
+                float dLat = tmin > 0f ? tmin : tmax < 0f ? -tmax : 0f, dS = smin > len ? smin - len : smax < 0f ? -smax : 0f;   // de driehoek ligt minstens zo ver opzij en voorbij het eind
+                if (q.wall) { if (dLat > q.hw + WallOut + 0.2f || dS > EndSlack + 0.2f) continue; }
+                else
+                {
+                    float diff = Mathf.Max(0f, Mathf.Max(Mathf.Max(q.ha, q.hb) - loH, hiH - Mathf.Min(q.ha, q.hb)));
+                    if (Mathf.Max(dLat - q.hw, dS) > (diff + 0.3f) / FK + 0.2f) continue;
+                }
+            }
             ls.Add(q); Lin mT = Lin.C(0f) - T;
             if (q.wall)   // sokkel of bak (nieuwe opbouw): de wegrand, de wand op WallOut (met de schuine aanloop aan een grens), het eind; de wand zelf is een eigen mesh
             {
@@ -223,6 +250,13 @@ public static partial class PlanetCity
         foreach (var q in capsUse)
         {
             if ((o3 - q.c).magnitude > q.hw * 1.2f + FieldReach + c.radius + 1f) continue;
+            if (cull)
+            {
+                float dlow = float.MinValue;   // de zeshoekige afstand van de driehoek tot het hart is minstens dit
+                foreach (var n in q.n) { float a0 = Vector3.Dot(o3 - q.c, n), ex = Vector3.Dot(c.east, n), ny = Vector3.Dot(c.north, n); dlow = Mathf.Max(dlow, Mathf.Min(a0, Mathf.Min(a0 + ex * L1.x + ny * L1.y, a0 + ex * L2.x + ny * L2.y))); }
+                float diffc = Mathf.Max(0f, Mathf.Max(q.h - loH, hiH - q.h));
+                if (dlow - q.hw > (q.wall ? q.wo + 0.2f : (diffc + 0.3f) / FK + 0.2f)) continue;
+            }
             lc.Add(q);
             float sg = q.h - 0.05f < hc0 ? 1f : -1f;
             foreach (var n in q.n)
@@ -446,13 +480,18 @@ public static partial class PlanetCity
     // WallOut buiten de wegrand, de schuine aanloop aan een grens met een maaiveldstuk (lat - hw = s), de zijden van een kop
     // grp (als gegeven): per lijn het nummer van zijn strook of kop; de strook is de snijding van alle halfvlakken (negatief) van die groep,
     // want een lijn alleen zegt buiten de zeshoek niets (haar verlengde loopt door)
-    static List<Lin> WallLins(Planet.Cell c, List<Seg> ls, List<Cap> lc, List<int> grp = null)
+    // noQuad (als gegeven): per lijn of er geen wandquad hoort (het harde eind van een tunnelinrit: daar staat het portaal)
+    static List<Lin> WallLins(Planet.Cell c, List<Seg> ls, List<Cap> lc, List<int> grp = null, List<bool> noQuad = null)
     {
         var res = new List<Lin>(); Vector3 o3 = c.dir * Planet.R; int g = 0;
-        void Add(Lin f) { res.Add(f); grp?.Add(g); }
+        void Add(Lin f, bool nq = false) { res.Add(f); grp?.Add(g); noQuad?.Add(nq); }
         foreach (var q in ls)
         {
             SegLins(c, q, out Lin T, out Lin S, out float len); Lin mT = Lin.C(0f) - T; g++;
+            if (!q.wall && RoadH.Count > 0)   // een maaiveldstuk met een hard eind (portaal): daar springt de grond van de strook naar de berg; een wandlijn zonder quad, zodat elk punt erop zijn eigen kant krijgt
+            {
+                if (q.hardA) Add(Lin.C(-EndSlack) - S, true); if (q.hardB) Add(S - Lin.C(len + EndSlack), true);
+            }
             if (!q.wall) continue;   // (geprobeerd: de bereikgrens van een maaiveldstuk ook als wand; lijnen van twee groepen vlak bij elkaar gaven scheve wandquads. In plaats daarvan reikt het talud verder: FieldReach)
             Add(T - Lin.C(q.hw + WallOut)); Add(mT - Lin.C(q.hw + WallOut)); Add(Lin.C(-EndSlack) - S); Add(S - Lin.C(len + EndSlack));   // (de einden horen bij de strook, ze zijn geen wand: daar verschilt de hoogte niet)
             if (q.tap0) { Add(T - S - Lin.C(q.hw)); Add(mT - S - Lin.C(q.hw)); }
@@ -521,12 +560,12 @@ public static partial class PlanetCity
                 if (q.wall)   // sokkel of bak (nieuwe opbouw): de strook op weghoogte tot WallOut buiten de wegrand (aan een grens met een maaiveldstuk smaller: lat - hw <= s, zo begint de wand op 0), daarbuiten niets; de wand is een eigen mesh (Ground2Cell)
                 {
                     float wo = WallOut; if (q.tap0) wo = Mathf.Min(wo, u * len); if (q.tap1) wo = Mathf.Min(wo, len - u * len);
-                    if (lat > q.hw + wo + wallBias || over > EndSlack) continue; rise = 0f;
+                    if (lat > q.hw + wo + wallBias || over > EndSlack + wallBias) continue; rise = 0f;
                 }
                 else if (RoadH.Count > 0)   // maaiveldstuk (nieuwe opbouw): het talud opzij en als kegel voorbij het eind, zodat de grond zonder sprong overgaat in het volgende stuk, een sokkel of een bak; aan een hard eind (portaal) geen kegel
                 {
                     bool hard = u < 0f ? q.hardA : q.hardB;
-                    if (lat > q.hw + FieldReach + wallBias || over > (hard ? EndSlack : FieldReach + wallBias)) continue; rise = Mathf.Max(Mathf.Max(0f, lat - q.hw), hard ? 0f : over) * FK;   // (op de bereikgrens eindigt het talud hard: een wand, zie WallLins)
+                    if (lat > q.hw + FieldReach || over > (hard ? EndSlack + wallBias : FieldReach)) continue; rise = Mathf.Max(Mathf.Max(0f, lat - q.hw), hard ? 0f : over) * FK;   // (op de bereikgrens eindigt het talud hard: een wand, zie WallLins)
                 }
                 else
                 {
