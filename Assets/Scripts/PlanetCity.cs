@@ -204,7 +204,7 @@ public static partial class PlanetCity
         bool walk = IsWalk(i); l.RemoveAt(l.Count - 1); if (l.Count == 0) { Cells.Remove(i); Style.Remove(i); Bike.Remove(i); Unlink(i); if (walk) RestoreLevel(i); } Touch(i); return true;
     }
 
-    public static void Touch(int i) { dirty.Add(i / ChunkN); foreach (int j in Planet.Cells[i].nb) dirty.Add(j / ChunkN); if (boreNear.Count > 0 && boreNear.TryGetValue(i, out var bl)) foreach (int b in bl) dirty.Add(bores[b].a / ChunkN); }   // boven een tunnel: het betonblok volgt het terrein
+    public static void Touch(int i) { cutsFresh = false; dirty.Add(i / ChunkN); foreach (int j in Planet.Cells[i].nb) dirty.Add(j / ChunkN); if (boreNear.Count > 0 && boreNear.TryGetValue(i, out var bl)) foreach (int b in bl) dirty.Add(bores[b].a / ChunkN); }   // boven een tunnel: het betonblok volgt het terrein
     // Alles weg (lege bouwgrond): de gegevens én alle getekende stukken, zodat er nooit iets van de oude stad blijft staan
     public static void ClearAll()
     {

@@ -924,7 +924,7 @@ public class WegVoorbeeld : MonoBehaviour
     // Terrein v2 en een wegprofiel (RoadH); elke test één handeling, dan de scan, de randcontrole, de hellingen en foto's.
     IEnumerator Ontwerp(int home, string mode)
     {
-        int nr = 1; int.TryParse(mode.Substring(7).Trim(), out nr); PlanetCity.Ground2 = true; Hc = home; bouw = new System.Text.StringBuilder();
+        PlanetCity.TriCull = !mode.Contains("geencull"); mode = mode.Replace(" geencull", ""); int nr = 1; int.TryParse(mode.Substring(7).Trim(), out nr); PlanetCity.Ground2 = true; Hc = home; bouw = new System.Text.StringBuilder();
         float D90 = Mathf.PI / 2f; var lines = new List<List<int>>(); var centers = new List<int>();
         void Terrein(System.Func<float, float, float> f, float r)   // hoogte als functie van x (langs de weg) en y (dwars), afgerond op 5 cm
         {
@@ -1027,7 +1027,7 @@ public class WegVoorbeeld : MonoBehaviour
         sw.Restart(); PlanetCity.Reprofile(); long tp = sw.ElapsedMilliseconds;
         log.Append("planeet vol in ").Append(tf).Append(" ms; ").Append(nw).Append(" weg- en padvakken; profiel ").Append(tp).Append(" ms; RoadH ").Append(PlanetCity.RoadH.Count).AppendLine();
         PlanetCity.G2Reset(); sw.Restart(); PlanetCity.TouchAll(); PlanetCity.Rebuild(); long tr = sw.ElapsedMilliseconds; log.Append("volledige herbouw ").Append(tr).Append(" ms; Terrein v2 ").AppendLine(PlanetCity.Ground2 ? "aan" : "uit");
-        if (PlanetCity.Ground2) log.Append("  ").AppendLine(PlanetCity.G2Stats());
+        if (PlanetCity.Ground2) log.Append("  ").AppendLine(PlanetCity.G2Stats()).Append("  ").AppendLine(PlanetCity.G2Steps());
         string snap = PlanetCity.Snapshot(); PlanetCity.ClearAll(); sw.Restart(); PlanetCity.Restore(snap); long tl = sw.ElapsedMilliseconds;
         sw.Restart(); PlanetCity.Rebuild(); long tl2 = sw.ElapsedMilliseconds; log.Append("laden ").Append(tl).Append(" ms, daarna herbouw ").Append(tl2).AppendLine(" ms");
         // klikken: een nieuwe weg op een leeg stuk ver van de wegen, vijf keer
@@ -1036,8 +1036,9 @@ public class WegVoorbeeld : MonoBehaviour
         {
             int a = -1; for (int t = 0; t < 2000 && a < 0; t++) { int c = rnd.Next(Planet.Cells.Length); if (PlanetCity.Cells.ContainsKey(c) || Planet.IsPole(c)) continue; bool free = true; foreach (int j in Nearby(c, 90f)) if (PlanetCity.IsWalk(j) || (PlanetCity.Cells.TryGetValue(j, out var lj) && lj.Count > 0 && lj[0] != "park")) { free = false; break; } if (free) a = c; }   // (geen weg of gebouw binnen 90 m; bos mag)
             if (a < 0) break; int b = Go(a, 0f, 75f); var line = PlanetCity.LinePlan(a, b); if (line == null || line.Count < 3) continue;
-            PlanetCity.G2Reset(); sw.Restart(); if (PlanetCity.PlaceLine(line, "weg") > 0) { PlanetCity.SetLevel(line, 0, "weg"); if (PlanetCity.Ground2) PlanetCity.Reprofile(line); else { PlanetCity.DipUnder(line); PlanetCity.BoreLine(line); } } long tpk = sw.ElapsedMilliseconds; PlanetCity.Rebuild(); long tk = sw.ElapsedMilliseconds;
-            if (PlanetCity.Ground2 && k == 0) log.Append("  ").AppendLine(PlanetCity.G2Stats());
+            PlanetCity.G2Reset(); sw.Restart(); long tpl = 0, tsl = 0; if (PlanetCity.PlaceLine(line, "weg") > 0) { tpl = sw.ElapsedMilliseconds; PlanetCity.SetLevel(line, 0, "weg"); tsl = sw.ElapsedMilliseconds - tpl; if (PlanetCity.Ground2) PlanetCity.Reprofile(line); else { PlanetCity.DipUnder(line); PlanetCity.BoreLine(line); } } long tpk = sw.ElapsedMilliseconds; PlanetCity.Rebuild(); long tk = sw.ElapsedMilliseconds;
+            log.Append("  PlaceLine ").Append(tpl).Append(" ms, SetLevel ").Append(tsl).AppendLine(" ms");
+            if (PlanetCity.Ground2 && k == 0) log.Append("  ").AppendLine(PlanetCity.G2Stats()).Append("  ").AppendLine(PlanetCity.G2Steps()).Append("  ").AppendLine(PlanetCity.UpdateTimes);
             times.Add(tk); log.Append("klik ").Append(k + 1).Append(": profiel ").Append(tpk).Append(" ms (waarvan ProfileAll ").Append(PlanetCity.LastProfileOnlyMs).Append(" ms), met herbouw ").Append(tk).Append(" ms (").Append(line.Count).AppendLine(" vakken)");
         }
         File.WriteAllText(Path.Combine(Dir, "volplaneet.txt"), log.ToString());

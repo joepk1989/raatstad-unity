@@ -82,7 +82,7 @@ public static partial class PlanetCity
     public static bool RebuildSome(float budgetMs)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew(); bool first = !midRebuild;
-        if (first) { SyncModules(); UpdateCuts(); if (dirty.Count == 0) return true; midRebuild = true; }
+        if (first) { SyncModules(); UpdateCutsIfNeeded(); if (dirty.Count == 0) return true; midRebuild = true; }
         var order = new List<int>(dirty); int fc = Focus >= 0 ? Focus / ChunkN : 0; order.Sort((a, b) => Mathf.Abs(a - fc).CompareTo(Mathf.Abs(b - fc)));   // het deel van de klik eerst
         foreach (int ch in order) { BuildChunk(ch); lastBuilt.Add(ch); dirty.Remove(ch); if (sw.ElapsedMilliseconds >= budgetMs) break; }
         if (first) RebuildRoads();
@@ -92,7 +92,7 @@ public static partial class PlanetCity
     public static void Rebuild()
     {
         midRebuild = false;
-        SyncModules(); UpdateCuts();
+        SyncModules(); UpdateCutsIfNeeded();
         if (dirty.Count == 0) return;
         foreach (int ch in dirty) { BuildChunk(ch); lastBuilt.Add(ch); }
         dirty.Clear();

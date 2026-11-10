@@ -164,7 +164,7 @@ public static partial class PlanetCity
     // padvakken in een geul op de hoogte van de geul zetten (alleen omlaag)
     public static void CarvePaths()
     {
-        cuts.Clear(); deckSide.Clear(); CollectCuts(cuts, deckSide); if (cuts.Count == 0) return;
+        cuts.Clear(); deckSide.Clear(); CollectCuts(cuts, deckSide, RoadH.Count > 0); if (cuts.Count == 0) return;   // (alleen de geulen; de stukken langs wegen verzamelt UpdateCuts)
         foreach (var kv in new List<int>(Cells.Keys)) if (IsWalk(kv) && !Underpass(kv) && !UpperRoad(kv) && !preLevel.ContainsKey(kv)) { float v = Carve(Planet.Cells[kv].dir); if (v < G(kv) - 0.01f) { if (!preCarve.ContainsKey(kv)) preCarve[kv] = G(kv); SetTerr(kv, v); } }   // paden en de onderste weg
     }
     // bij het bijwerken: de geulen opnieuw bepalen; wat verandert, wordt opnieuw getekend
@@ -192,7 +192,12 @@ public static partial class PlanetCity
         for (int r = 0; r < 4 && ring.Count > 0; r++) { var next = new List<int>(); foreach (int i in ring) if (seen.Add(i)) { Touch(i); foreach (int j in Planet.Cells[i].nb) next.Add(j); } ring = next; }
         carved.Clear(); carved.UnionWith(now);
     }
-    public static void UpdateCuts() { UpdateCuts0(); CollectBores(); }   // ook de tunnels door een berg (PlanetTunnels.cs)
+    public static string UpdateTimes = "";   // tijd van UpdateCuts0 en CollectBores (voor de test)
+    public static void UpdateCuts() { var sw = System.Diagnostics.Stopwatch.StartNew(); UpdateCuts0(); long a = sw.ElapsedMilliseconds; CollectBores(); UpdateTimes = "UpdateCuts0 " + a + " ms (" + CutsTimes + "), CollectBores " + (sw.ElapsedMilliseconds - a) + " ms"; cutsFresh = true; }
+    // Het verzamelen is vers: na UpdateCuts is er niets veranderd (Touch zet dit uit). Het herbouwen slaat UpdateCuts dan over in de
+    // nieuwe opbouw (het profiel na een klik deed het net, Rebuild deed het daarna nog eens).
+    public static bool cutsFresh;
+    static void UpdateCutsIfNeeded() { if (RoadH.Count > 0 && cutsFresh) return; UpdateCuts(); }   // ook de tunnels door een berg (PlanetTunnels.cs)
     static Dictionary<string, Vector3> cutKeys = new Dictionary<string, Vector3>();
     static float MaxGround(int i) { float g = float.MinValue; foreach (var q in cuts) if (!q.fill) g = Mathf.Max(g, q.ground); return g; }
     public static float FloorH(int i) { float m = Mathf.Min(G(i), MinCorner(i)); return Low.TryGetValue(i, out var lo) ? Mathf.Min(m, lo) : m; }   // het laagste punt in vak i

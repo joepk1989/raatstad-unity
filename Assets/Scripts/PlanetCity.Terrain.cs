@@ -218,7 +218,7 @@ public static partial class PlanetCity
                 {
                     if ((o3 - q.c).magnitude > q.hw * 1.2f + CR(q) + c.radius + 1f) continue;
                     float dlow = float.MinValue; foreach (var n in q.n) { float a0 = Vector3.Dot(o3 - q.c, n), ex = Vector3.Dot(c.east, n), ny = Vector3.Dot(c.north, n); dlow = Mathf.Max(dlow, Mathf.Min(a0, Mathf.Min(a0 + ex * L1.x + ny * L1.y, a0 + ex * L2.x + ny * L2.y))); }
-                    float tilt = q.g.magnitude * (q.hw + c.radius * 2f + 2f);   // (een schuine kop: zijn hoogte in deze driehoek ligt binnen deze marge van h)
+                    float tilt = q.g.magnitude * ((o3 - q.c).magnitude + c.radius * 1.3f + 1f);   // (een schuine kop: zijn hoogte in deze driehoek ligt binnen deze marge van h)
                     float df = Mathf.Max(0f, Mathf.Max(q.h + tilt - loH, hiH - q.h + tilt));
                     if (dlow - q.hw > (q.wall ? q.wo + 0.2f : (df + 0.3f) / FK + 0.2f)) continue;
                     lo2 = Mathf.Min(lo2, q.h - tilt); hi2 = Mathf.Max(hi2, q.h + tilt);
@@ -274,7 +274,7 @@ public static partial class PlanetCity
             {
                 float dlow = float.MinValue;   // de zeshoekige afstand van de driehoek tot het hart is minstens dit
                 foreach (var n in q.n) { float a0 = Vector3.Dot(o3 - q.c, n), ex = Vector3.Dot(c.east, n), ny = Vector3.Dot(c.north, n); dlow = Mathf.Max(dlow, Mathf.Min(a0, Mathf.Min(a0 + ex * L1.x + ny * L1.y, a0 + ex * L2.x + ny * L2.y))); }
-                float tiltc = q.g.magnitude * (q.hw + c.radius * 2f + 2f), diffc = Mathf.Max(0f, Mathf.Max(q.h + tiltc - loH, hiH - q.h + tiltc));
+                float tiltc = q.g.magnitude * ((o3 - q.c).magnitude + c.radius * 1.3f + 1f), diffc = Mathf.Max(0f, Mathf.Max(q.h + tiltc - loH, hiH - q.h + tiltc));
                 if (dlow - q.hw > (q.wall ? q.wo + 0.2f : (diffc + 0.3f) / FK + 0.2f)) continue;
             }
             lc.Add(q);
@@ -604,6 +604,10 @@ public static partial class PlanetCity
     static int fieldVer;   // telt op bij elke nieuwe verzameling stukken (CollectCuts): dan klopt de onthouden buurt niet meer
     static readonly Dictionary<int, (int ver, List<Seg> s, List<Seg> f, List<Cap> c)> nearCache = new Dictionary<int, (int, List<Seg>, List<Seg>, List<Cap>)>();
     static void UseNear(int i)
+    {
+        G2SwNear.Start(); try { UseNear1(i); } finally { G2SwNear.Stop(); }
+    }
+    static void UseNear1(int i)
     {
         if (nearCache.TryGetValue(i, out var nc) && nc.ver == fieldVer) { segsUse = nc.s; flatsUse = nc.f; capsUse = nc.c; return; }
         UseNear0(i); nearCache[i] = (fieldVer, new List<Seg>(segsNear), new List<Seg>(flatsNear), new List<Cap>(capsNear));

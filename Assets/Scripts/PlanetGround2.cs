@@ -93,12 +93,18 @@ public static partial class PlanetCity
     }
 
     // ---------- stap 2: de bodem uit H, met gedeelde randpunten per vakrand ----------
+    // De stukken en koppen die in de driehoek die Ground2Cell nu tekent kunnen meedoen (FieldLines, nieuwe opbouw): de hoogte daarbinnen
+    // rekent alleen met die, de andere halen de driehoek niet (hun talud of dak ligt er overal buiten). Scheelt het meeste rekenwerk.
+    static List<Seg> triSegs; static List<Cap> triCaps; public static bool TriCull = true;   // (uit: om te vergelijken)
     public static bool Ground2Merge = true;   // stukken met hetzelfde vlak samenvoegen (ontwerp 8.5 punt 3); uit: om te vergelijken
     public static long Ground2Tris;           // teller: driehoeken die Ground2Cell tekende (voor de test)
     // tijdmeting (voor de test): vakken met en zonder hoogtefunctie, randprofielen (opnieuw berekend of uit het geheugen)
     public static long G2Cells, G2Field, G2EdgeNew, G2EdgeHit; public static readonly System.Diagnostics.Stopwatch G2SwField = new System.Diagnostics.Stopwatch(), G2SwPlain = new System.Diagnostics.Stopwatch(), G2SwEdge = new System.Diagnostics.Stopwatch();
     public static string G2Stats() => G2Cells + " vakken (" + G2Field + " met hoogtefunctie): " + G2SwField.ElapsedMilliseconds + " ms met, " + G2SwPlain.ElapsedMilliseconds + " ms zonder; randprofielen " + G2EdgeNew + " berekend (" + G2SwEdge.ElapsedMilliseconds + " ms), " + G2EdgeHit + " uit het geheugen";
-    public static void G2Reset() { G2Cells = G2Field = G2EdgeNew = G2EdgeHit = 0; G2SwField.Reset(); G2SwPlain.Reset(); G2SwEdge.Reset(); }
+    public static readonly System.Diagnostics.Stopwatch G2SwLines = new System.Diagnostics.Stopwatch(), G2SwPlanes = new System.Diagnostics.Stopwatch(), G2SwMerge = new System.Diagnostics.Stopwatch(), G2SwPiece = new System.Diagnostics.Stopwatch(), G2SwNear = new System.Diagnostics.Stopwatch();
+    public static long G2Polys, G2Lines;
+    public static string G2Steps() => "lijnen " + G2SwLines.ElapsedMilliseconds + " ms (" + G2Lines + " lijnen), vlakken snijden " + G2SwPlanes.ElapsedMilliseconds + " ms (" + G2Polys + " stukken), samenvoegen " + G2SwMerge.ElapsedMilliseconds + " ms, tekenen " + G2SwPiece.ElapsedMilliseconds + " ms, UseNear " + G2SwNear.ElapsedMilliseconds + " ms";
+    public static void G2Reset() { G2Cells = G2Field = G2EdgeNew = G2EdgeHit = G2Polys = G2Lines = 0; G2SwField.Reset(); G2SwPlain.Reset(); G2SwEdge.Reset(); G2SwLines.Reset(); G2SwPlanes.Reset(); G2SwMerge.Reset(); G2SwPiece.Reset(); G2SwNear.Reset(); }
     public static bool Ground2 = true;   // Terrein v2 (standaard aan; uit in de ontwikkelaarsmodus, voor die speelsessie): de bodem van elk vak uit de hoogtefunctie, de randen gedeeld met de buren, wegen met een profiel (RoadH)
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     static void Ground2Default() { Ground2 = true; }   // bij elke start van Play weer aan (statische velden overleven een herstart zonder domein-herladen)
@@ -110,7 +116,7 @@ public static partial class PlanetCity
     static float H2(Vector3 dir, float basis, bool field, bool cutsNear) => H2(dir, basis, field, cutsNear, out _);
     static float H2(Vector3 dir, float basis, bool field, bool cutsNear, out bool slope)
     {
-        slope = false; float h = field ? GroundField(dir, basis, out slope) : basis;
+        slope = false; float h = field ? (triSegs != null ? GroundField(dir, basis, out slope, triSegs, triCaps) : GroundField(dir, basis, out slope)) : basis;
         if (cutsNear) { if (fillN > 0) h = Mathf.Max(h, Fill(dir)); if (carved.Count > 0) h = Mathf.Min(h, Carve(dir)); }
         return h;
     }
@@ -163,6 +169,11 @@ public static partial class PlanetCity
         var r = new List<EPt>(e.pts.Count); for (int q = e.pts.Count - 1; q >= 0; q--) r.Add(new EPt { t = 1f - e.pts[q].t, h = e.pts[q].h, side = e.pts[q].side }); return r;
     }
     static List<EPt> EdgeProfile0(int a, int ka)
+    {
+        var ts0 = triSegs; var tc0 = triCaps; triSegs = null; triCaps = null;   // (een randprofiel rekent met alle stukken in de buurt van zijn eigenaar)
+        try { return EdgeProfile1(a, ka); } finally { triSegs = ts0; triCaps = tc0; }
+    }
+    static List<EPt> EdgeProfile1(int a, int ka)
     {
         var c = Planet.Cells[a]; int m = c.corners.Length, k1 = (ka + 1) % m; Vector3 A = c.corners[ka], B = c.corners[k1]; Vector2 L1 = c.local[ka], L2 = c.local[k1];
         bool field = fieldCells.Contains(a); if (field) UseNear(a); else UseAll();
@@ -356,7 +367,7 @@ public static partial class PlanetCity
     static void Ground2Cell(int i, bool plat, System.Action<Vector3, Vector3, Vector3, float, float, float, bool> emit, System.Func<int, bool> skip, System.Action<Vector3, Vector3, Vector3, Vector3, Vector3> wall = null)
     {
         bool fld0 = fieldCells.Contains(i); var swc = fld0 ? G2SwField : G2SwPlain; G2Cells++; if (fld0) G2Field++; swc.Start();
-        try { Ground2Cell0(i, plat, emit, skip, wall); } finally { swc.Stop(); }
+        try { Ground2Cell0(i, plat, emit, skip, wall); } finally { swc.Stop(); triSegs = null; triCaps = null; }
     }
     static void Ground2Cell0(int i, bool plat, System.Action<Vector3, Vector3, Vector3, float, float, float, bool> emit, System.Func<int, bool> skip, System.Action<Vector3, Vector3, Vector3, Vector3, Vector3> wall)
     {
@@ -375,12 +386,13 @@ public static partial class PlanetCity
             var polys = new List<List<Vector2>> { new List<Vector2> { Vector2.zero, L1, L2 } };
             void Split(Lin f) { var next = new List<List<Vector2>>(); foreach (var pl in polys) if (!SplitBy(pl, f, next)) next.Add(pl); polys = next; }
             var ls = new List<Seg>(); var lc = new List<Cap>(); var spI = RoadH.Count == 0 && spanNear.Count > 0 && spanNear.TryGetValue(i, out var spl) ? spl : null;   // (nieuwe opbouw: geen deklijnen, zie EdgeProfile0)
-            if (field) foreach (var f in FieldLines(c, k, hc0, h1, h2, ls, lc)) Split(f);
+            G2SwLines.Start(); if (field) { var fls = FieldLines(c, k, hc0, h1, h2, ls, lc); G2Lines += fls.Count; foreach (var f in fls) Split(f); } G2SwLines.Stop();
             foreach (var f in SpanLines(c, spI)) Split(f);
             var wg = new List<int>(); var wnq = new List<bool>(); var wl = field ? WallLins(c, ls, lc, wg, wnq) : new List<Lin>();   // de wanden hier (sokkels en bakken), binnenkant negatief; wg: per lijn de strook of kop
             Lin B2 = new Lin { a = hc0, x = ((h1 - hc0) * L2.y - (h2 - hc0) * L1.y) / det, y = ((h2 - hc0) * L1.x - (h1 - hc0) * L2.x) / det };
             if (cn) foreach (var n in near) foreach (var f in new[] { n.sd - Lin.C(-0.01f), n.sd - Lin.C(n.fl), n.sd - Lin.C(n.fl + n.rl), n.sd - Lin.C(n.end), n.t - Lin.C(n.q.hw), n.t - Lin.C(-n.q.hw) }) Split(f);
             var prof = plat ? null : EdgeProfile(i, k);
+            triSegs = null; triCaps = null; if (field && RoadH.Count > 0 && TriCull) { triSegs = ls; triCaps = lc; }   // vanaf hier: de hoogte met alleen de stukken van deze driehoek
             Vector2 E = L2 - L1; float el2 = E.sqrMagnitude, el = Mathf.Sqrt(el2);
             float TOf(Vector2 q) => Vector2.Dot(q - L1, E) / el2;
             bool OnEdge(Vector2 q) => Mathf.Abs((E.x * (q.y - L1.y) - E.y * (q.x - L1.x)) / el) < 1e-3f;
@@ -389,7 +401,7 @@ public static partial class PlanetCity
             // Elke veelhoek langs de snijlijnen van de vlakken die er gelden (PlaneLins, gemeten in het midden), tot er niets meer te
             // snijden is: dan is elk stuk één vlak (zoals ExactGround voor de geulen). Daarna tekenen.
             {
-                var done = new List<List<Vector2>>(); var work = new Stack<List<Vector2>>(polys); int guard = 0;
+                G2SwPlanes.Start(); var done = new List<List<Vector2>>(); var work = new Stack<List<Vector2>>(polys); int guard = 0;
                 while (work.Count > 0)
                 {
                     var pl = work.Pop(); Vector2 ctr = Vector2.zero; foreach (var v in pl) ctr += v; ctr /= pl.Count;
@@ -406,6 +418,7 @@ public static partial class PlanetCity
                 }
                 polys = done;
             }
+            G2SwPlanes.Stop(); G2Polys += polys.Count; G2SwMerge.Start();
             // Samenvoegen (ontwerp 8.5 punt 3): de snijlijnen zijn oneindige lijnen van alle wegstukken binnen bereik, dus ook waar de
             // hoogtefunctie niet knikt is de grond in repen gesneden (een spinnenweb van dunne driehoeken). Twee veelhoeken met een hele
             // zijde gemeen die in hetzelfde vlak liggen (binnenpunten van de een op het vlak van de ander, binnen 4 mm) en samen bol
@@ -415,7 +428,7 @@ public static partial class PlanetCity
                 var P2 = polys; var Hn = new List<List<Vector3>>(P2.Count);   // per veelhoek: binnenpunten (x, y, hoogte)
                 foreach (var pl in P2)
                 {
-                    Vector2 ctr = Vector2.zero; foreach (var v in pl) ctr += v; ctr /= pl.Count; var l = new List<Vector3>(pl.Count + 1);
+                    Vector2 ctr = Vector2.zero; foreach (var v in pl) ctr += v; ctr /= pl.Count; var l = new List<Vector3>(pl.Count + 1);   // een punt bij elk hoekpunt en het midden (met minder punten werden stukken samengevoegd die net niet in één vlak lagen)
                     foreach (var v in pl) { Vector2 q = Vector2.Lerp(v, ctr, 0.15f); l.Add(new Vector3(q.x, q.y, HQ(q))); }
                     l.Add(new Vector3(ctr.x, ctr.y, HQ(ctr))); Hn.Add(l);
                 }
@@ -467,13 +480,14 @@ public static partial class PlanetCity
                             if (!edges.TryGetValue(key, out int b) || b == a || P2[b] == null) { edges[key] = a; continue; }
                             if (!SamePlane(Hn[a], Hn[b]) && !SamePlane(Hn[b], Hn[a])) continue;
                             var j = Join(P2[b], P2[a]); if (j == null) continue;
-                            P2[b] = j; Hn[b].AddRange(Hn[a]); P2[a] = null; merged = true; any = true;
+                            P2[b] = j; P2[a] = null; merged = true; any = true; if (Hn[b].Count < 24) Hn[b].AddRange(Hn[a]);   // (de punten van beide, tot 24: zo blijft een samengevoegd stuk vlak zonder dat de toets steeds langer duurt)
                         }
                     }
                     if (!any) break;
                 }
                 var keep = new List<List<Vector2>>(); foreach (var pl in P2) if (pl != null) keep.Add(pl); polys = keep;
             }
+            G2SwMerge.Stop();
             // Aan elkaar rijgen: een buurveelhoek is langs een andere lijn gesneden, dus zijn hoekpunt ligt midden op een zijde van deze
             // (een T-kruising); op een knik is dat een kier. Elk hoekpunt dat op een zijde van een andere veelhoek ligt komt daar ook in.
             {
@@ -514,7 +528,7 @@ public static partial class PlanetCity
                 return q;
             }
             if (wl.Count > 0) foreach (var pl in polys) for (int v = 0; v < pl.Count; v++) pl[v] = SnapWall(pl[v]);
-            foreach (var pl0 in polys) Piece(pl0);
+            G2SwPiece.Start(); foreach (var pl0 in polys) Piece(pl0); G2SwPiece.Stop();
             // Aan welke kant van een wand ligt een hoekpunt van deze veelhoek: op een wandlijn van groep g (een strook of kop) hoort het bij
             // de binnenkant (+1 mm) als het midden van de veelhoek binnen alle lijnen van g ligt, anders bij het terrein (-1 mm); een punt dat
             // op geen wandlijn ligt krijgt geen kant. Per hoekpunt, want een veelhoek kan binnen de kop en toch buiten de strook van een arm liggen.

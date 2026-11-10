@@ -184,8 +184,12 @@ public static partial class PlanetCity
     }
 
     // de portalen van alle onderdoorgangen (rechte door een wegvak en schuine over een rand)
-    static void CollectCuts(List<Cut> o, Dictionary<int, Cut> side)
+    public static string CutsTimes = "";   // tijd per fase van CollectCuts (voor de test)
+    // cutsOnly: alleen de geulen van onderdoorgangen en schuine kruisingen (CarvePaths), niet de stukken langs wegen; die verzamelt
+    // UpdateCuts (bij een klik vier keer alles verzamelen kostte op een volle planeet 1,7 s)
+    static void CollectCuts(List<Cut> o, Dictionary<int, Cut> side, bool cutsOnly = false)
     {
+        var swC = System.Diagnostics.Stopwatch.StartNew(); var tms = new System.Text.StringBuilder(); void Lap(string w) { tms.Append(w).Append(' ').Append(swC.ElapsedMilliseconds).Append(" ms, "); swC.Restart(); }
         foreach (var x in EdgeCrossings())
         {
             float hw = x.road ? RoadHW : PathHW;
@@ -226,6 +230,8 @@ public static partial class PlanetCity
         // weg (plus een marge) ligt de grond op weghoogte, daarbuiten loopt hij onder 45° terug naar het gewone terrein. Dat is één
         // hoogtefunctie (GroundField) van de afstand tot de weglijn, van hart tot hart; de vakken erlangs worden fijner verdeeld en
         // bemonsterd (BuildGround), zodat gedeelde randen in beide vakken dezelfde hoogte krijgen.
+        Lap("kruisingen");
+        if (cutsOnly) { levelled.Clear(); foreach (var kv in Cells) if (WalkLevel(kv.Key) != 0) levelled.Add(kv.Key); return; }
         levelled.Clear(); fillN = 0; segs.Clear(); caps.Clear();
         foreach (var kv in Cells) if (WalkLevel(kv.Key) != 0) levelled.Add(kv.Key);
         int WalkN(int i) { int n = 0; foreach (int j in Partners(i)) if (IsWalk(j)) n++; return n; }
@@ -263,7 +269,7 @@ public static partial class PlanetCity
         // Gewone wegen (niet op een niveau) waar het terrein ernaast niet vlak is: ook in de hoogtefunctie, zoals in Cities: Skylines 2.
         // Een weg is breder dan zijn vakken (de stoep in een bocht, een kruispunt, een spits eiland); zonder dit stak daar het terrein of
         // de sokkel van een huis ernaast door de weg heen. Op vlakke grond verandert er niets (en kost het niets).
-        bool Uneven(int a)
+        Lap("niveaus"); bool Uneven(int a)
         {
             float ga = G(a);
             foreach (int x in Planet.Cells[a].nb) { if (Mathf.Abs(G(x) - ga) > 0.2f) return true; foreach (int y in Planet.Cells[x].nb) if (Mathf.Abs(G(y) - ga) > 0.2f) return true; }
@@ -295,7 +301,7 @@ public static partial class PlanetCity
         }
         // Een brug over een dal: van het hart van elk landhoofdvak tot het landhoofd ligt de grond op weghoogte, met het talud ernaast
         // (anders ligt het terrein van de helling over de weg naar de brug); onder het dek blijft het lager (SpanBottom in GroundField).
-        foreach (long k in TunnelLinks)   // (ook een tunnel: de weg helt van het portaalvak de berg in)
+        Lap("wegen"); foreach (long k in TunnelLinks)   // (ook een tunnel: de weg helt van het portaalvak de berg in)
         {
             int a0 = (int)(k >> 20), b0 = (int)(k & 0xFFFFF); if (!IsBore(a0, b0) || !IsWalk(a0) || !IsWalk(b0)) continue;
             bool spanNew = RoadH.Count > 0 && SpanLinks.Contains(k);   // nieuwe opbouw: het dek van een dalbrug loopt van hart tot hart; de grond bij het landhoofd hoort bij de weg tot waar het dek 6 m boven het terrein komt (daar begint het echte dek: ontwerp 8.3)
@@ -312,15 +318,15 @@ public static partial class PlanetCity
         }
         // gewone wegen en paden (niet op een niveau) in de buurt: onder zo'n weg ligt de grond op de hoogte van die weg, wat het talud
         // ernaast ook doet (zoals Cities: Skylines 2), anders loopt een talud bij een kruispunt over de weg heen
-        SplitWalls();   // nieuwe opbouw: maaiveld, sokkel of bak per deel van een stuk (ontwerp 8.3)
-        FillFieldCells();
+        Lap("tunnels"); SplitWalls(); Lap("indeling en bereik");   // nieuwe opbouw: maaiveld, sokkel of bak per deel van een stuk (ontwerp 8.3)
+        FillFieldCells(); Lap("veldvakken");
         flats.Clear();
         if (HasField)
         {
             var seen = new HashSet<long>();
             foreach (var kv in Cells)
             {
-                int a = kv.Key; if (!fieldCells.Contains(a) || !IsWalk(a) || levelled.Contains(a) || Underpass(a) || !NearSeg(Planet.Cells[a].dir, Planet.Cells[a].radius)) continue;   // (een vak binnen bereik zit altijd in fieldCells)
+                int a = kv.Key; if (!fieldCells.Contains(a) || !IsWalk(a) || levelled.Contains(a) || Underpass(a) || (RoadH.Count == 0 && !NearSeg(Planet.Cells[a].dir, Planet.Cells[a].radius))) continue;   // (nieuwe opbouw: het veld is al per stuk bepaald, NearSeg over alle stukken kostte 0,2 s)   // (een vak binnen bereik zit altijd in fieldCells)
                 foreach (int b in Partners(a))
                 {
                     if (!IsWalk(b) || levelled.Contains(b) || IsBore(a, b) || !seen.Add(Key(a, b))) continue;
@@ -330,6 +336,6 @@ public static partial class PlanetCity
                 }
             }
         }
-        fieldVer++;
+        fieldVer++; Lap("vlakke wegen"); CutsTimes = tms.ToString();
     }
 }
