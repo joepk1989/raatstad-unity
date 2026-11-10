@@ -243,7 +243,7 @@ public static class ModuleMesh
                 if (!bent) continue;
                 bool hedge = L2.TrueForAll(e => e.W.m == "hedge"); var W0 = L2.Find(e => e.W.m != "hedge").W ?? L2[0].W;
                 float r = hedge ? 0.3f : T / 2f, h = hedge ? 1.4f : LH; var c = MV2.P(kv.Key.Item1, kv.Key.Item2, ts);
-                Cyl(hedge ? "w_hedge" : W0.m == "curtain" ? "frame" : "w_" + W0.m, c, r * 1.02f, r * 1.02f, y0, h, 12);
+                Cyl(hedge ? "w_hedge" : W0.m == "curtain" ? "frame" : "w_" + W0.m, c, r * 1.1f, r * 1.1f, y0, h, 6);   // zeshoekige hoekpost
             }
         }
 
@@ -488,16 +488,16 @@ public static class ModuleMesh
                 case "tree": { float sc = 0.8f + (hj % 4) * 0.08f; Cl("trunk", 0.18f, 0.26f, 2.8f, 0, 0, 0, 6); Ic("leaf" + hj % 3, 2.1f * sc, Vector3.one, 0, 2.8f + 1.6f * sc, 0); break; }
                 case "bush": Ic("leaf" + (hj + 1) % 3, 0.9f, new Vector3(1f, 0.8f, 1f), 0, 0.7f, 0); break;
                 case "bench": Bx("bench", 1.8f, 0.06f, 0.45f, 0, 0.45f, 0); Bx("bench", 1.8f, 0.45f, 0.06f, 0, 0.72f, -0.22f); Bx("metal", 0.06f, 0.45f, 0.4f, -0.8f, 0.22f, 0); Bx("metal", 0.06f, 0.45f, 0.4f, 0.8f, 0.22f, 0); break;
-                case "lamp": Cl("lamp", 0.05f, 0.08f, 4f, 0, 0, 0); Ic("glow", 0.22f, Vector3.one, 0, 4.05f, 0); break;
-                case "pillar": Cl("w_stone", 0.3f, 0.35f, LH, 0, 0, 0, 10); Bx("w_stone", 0.9f, 0.12f, 0.9f, 0, LH - 0.06f, 0); break;
+                case "lamp": Cl("lamp", 0.05f, 0.08f, 4f, 0, 0, 0, 6); Cl("lamp", 0.28f, 0.12f, 0.18f, 0, 3.82f, 0, 6); Ic("glow", 0.22f, Vector3.one, 0, 4.05f, 0); break;
+                case "pillar": Cl("w_stone", 0.3f, 0.35f, LH, 0, 0, 0, 6); Bx("w_stone", 0.9f, 0.12f, 0.9f, 0, LH - 0.06f, 0); break;
                 case "hpillar": { float ph = (O.hasH ? O.h : 1f) * LH; Cl("slab", 0.45f, 0.5f, ph, 0, 0, 0, 6); break; }
-                case "table": Cl("metal", 0.04f, 0.06f, 0.72f, 0, 0, 0, 6); Cl("bench", 0.6f, 0.6f, 0.04f, 0, 0.72f, 0, 12); for (int i = 0; i < 3; i++) { float an = i * 2.1f; Cl("metal", 0.2f, 0.2f, 0.45f, Mathf.Cos(an) * 0.9f, 0, Mathf.Sin(an) * 0.9f, 8); } break;
+                case "table": Cl("metal", 0.04f, 0.06f, 0.72f, 0, 0, 0, 6); Cl("bench", 0.62f, 0.62f, 0.04f, 0, 0.72f, 0, 6); for (int i = 0; i < 3; i++) { float an = i * Mathf.PI * 2f / 3f; Cl("metal", 0.2f, 0.2f, 0.45f, Mathf.Cos(an) * 0.9f, 0, Mathf.Sin(an) * 0.9f, 6); } break;
                 case "planter":
-                    Cl("slab", 0.75f, 0.65f, 0.5f, 0, 0, 0, 8); Ic("leaf2", 0.55f, new Vector3(1.2f, 0.7f, 1.2f), 0, 0.75f, 0);
+                    Cl("slab", 0.78f, 0.68f, 0.5f, 0, 0, 0, 6); Ic("leaf2", 0.55f, new Vector3(1.2f, 0.7f, 1.2f), 0, 0.75f, 0);
                     { string[] fc = { "e64a3c", "f2b233", "e9e6dc", "d05a9a", "f28c33" }; for (int i = 0; i < 5; i++) { float an = i * 1.26f; Ic("c_" + fc[i], 0.09f, Vector3.one, Mathf.Cos(an) * 0.4f, 0.95f, Mathf.Sin(an) * 0.4f); } }
                     break;
-                case "fountain": Cl("w_stone", 1.8f, 1.9f, 0.5f, 0, 0, 0, 12); Cl("water", 1.6f, 1.6f, 0.1f, 0, 0.42f, 0, 12); Cl("w_stone", 0.12f, 0.18f, 1.3f, 0, 0.4f, 0, 8); Cl("w_stone", 0.6f, 0.5f, 0.12f, 0, 1.6f, 0, 10); break;
-                case "bin": Cl("bin", 0.25f, 0.22f, 0.9f, 0, 0, 0, 8); break;
+                case "fountain": Cl("w_stone", 1.9f, 2f, 0.5f, 0, 0, 0, 6); Cl("water", 1.68f, 1.68f, 0.1f, 0, 0.42f, 0, 6); Cl("w_stone", 0.12f, 0.18f, 1.3f, 0, 0.4f, 0, 6); Cl("w_stone", 0.62f, 0.52f, 0.12f, 0, 1.6f, 0, 6); break;
+                case "bin": Cl("bin", 0.26f, 0.23f, 0.9f, 0, 0, 0, 6); break;
                 case "shelf":
                     Bx("w_panel", 2.4f, 1.9f, 0.5f, 0, 0.95f, 0); foreach (float y in new[] { 0.45f, 0.95f, 1.45f }) Bx("slab", 2.3f, 0.04f, 0.46f, 0, y, 0.02f);
                     { string[] cc = { "d94b3a", "3a7fd9", "e9c04a", "48a35a", "e6e1d8" }; for (int i = 0; i < 6; i++) Bx("c_" + cc[(hj + i * 37) % 5], 0.32f, 0.26f, 0.3f, -1f + i * 0.4f, 0.45f + 0.5f * (i % 3) + 0.13f, 0.04f); }
@@ -511,10 +511,10 @@ public static class ModuleMesh
                     { var q = Quaternion.Euler(-0.42f * Mathf.Rad2Deg, 0, 0); Bx(C("203a63"), 3.4f, 0.05f, 1.6f, 0, 0.95f, 0, q); Bx(C("c9ced3"), 3.42f, 0.02f, 0.04f, 0, 0.98f, 0, q);
                       foreach (float x in new[] { -1.4f, 1.4f }) { Bx("metal", 0.06f, 1.3f, 0.06f, x, 0.65f, -0.55f); Bx("metal", 0.06f, 0.6f, 0.06f, x, 0.3f, 0.55f); } break; }
                 case "turbine":
-                    { string wt = C("eef0ee"); Cl(wt, 0.35f, 0.65f, 22f, 0, 0, 0, 10); Bx(wt, 1f, 1f, 2.6f, 0, 22f, 0.2f); Cl(wt, 0.3f, 0.45f, 0.6f, 0, 21.7f, 1.75f, 8);
+                    { string wt = C("eef0ee"); Cl(wt, 0.35f, 0.65f, 22f, 0, 0, 0, 6); Bx(wt, 1f, 1f, 2.6f, 0, 22f, 0.2f); Cl(wt, 0.3f, 0.45f, 0.6f, 0, 21.7f, 1.75f, 6);
                       for (int k = 0; k < 3; k++) { var q = Quaternion.Euler(0, 0, (k * Mathf.PI * 2f / 3f + hj * 0.01f) * Mathf.Rad2Deg); var P = BoxP(0.45f, 9.5f, 0.12f); for (int i = 0; i < P.Count; i++) P[i] = X(q * (P[i] + new Vector3(0, 4.9f, 0)) + new Vector3(0, 22f, 1.65f)); Solid(wt, P, BoxF); }
                       break; }
-                case "chimney": Cl("w_brick", 0.85f, 1.25f, 16f, 0, 0, 0, 12); Cl(C("3a3a38"), 0.9f, 0.9f, 0.5f, 0, 16f, 0, 12); break;
+                case "chimney": Cl("w_brick", 0.9f, 1.3f, 16f, 0, 0, 0, 6); Cl(C("3a3a38"), 0.95f, 0.95f, 0.5f, 0, 16f, 0, 6); break;
                 case "container": { string[] cc = { "3f7d4f", "2f5f9a", "7d7f80", "a8552f" }; Bx("c_" + cc[hj % 4], 2.4f, 1.3f, 1.4f, 0, 0.7f, 0); Bx(C("2a2e30"), 2.45f, 0.08f, 1.45f, 0, 1.38f, 0); break; }
                 case "goal": { string wg = C("f3f4f1"); foreach (float x in new[] { -1.8f, 1.8f }) Bx(wg, 0.1f, 2f, 0.1f, x, 1f, 0); Bx(wg, 3.7f, 0.1f, 0.1f, 0, 2f, 0); Bx("net", 3.6f, 2f, 0.02f, 0, 1f, -0.5f, Quaternion.Euler(0.5f * Mathf.Rad2Deg, 0, 0)); break; }
                 case "grave": Bx("w_stone", 0.65f, 0.85f, 0.14f, 0, 0.42f, -0.6f); Bx(C("8a8f86"), 0.75f, 0.08f, 1.7f, 0, 0.04f, 0.2f); break;
