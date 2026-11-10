@@ -901,6 +901,7 @@ public class WegVoorbeeld : MonoBehaviour
         PlanetCity.ClearAll(); PlanetCity.Restore(File.ReadAllText(Path.Combine(dir.FullName, "stad.json"))); if (PlanetCity.ProfileFirst) { PlanetCity.HeightTestNote = PlanetCity.ProfileAll(new List<List<int>>()); PlanetCity.UpdateCuts(); }   // "melding N profiel": de stad met de nieuwe opbouw (het profiel over alle wegen, de kunstwerken blijven)
         PlanetCity.TouchAll(); PlanetCity.Rebuild(); PlanetCity.RebuildGrid(); yield return null; yield return null;
         cam.transform.position = pos; cam.transform.rotation = rot; cam.fieldOfView = 60f; yield return null; yield return null;
+        { long nt = 0; foreach (var mf in FindObjectsByType<MeshFilter>(FindObjectsSortMode.None)) if (mf.gameObject.layer == Layers.Bodem && mf.sharedMesh != null) nt += mf.sharedMesh.triangles.Length / 3; File.WriteAllText(Path.Combine(Dir, "melding_driehoeken.txt"), "bodem: " + nt + " driehoeken, Terrein v2 " + (PlanetCity.Ground2 ? "aan" : "uit") + (PlanetCity.RoadH.Count > 0 ? ", profiel" : "")); }   // de hele bodem
         ScreenCapture.CaptureScreenshot(Path.Combine(Dir, "melding_" + dir.Name + (uit ? "_uit" : "") + ".png")); yield return null; yield return null;
         Hc = vak; bouw = new System.Text.StringBuilder(dir.Name + (uit ? " (terrein door wegen uit)" : "") + "\n"); yield return Scan(vak, 45f, "melding");
         var dbg = new System.Text.StringBuilder();
