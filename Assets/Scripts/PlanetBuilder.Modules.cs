@@ -3,7 +3,7 @@ using UnityEngine;
 
 // Modules in de stad (stap 1 van het modulesysteem): een zevende categorie naast de zes vaste (toets 7), met een lade vol modules
 // uit de bibliotheek (voorbeeldplaatjes per module, filter per soort). Klikken zet de gekozen module neer, R draait 60° (Shift+R
-// terug), F spiegelt; op een plat dak komt hij erbovenop (hooguit 8 lagen). Rechts klikken haalt de bovenste module weg, de
+// terug), F spiegelt; op een plat dak komt hij erbovenop (hooguit MV2.MAX_LV lagen). Rechts klikken haalt de bovenste module weg, de
 // middelste knop neemt een module over (pipet, met draaiing en spiegeling). Alles via Push/Changed, dus undo en opslaan werken.
 // Vanuit de lade: een nieuwe module tekenen of de gekozen bewerken in de Raatmaker (Raatmaker.cs).
 public partial class PlanetBuilder

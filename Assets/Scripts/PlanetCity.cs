@@ -87,7 +87,7 @@ public static partial class PlanetCity
         if (type == "pad" && l.Count == 1 && l[0] == "pad") { if (DragBike && Bike.Add(i)) Touch(i); if (autoLink) foreach (int j in ClickLinks(i)) Link(i, j); Touch(i); return null; }
         if (l.Count > 0 && l[0] == "weg") return "Op een weg kun je niet bouwen; haal de weg eerst weg (rechtermuisknop)";
         if (l.Count > 0 && l[0] == "wegdeel" && !Buildable(type)) return "Hier loopt een weg overheen: op de vrije helft passen alleen gebouwen en parken";
-        if (l.Count >= 8) return "Hoger kan niet";
+        if (l.Count >= MV2.MAX_LV) return "Hoger kan niet";
         if (l.Count > 0 && (l[l.Count - 1] == "toren" || l[l.Count - 1] == "molen") && type != "water" && type != "meer") return "Op een " + l[l.Count - 1] + " kun je niets meer zetten";
         if (l.Count > 0 && NoStackOn(l[l.Count - 1]) is string why && type != "water" && type != "meer") return why;
         if ((type == "water" || type == "meer") && l.Count > 0) l.Clear();
@@ -235,7 +235,7 @@ public static partial class PlanetCity
         if (l[0] == "wegdeel" && !Buildable(type)) return "Hier loopt een weg overheen: op de vrije helft passen alleen gebouwen en parken";
         if (type == "water" || type == "meer") return null;   // water vervangt wat er staat
         if (l[l.Count - 1] == "water" || l[l.Count - 1] == "meer") return null;
-        if (l.Count >= 8) return "Hoger kan niet";
+        if (l.Count >= MV2.MAX_LV) return "Hoger kan niet";
         if (l[l.Count - 1] == "toren" || l[l.Count - 1] == "molen") return "Op een " + l[l.Count - 1] + " kun je niets meer zetten";
         return NoStackOn(l[l.Count - 1]);
     }

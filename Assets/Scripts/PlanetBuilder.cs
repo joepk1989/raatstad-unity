@@ -1234,7 +1234,7 @@ public partial class PlanetBuilder : MonoBehaviour
         var nl = had ? new List<string>(l) : new List<string>();
         if (type == "pad") { if (nl.Count == 1 && nl[0] == "pad") return; if (nl.Count > 0) return; nl.Add("pad"); }
         else { if (type == "water" || type == "meer" || (nl.Count > 0 && (nl[nl.Count - 1] == "water" || nl[nl.Count - 1] == "meer"))) nl.Clear(); nl.Add(type); }
-        bool half = nl.Count > 0 && nl[0] == "wegdeel"; prevMax = half ? 7 : 8; prevFloor = type == "water" || type == "meer" || type == "pad" ? 0 : nl.Count - (half ? 1 : 0);   // stapelen: de hoeveelste laag (hooguit 8 blokken)
+        bool half = nl.Count > 0 && nl[0] == "wegdeel"; prevMax = half ? MV2.MAX_LV - 1 : MV2.MAX_LV; prevFloor = type == "water" || type == "meer" || type == "pad" ? 0 : nl.Count - (half ? 1 : 0);   // stapelen: de hoeveelste laag (hooguit 8 blokken)
         if (beforeVer != beautyVer || before == null) { before = Beauty.Compute(); beforeVer = beautyVer; }
         Beauty.Result after;
         cells[hover] = nl; try { after = Beauty.Compute(); } finally { if (had) cells[hover] = l; else cells.Remove(hover); }

@@ -135,7 +135,7 @@ public class ModuleV2
 // Maten, raster en regels van modules v2 (gedeeld door het bouwen, de stad en de Raatmaker)
 public static class MV2
 {
-    public const float LV_H = 3f, WALL_T = 0.25f, FLOOR_T = 0.2f, R = 9f; public const int MAX_LV = 8;
+    public const float LV_H = 3f, WALL_T = 0.25f, FLOOR_T = 0.2f, R = 9f; public const int MAX_LV = 16;   // hooguit 16 lagen van 3 m (48 m); de webversie had 8
     public static readonly float SQ3 = Mathf.Sqrt(3f), INNER = 9f * Mathf.Sqrt(3f) / 2f;
     public static readonly Vector2Int[] DIRW = { new Vector2Int(1, 0), new Vector2Int(0, 1), new Vector2Int(-1, 1), new Vector2Int(2, -1), new Vector2Int(1, 1), new Vector2Int(-1, 2) };
     public static readonly Vector2Int[] DIR6 = { new Vector2Int(1, 0), new Vector2Int(0, 1), new Vector2Int(-1, 1), new Vector2Int(-1, 0), new Vector2Int(0, -1), new Vector2Int(1, -1) };

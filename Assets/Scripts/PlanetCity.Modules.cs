@@ -108,7 +108,7 @@ public static partial class PlanetCity
             if (!FreeGround(i)) { Cells.TryGetValue(i, out var l); return l[0] == "weg" || l[0] == "wegdeel" ? "Hier ligt een weg" : l[0] == "pad" ? "Hier ligt een pad" : l[0] == "water" || l[0] == "meer" ? "Hier ligt water" : "Hier staat al iets"; }
         }
         if (withMod > 0 && withMod < area.Length) uneven = true;
-        if (withMod == 0 && fixedH.HasValue) { if (fixedH.Value < 0f) return "Onder het zeeniveau kan niet"; if (lv + MV2.MetaOf(m).fl > MV2.MAX_LV + 1) return "Te hoog"; return null; }   // vaste hoogte: het terrein gaat erheen
+        if (withMod == 0 && fixedH.HasValue) { if (fixedH.Value < 0f) return "Onder het zeeniveau kan niet"; if (lv + MV2.MetaOf(m).fl > MV2.MAX_LV) return "Te hoog"; return null; }   // vaste hoogte: het terrein gaat erheen
         lv = maxTop + Mathf.Max(0, lift);
         if (uneven && lift == 0) return "Niet overal even hoog: zet hem een laag hoger (PgUp), dan komt hij op palen";
         for (int k = 0; k < area.Length; k++)
@@ -116,7 +116,7 @@ public static partial class PlanetCity
             if (tops[k] == lv && !flat[k]) return "Op een schuin dak of open module kun je niet bouwen";
             if (!flat[k] && tops[k] < lv && tops[k] + 2 > lv) return "Te dicht boven een schuin dak: nog een laag hoger (PgUp)";
         }
-        if (lv + MV2.MetaOf(m).fl > MV2.MAX_LV + 1) return "Te hoog: hooguit " + MV2.MAX_LV + " lagen";
+        if (lv + MV2.MetaOf(m).fl > MV2.MAX_LV) return "Te hoog: hooguit " + MV2.MAX_LV + " lagen";
         if (lv == 0 && G(c) < SeaLevel - 0.01f) return "Hier staat water";
         return null;
     }
