@@ -133,7 +133,7 @@ public static partial class PlanetCity
                 if (Cells.TryGetValue(i, out var l)) l.Clear();   // bomen en wilde natuur wijken
                 if (!level) continue;
                 Vector3 d = (Planet.Cells[i].dir - up) * Planet.R; d -= up * Vector3.Dot(d, up);
-                SetTerr(i, g + (i == c ? 0f : d.sqrMagnitude / (2f * Planet.R)));   // het hele gebied op één hoogte, in het raakvlak van het midden
+                SetTerr(i, g);   // het hele gebied op één hoogte (de module volgt de bol, WarpMesh)
             }
         }
         for (int k = 0; k < area.Length; k++)
@@ -155,7 +155,7 @@ public static partial class PlanetCity
         {
             int below = 0; float bg = G(i);
             foreach (var J in ModulesAt(i)) { var JM = J.M; if (JM == null) continue; int t = J.lv + MV2.MetaOf(JM).fl; if (J.lv < lv && t <= lv && t > below) { below = t; bg = G(J.c); } }
-            var cell = Planet.Cells[i]; Vector3 dir = cell.dir; float tt = Vector3.Dot(floor, up) / Vector3.Dot(dir, up);
+            var cell = Planet.Cells[i]; Vector3 dir = cell.dir; float tt = floor.magnitude;   // de vloer volgt de bol (WarpMesh)
             float h0 = Planet.R + bg + below * MV2.LV_H, h1 = tt - MV2.FLOOR_T - 0.05f; if (h1 - h0 < 0.6f) continue;
             sig += i + ":" + Mathf.RoundToInt(h0 * 10f) + ",";
             Vector3 e = cell.east, n = cell.north; const float r = 0.45f; var ring = new Vector3[6];
@@ -186,13 +186,55 @@ public static partial class PlanetCity
 
     // ---------- tekenen: één object per exemplaar, met de gedeelde mesh van ModuleMesh ----------
     static Transform modRoot;
-    class ModGo { public GameObject go, poles; public string sig; }
+    class ModGo { public GameObject go, poles; public Mesh mesh; public string sig; }
+    static void Drop(ModGo g) { if (g == null) return; if (g.go != null) Object.Destroy(g.go); if (g.poles != null) Object.Destroy(g.poles); if (g.mesh != null) Object.Destroy(g.mesh); }
+
+    // ---------- vervormen naar de echte vakken ----------
+    // Elk punt van de module ligt boven een plek in een van zijn vakken, in een van de zes driehoekjes tussen het midden en twee
+    // hoekpunten. Dat punt gaat naar dezelfde plek in het echte driehoekje op de bol, en omhoog langs de richting van de bol daar.
+    // Zo vallen de randen precies op de echte vakranden, delen buurmodules dezelfde hoekpunten en gaan gedeelde muren bij beide langs
+    // dezelfde lijn omhoog: op elke hoogte naadloos, ook bovenaan een toren. De mesh is per exemplaar (wereldcoördinaten rond origin).
+    // De rand van de module ligt 2 cm binnen de vakrand, zodat twee muren op dezelfde rand niet in elkaar flikkeren.
+    public static Mesh WarpMesh(Mesh src, int c, int[] area, int k, int rot, float baseR, out Vector3 origin)
+    {
+        ModAxes(c, rot, out var A, out var B, out var up); origin = up * baseR;
+        var ideal = MV2.AreaCells(k); int n = area.Length; var cen = new Vector2[n]; var dC = new Vector3[n]; var dK = new Vector3[n * 6];
+        for (int idx = 0; idx < n; idx++)
+        {
+            cen[idx] = MV2.CellXZ(ideal[idx].x, ideal[idx].y); var cell = Planet.Cells[area[idx]]; dC[idx] = cell.dir;
+            for (int kk = 0; kk < 6; kk++)
+            {
+                float an = (30f + 60f * kk) * Mathf.Deg2Rad; Vector2 pk = cen[idx] + new Vector2(Mathf.Cos(an), Mathf.Sin(an)) * MV2.R;
+                Vector3 w = (up * Planet.R + A * pk.x + B * pk.y).normalized; Vector3 best = cell.corners[0]; float bd = -2f;
+                foreach (var cd in cell.corners) { float dt = Vector3.Dot(cd, w); if (dt > bd) { bd = dt; best = cd; } }
+                dK[idx * 6 + kk] = best;
+            }
+        }
+        float shrink = 1f - 0.02f / (MV2.R * MV2.SQ3 / 2f * (1 + 2 * k));
+        var v = src.vertices; var o = new Vector3[v.Length];
+        for (int i = 0; i < v.Length; i++)
+        {
+            Vector2 pt = new Vector2(v[i].x, -v[i].z) * shrink; float y = v[i].y;
+            var ax = MV2.CellOf(pt.x, pt.y); int idx = ideal.IndexOf(ax);
+            if (idx < 0) { float bd = 1e9f; for (int q = 0; q < n; q++) { float dd = (pt - cen[q]).sqrMagnitude; if (dd < bd) { bd = dd; idx = q; } } }
+            Vector2 d = pt - cen[idx]; int sct = Mathf.FloorToInt(Mathf.Repeat(Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg - 30f, 360f) / 60f) % 6;
+            float a0 = (30f + 60f * sct) * Mathf.Deg2Rad, a1 = (30f + 60f * (sct + 1)) * Mathf.Deg2Rad;
+            Vector2 e1 = new Vector2(Mathf.Cos(a0), Mathf.Sin(a0)) * MV2.R, e2 = new Vector2(Mathf.Cos(a1), Mathf.Sin(a1)) * MV2.R;
+            float det = e1.x * e2.y - e1.y * e2.x, u = (d.x * e2.y - d.y * e2.x) / det, w2 = (e1.x * d.y - e1.y * d.x) / det;
+            Vector3 dir = (dC[idx] * (1f - u - w2) + dK[idx * 6 + sct] * u + dK[idx * 6 + (sct + 1) % 6] * w2).normalized;
+            o[i] = dir * (baseR + y) - origin;
+        }
+        var m = new Mesh { indexFormat = UnityEngine.Rendering.IndexFormat.UInt32, name = src.name + " (op de bol)" };
+        m.vertices = o; var uv = new List<Vector2>(); src.GetUVs(0, uv); if (uv.Count == o.Length) m.SetUVs(0, uv);
+        m.subMeshCount = src.subMeshCount; for (int sm = 0; sm < src.subMeshCount; sm++) m.SetTriangles(src.GetTriangles(sm), sm, false);
+        m.RecalculateNormals(); m.RecalculateBounds(); return m;   // elke driehoek heeft eigen hoekpunten: de normalen blijven vlak (low poly)
+    }
     static readonly Dictionary<string, ModGo> modGos = new Dictionary<string, ModGo>();
     public static int ModuleCount => modGos.Count;
     public static void SyncModules()
     {
         if (Planet.Cells == null) return;
-        if (modRoot == null) { foreach (var g in modGos.Values) { if (g.go != null) Object.Destroy(g.go); if (g.poles != null) Object.Destroy(g.poles); } modGos.Clear(); modRoot = new GameObject("Modules").transform; modRoot.gameObject.AddComponent<ModuleLights>(); }
+        if (modRoot == null) { foreach (var g in modGos.Values) Drop(g); modGos.Clear(); modRoot = new GameObject("Modules").transform; modRoot.gameObject.AddComponent<ModuleLights>(); }
         var want = new List<ModInst>(); var starts = new Dictionary<int, List<int>>();
         foreach (var kv in Cells) foreach (var s in kv.Value) if (ParseMod(s, kv.Key, out var I)) want.Add(I);
         var areas = new Dictionary<string, int[]>();
@@ -210,18 +252,18 @@ public static partial class PlanetCity
             var poles = PoleMesh(I.c, area, I.lv, G(I.c), out var porg, out var psig);
             string sig = I.id + "|" + M.ver + "|" + I.rot + "|" + I.mir + "|" + I.lv + "|" + cover + "|" + Mathf.RoundToInt(G(I.c) * 100f) + "|" + psig;
             if (modGos.TryGetValue(I.Key, out var e) && e.go != null && e.sig == sig) { if (poles != null) Object.Destroy(poles); continue; }
-            if (e != null) { if (e.go != null) Object.Destroy(e.go); if (e.poles != null) Object.Destroy(e.poles); }
+            Drop(e);
             var b = ModuleMesh.Get(M, I.lv > 0, cover);
             var go = new GameObject("Module " + M.name); go.layer = Layers.Gebouw; go.transform.SetParent(modRoot, false);
-            ModPose(I.c, I.rot, I.lv, out var pos, out var q, out var sc); go.transform.SetPositionAndRotation(pos, q); go.transform.localScale = sc;
-            go.AddComponent<MeshFilter>().sharedMesh = b.mesh; go.AddComponent<MeshRenderer>().sharedMaterials = b.mats;
-            go.AddComponent<MeshCollider>().sharedMesh = b.mesh;
+            var wm = WarpMesh(b.mesh, I.c, area, M.k, I.rot, Planet.R + G(I.c) + I.lv * MV2.LV_H, out var org); go.transform.position = org;
+            go.AddComponent<MeshFilter>().sharedMesh = wm; go.AddComponent<MeshRenderer>().sharedMaterials = b.mats;
+            go.AddComponent<MeshCollider>().sharedMesh = wm;
             GameObject pg = null;
             if (poles != null) { pg = new GameObject("Palen " + M.name); pg.layer = Layers.Gebouw; pg.transform.SetParent(modRoot, false); pg.transform.position = porg; pg.AddComponent<MeshFilter>().sharedMesh = poles; pg.AddComponent<MeshRenderer>().sharedMaterial = ModuleMesh.Mat("slab"); pg.AddComponent<MeshCollider>().sharedMesh = poles; }
-            modGos[I.Key] = new ModGo { go = go, poles = pg, sig = sig };
+            modGos[I.Key] = new ModGo { go = go, poles = pg, mesh = wm, sig = sig };
         }
         var gone = new List<string>(); foreach (var kv in modGos) if (!seen.Contains(kv.Key)) gone.Add(kv.Key);
-        foreach (var k in gone) { if (modGos[k].go != null) Object.Destroy(modGos[k].go); if (modGos[k].poles != null) Object.Destroy(modGos[k].poles); modGos.Remove(k); }
+        foreach (var k in gone) { Drop(modGos[k]); modGos.Remove(k); }
     }
 }
 

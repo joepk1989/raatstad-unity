@@ -105,10 +105,13 @@ public partial class PlanetBuilder
             mgR.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; mgR.receiveShadows = false;
         }
         if (ghostOk == null) { ghostOk = Raatstad.MakeMat(new Color(0.949f, 0.698f, 0.2f, 0.42f), true); ghostBad = Raatstad.MakeMat(new Color(0.878f, 0.341f, 0.243f, 0.45f), true); }
-        var b = ModuleMesh.Get(M, lv > 0, 0); mgF.sharedMesh = b.mesh;
+        var b = ModuleMesh.Get(M, lv > 0, 0);
         var mats = new Material[b.mesh.subMeshCount]; for (int i = 0; i < mats.Length; i++) mats[i] = err == null ? ghostOk : ghostBad; mgR.sharedMaterials = mats;
-        PlanetCity.ModPose(c, modRot, lv, out var pos, out var q, out var sc, baseG);
-        mgF.transform.SetPositionAndRotation(pos + q * Vector3.up * 0.03f, q); mgF.transform.localScale = new Vector3(sc.x * 1.005f, 1.005f, sc.z * 1.005f);
+        // vervormd naar de echte vakken, zoals het exemplaar straks (PlanetCity.WarpMesh), een paar cm hoger tegen flikkeren
+        var oldG = mgF.sharedMesh; Vector3 gorg = Planet.Cells[c].dir * (Planet.R + (baseG ?? PlanetCity.G(c)) + lv * MV2.LV_H);
+        mgF.sharedMesh = area0 != null ? PlanetCity.WarpMesh(b.mesh, c, area0, M.k, modRot, Planet.R + (baseG ?? PlanetCity.G(c)) + lv * MV2.LV_H + 0.03f, out gorg) : null;
+        if (oldG != null && oldG != b.mesh) Destroy(oldG);
+        mgF.transform.SetPositionAndRotation(gorg, Quaternion.identity); mgF.transform.localScale = Vector3.one;
         mgR.enabled = true;
         // palen eronder (terrein volgen, een laag of meer hoger)
         if (mgPF == null) { var pgo = new GameObject("Modulevoorbeeld palen"); mgPF = pgo.AddComponent<MeshFilter>(); mgPR = pgo.AddComponent<MeshRenderer>(); mgPR.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; }
