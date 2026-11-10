@@ -11,6 +11,9 @@ using UnityEngine;
 //  - de ringweg is een laan; drie hoofdstraten onder 120° kruisen haar: naar buiten de stad uit (doodlopend in een ronde kop) en
 //    twee vakken naar binnen tot een keerkop, als kleine straatjes binnen de rondweg;
 //  - daarbuiten rijtjes woningen langs de wegen, een kantorenbuurtje, parken, een meertje en een heuvel met een molen.
+// Versie 3 (StartTownVersion 3): de gebouwen, pleinen en parkjes zijn modules uit de bibliotheek (Mod), met de deur naar het plein
+// of naar de straat (FaceRot); wegen, paden, de verlaagde ring, de bruggen en het terrein zijn gelijk aan versie 2. Lukt een module
+// niet (een vijfhoek, geen ruimte voor 7 vakken), dan komen er bomen.
 public static partial class PlanetCity
 {
     public static void StartTown(int s)
@@ -33,9 +36,21 @@ public static partial class PlanetCity
         System.Func<int, string, bool> put = (c, t) => free(c) && Place(c, t) == null;
 
         var keep = new HashSet<int>();   // vakken die vrij blijven: een schuin pad loopt over hun gedeelde rand
+        // een module uit de lijst, met de deur naar vak face (-1: willekeurig); geeft false als er geen past
+        System.Func<int, string[], int, bool> mod = (c, ids, face) =>
+        {
+            if (!free(c) || keep.Contains(c)) return false;
+            for (int t = 0; t < 4; t++)
+            {
+                string id = ids[rnd.Next(ids.Length)]; bool mir = rnd.Next(2) == 0; var M = ModuleLib.Data(id, mir); if (M == null) continue;
+                if (PlaceModule(id, c, FaceRot(M, c, face, rnd), mir) == null) return true;
+            }
+            return false;
+        };
+        System.Func<int, int> street0 = c => { foreach (int j in Planet.Cells[c].nb) if (IsRoad(j)) return j; foreach (int j in Planet.Cells[c].nb) if (IsPath(j)) return j; return -1; };   // de straat (of het pad) naast een vak
         // 1. het plein rond de vlag (het vlagvak zelf blijft vrij: daar staat de paal), behalve in de richting van het pad omhoog
         var spoke = LinePlan(cellAt(lane[0], 4f * P), cellAt(lane[0], 1f * P)) ?? new List<int>();
-        foreach (int c in ring(1)) if (!spoke.Contains(c)) put(c, "plein");
+        foreach (int c in ring(1)) if (!spoke.Contains(c) && !mod(c, Pleinen, s)) put(c, "plein");
 
         // 2. de verlaagde ring voor voetgangers en fietsers op 4 vakken: gesloten lus, een heel niveau omlaag (zoals slepen met
         //    Page Down); een pad van de ring omhoog naar het plein
@@ -45,7 +60,7 @@ public static partial class PlanetCity
         if (spoke.Count >= 4) { PlaceLine(spoke, "pad"); SetLevel(new List<int> { spoke[1] }, -1, "pad"); }   // halverwege een half niveau
 
         // 3. ring 2, aan het plein: winkels met woningen erboven
-        foreach (int c in ring(2)) { if (!free(c)) continue; put(c, "winkel"); int up = rnd.Next(1, 3); for (int f = 0; f < up; f++) Place(c, "woning"); }
+        foreach (int c in ring(2)) { if (!free(c)) continue; if (!mod(c, Winkels, s)) put(c, "park"); }   // winkels en horeca, de deur naar het plein
 
         // 4. de rondweg op 7 vakken: een laan als gesloten lus; drie hoofdstraten (gewone wegen) die de laan kruisen: naar buiten de stad uit,
         //    en twee vakken naar binnen tot een keerkop (kleine straatjes binnen de rondweg)
@@ -83,9 +98,10 @@ public static partial class PlanetCity
         foreach (var kv in dist)
         {
             int c = kv.Key, d = kv.Value; if (d < 3 || d > 6 || !free(c) || keep.Contains(c)) continue; float ang = Ang(S, c);
-            if (!kerk && d == 5 && dAng(ang, lane[1] + 0.25f) < 10f) { put(c, "blok"); Place(c, "toren"); kerk = true; continue; }   // de kerk: stenen voet met de toren erop
-            if (!stadhuis && d == 5 && dAng(ang, lane[2] + 0.25f) < 10f) { for (int f = 0; f < 3; f++) Place(c, "kantoor"); Place(c, "dak"); stadhuis = true; continue; }   // het stadhuis
-            put(c, rnd.NextDouble() < 0.6 ? "park" : "woning");
+            if (!kerk && d == 5 && dAng(ang, lane[1] + 0.25f) < 10f) { kerk = mod(c, new[] { "kerk-toren-7l" }, s); if (kerk) continue; }   // de kerk
+            if (!stadhuis && d == 5 && dAng(ang, lane[2] + 0.25f) < 10f) { stadhuis = mod(c, new[] { "huisarts-wit-2l", "bibliotheek-glas-2l", "kantoor-baksteen-3l" }, s); if (stadhuis) continue; }   // het stadhuis
+            if (rnd.NextDouble() < 0.6) { if (rnd.NextDouble() < 0.5 || !mod(c, Groen, -1)) put(c, "park"); }   // parkjes: de helft een module, de rest bomen
+            else if (!mod(c, Huizen, street0(c) >= 0 ? street0(c) : s)) put(c, "park");
         }
 
         // 7. het meer (een paar vakken) en de heuvel met de molen, elk in een eigen hoek tussen de straten
@@ -97,7 +113,7 @@ public static partial class PlanetCity
             float d = Vector3.Distance(Planet.Cells[kv.Key].dir, Planet.Cells[hill].dir) * Planet.R / P;   // in vakken
             if (d < 3.2f && (free(kv.Key) || IsPath(kv.Key))) SetTerr(kv.Key, Mathf.Round(Mathf.Lerp(7f, 0.5f, d / 3.2f) * 2f) / 2f);
         }
-        put(hill, "molen");
+        if (!mod(hill, new[] { "windmolen-modern" }, -1)) put(hill, "molen");
 
         // 8. de rest, van binnen naar buiten
         foreach (var kv in dist)
@@ -110,21 +126,48 @@ public static partial class PlanetCity
             if (d == 8 && road)   // langs de buitenkant van de ringweg: rijtjeshuizen, bij de hoofdstraten winkels
             {
                 bool nearStreet = false; foreach (float sa in street) if (dAng(ang, sa) < 14f) nearStreet = true;
-                if (business) { int fl = 3 + rnd.Next(0, 3); for (int f = 0; f < fl; f++) Place(c, "kantoor"); }
-                else { put(c, nearStreet ? "winkel" : "woning"); if (rnd.NextDouble() < 0.45) Place(c, "woning"); }
+                if (!mod(c, business ? Kantoren : nearStreet ? Winkels : Huizen, street0(c))) put(c, "park");
                 continue;
             }
             if (road && d <= 12)   // langs de hoofdstraten
             {
-                if (business) { int fl = 2 + rnd.Next(0, 3); for (int f = 0; f < fl; f++) Place(c, "kantoor"); }
-                else { put(c, "woning"); if (rnd.NextDouble() < 0.3) Place(c, "woning"); }
+                if (!mod(c, business ? Kantoren : Huizen, street0(c))) put(c, "park");
                 continue;
             }
-            if (path && d <= 11) { put(c, rnd.NextDouble() < 0.7 ? "park" : "woning"); continue; }
-            if (d <= 10) { put(c, rnd.NextDouble() < 0.75 ? "park" : "woning"); continue; }
+            if (path && d <= 11) { if (rnd.NextDouble() < 0.7 ? (rnd.NextDouble() < 0.5 || !mod(c, Groen, -1)) : !mod(c, Villas, street0(c))) put(c, "park"); continue; }
+            if (d <= 10) { if (rnd.NextDouble() < 0.75 ? (rnd.NextDouble() < 0.6 || !mod(c, Groen, -1)) : !mod(c, Villas, street0(c))) put(c, "park"); continue; }
             if (d <= 12 && rnd.NextDouble() < 0.45) put(c, "park");   // aan de rand: wat losse bosjes
         }
         DragStyle = keepStyle; DragOneWay = keepOne; TouchAll(); RebuildGrid();
+    }
+
+    // de modules van de startstad (versie 3), per soort plek
+    static readonly string[] Pleinen = { "plein-leeg", "plein-lantaarns", "plein-terras", "plein-zitkuil", "plein-fontein" };
+    static readonly string[] Winkels = { "winkel-bakkerij-2l", "winkel-boetiek-1l", "winkel-bovenwoning-3l", "winkel-etalage-2l", "horeca-cafe-met-terras-2l", "horeca-restaurant-2l", "snackbar-frituur-1l" };
+    static readonly string[] Huizen = { "rijhuis-baksteen-2l", "rijhuis-baksteen-3l", "rijhuis-wit-2l", "rijhuis-hout-2l", "rijhuis-natuursteen-2l", "stadswoning-wit-3l", "herenhuis-natuursteen-4l" };
+    static readonly string[] Villas = { "villa-baksteen-tuin-2l", "villa-wit-tuin-2l", "bungalow-baksteen-1l", "patiowoning-baksteen-1l", "studio-hout-1l" };
+    static readonly string[] Kantoren = { "kantoor-glas-3l", "kantoor-glas-5l", "kantoor-beton-4l", "kantoor-baksteen-3l" };
+    static readonly string[] Groen = { "park-plantsoen", "park-bankjes", "park-speeltuin", "tuin-rozentuin", "park-vijver" };
+    // de draaiing waarbij de deur (of anders de stoep) van module M op vak c het best naar vak face wijst; -1: willekeurig
+    static int FaceRot(ModuleV2 M, int c, int face, System.Random rnd)
+    {
+        if (face < 0 || M == null) return rnd.Next(6);
+        var codes = MV2.Codes(M); var pts = new List<Vector2>();
+        foreach (string want in new[] { "deur", "stoep" })
+        {
+            foreach (var kv in codes) if (kv.Value == want) { var p = kv.Key.Split(','); int q = int.Parse(p[0]), r = int.Parse(p[1]), sd = int.Parse(p[2]); pts.Add(MV2.CellXZ(q, r) + MV2.FN(sd) * MV2.INNER); }
+            if (pts.Count > 0) break;
+        }
+        if (pts.Count == 0) return rnd.Next(6);
+        Vector3 up = Planet.Cells[c].dir, to = Planet.Cells[face].dir - up; to -= up * Vector3.Dot(to, up);
+        int best = 0; float bd = -9f;
+        for (int rot = 0; rot < 6; rot++)
+        {
+            ModAxes(c, rot, out var A, out var B, out _); float sc = -9f;
+            foreach (var p in pts) sc = Mathf.Max(sc, Vector3.Dot((A * p.x + B * p.y).normalized, to.normalized));
+            if (sc > bd + 1e-4f) { bd = sc; best = rot; }
+        }
+        return best;
     }
 
     // de startplek het dichtst bij een punt waar nog niets staat (anders gewoon de dichtstbijzijnde)
