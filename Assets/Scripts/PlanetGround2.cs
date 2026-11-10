@@ -95,7 +95,13 @@ public static partial class PlanetCity
     // ---------- stap 2: de bodem uit H, met gedeelde randpunten per vakrand ----------
     public static bool Ground2Merge = true;   // stukken met hetzelfde vlak samenvoegen (ontwerp 8.5 punt 3); uit: om te vergelijken
     public static long Ground2Tris;           // teller: driehoeken die Ground2Cell tekende (voor de test)
-    public static bool Ground2;   // schakelaar Terrein v2 (ontwikkelaarsmodus): de bodem van elk vak uit de hoogtefunctie, de randen gedeeld met de buren
+    // tijdmeting (voor de test): vakken met en zonder hoogtefunctie, randprofielen (opnieuw berekend of uit het geheugen)
+    public static long G2Cells, G2Field, G2EdgeNew, G2EdgeHit; public static readonly System.Diagnostics.Stopwatch G2SwField = new System.Diagnostics.Stopwatch(), G2SwPlain = new System.Diagnostics.Stopwatch(), G2SwEdge = new System.Diagnostics.Stopwatch();
+    public static string G2Stats() => G2Cells + " vakken (" + G2Field + " met hoogtefunctie): " + G2SwField.ElapsedMilliseconds + " ms met, " + G2SwPlain.ElapsedMilliseconds + " ms zonder; randprofielen " + G2EdgeNew + " berekend (" + G2SwEdge.ElapsedMilliseconds + " ms), " + G2EdgeHit + " uit het geheugen";
+    public static void G2Reset() { G2Cells = G2Field = G2EdgeNew = G2EdgeHit = 0; G2SwField.Reset(); G2SwPlain.Reset(); G2SwEdge.Reset(); }
+    public static bool Ground2 = true;   // Terrein v2 (standaard aan; uit in de ontwikkelaarsmodus, voor die speelsessie): de bodem van elk vak uit de hoogtefunctie, de randen gedeeld met de buren, wegen met een profiel (RoadH)
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void Ground2Default() { Ground2 = true; }   // bij elke start van Play weer aan (statische velden overleven een herstart zonder domein-herladen)
 
     // De hoogte van het maaiveld (v2) op punt dir met de gewone terreinhoogte basis daar: de hoogtefunctie langs wegen (alleen in de
     // vakken binnen bereik, field; daarbuiten doet ze toch niets), de hoogste dijk erop, de laagste geul erin (alleen bij vakken waar
@@ -144,9 +150,11 @@ public static partial class PlanetCity
             int ka = k;
             if (!own) { ka = -1; var ca = Planet.Cells[a]; for (int q = 0; q < ca.corners.Length; q++) if (edN[a][q] == i) { ka = q; break; } if (ka < 0) { own = true; a = i; ka = k; } }
             var su = segsUse; var fu = flatsUse; var cu = capsUse;
-            try { e = (key, EdgeProfile0(a, ka)); } finally { segsUse = su; flatsUse = fu; capsUse = cu; }
+            bool run = G2SwEdge.IsRunning; G2SwEdge.Start(); G2EdgeNew++;
+            try { e = (key, EdgeProfile0(a, ka)); } finally { segsUse = su; flatsUse = fu; capsUse = cu; if (!run) G2SwEdge.Stop(); }
             edgeCache[id] = e;
         }
+        else G2EdgeHit++;
         if (own) return e.pts;
         // de buur loopt de rand andersom (zelfde hoekpunten, de volgorde omgekeerd); voor de zekerheid aan de hoekpunten gemeten
         var ca2 = Planet.Cells[a]; int ka2 = 0; for (int q = 0; q < ca2.corners.Length; q++) if (edN[a][q] == i) { ka2 = q; break; }
@@ -346,6 +354,11 @@ public static partial class PlanetCity
     // plat: een bebouwd vak (plateau op G; alleen de hoogtefunctie erover, de sokkel doet de rest); skip: driehoekjes onder een brugdek
     // wall: een wandquad (boven a-b, onder c-d, outw naar de lage kant), naar het materiaal sokkel
     static void Ground2Cell(int i, bool plat, System.Action<Vector3, Vector3, Vector3, float, float, float, bool> emit, System.Func<int, bool> skip, System.Action<Vector3, Vector3, Vector3, Vector3, Vector3> wall = null)
+    {
+        bool fld0 = fieldCells.Contains(i); var swc = fld0 ? G2SwField : G2SwPlain; G2Cells++; if (fld0) G2Field++; swc.Start();
+        try { Ground2Cell0(i, plat, emit, skip, wall); } finally { swc.Stop(); }
+    }
+    static void Ground2Cell0(int i, bool plat, System.Action<Vector3, Vector3, Vector3, float, float, float, bool> emit, System.Func<int, bool> skip, System.Action<Vector3, Vector3, Vector3, Vector3, Vector3> wall)
     {
         var c = Planet.Cells[i]; int m = c.corners.Length; float g = G(i);
         if (FlatGround(i)) { Vector3 mid = c.dir * (Planet.R + g); for (int k = 0; k < m; k++) { if (skip(k)) continue; emit(mid, c.corners[k] * (Planet.R + g), c.corners[(k + 1) % m] * (Planet.R + g), g, g, g, false); } return; }

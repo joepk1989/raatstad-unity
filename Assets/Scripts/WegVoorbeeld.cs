@@ -59,7 +59,8 @@ public class WegVoorbeeld : MonoBehaviour
         if (mode.StartsWith("melding")) { yield return Melding(mode); yield break; }
         if (mode == "hoogtetest") { yield return Hoogtetest(); yield break; }
         if (mode == "natuurtest") { yield return Hoogtetest(true); yield break; }
-        if (mode == "inspel") { yield return Inspel(); yield break; }   // Terrein v2 zoals in het spel: wegen een voor een, opslaan en laden, de schakelaar   // de natuurplaneet met de 30 wegen (test 11 van het ontwerp)
+        if (mode == "inspel") { yield return Inspel(); yield break; }
+        if (mode == "volplaneet") { yield return VolPlaneet(); yield break; }   // Hele planeet vol met Terrein v2: profiel, laden, herbouw en een klik   // Terrein v2 zoals in het spel: wegen een voor een, opslaan en laden, de schakelaar   // de natuurplaneet met de 30 wegen (test 11 van het ontwerp)
         if (mode.StartsWith("ontwerp")) { yield return Ontwerp(home, mode); yield break; }
         if (mode == "zee") { yield return ZeeTest(home); yield break; }
         if (mode == "startnaden") { yield return StartNaden(); yield break; }
@@ -1014,6 +1015,34 @@ public class WegVoorbeeld : MonoBehaviour
         if (centers.Count > 0) { Hc = centers[0]; bouw = new System.Text.StringBuilder(); yield return Scan(centers[0], 0f, "inspel_scan", centers, 24f); log.Append(bouw.ToString()); }
         for (int st = 0; st < 2; st++) yield return Shot("inspel_" + st, Planet.Starts[st], Dh(Planet.Starts[st], 0.4f), 260f, 50f);
         File.WriteAllText(Path.Combine(Dir, "inspel.txt"), log.ToString());
+        File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true;
+    }
+    // Hele planeet vol met Terrein v2 (standaard): de tijd van het profiel over alle wegen, opslaan en laden, een volledige herbouw, en
+    // een klik (een nieuwe weg van 6 vakken op een leeg stuk, zoals PlanetBuilder: PlaceLine, SetLevel, Reprofile, Rebuild).
+    IEnumerator VolPlaneet()
+    {
+        var log = new System.Text.StringBuilder(); PlanetCity.ClearAll();   // (Terrein v2 aan of uit naar de vlag: "volplaneet v2" of "volplaneet")
+        var sw = System.Diagnostics.Stopwatch.StartNew(); var e = PlanetCity.FillSteps(null); while (e.MoveNext()) { } long tf = sw.ElapsedMilliseconds;
+        int nw = 0; foreach (var kv in PlanetCity.Cells) if (PlanetCity.IsWalk(kv.Key)) nw++;
+        sw.Restart(); PlanetCity.Reprofile(); long tp = sw.ElapsedMilliseconds;
+        log.Append("planeet vol in ").Append(tf).Append(" ms; ").Append(nw).Append(" weg- en padvakken; profiel ").Append(tp).Append(" ms; RoadH ").Append(PlanetCity.RoadH.Count).AppendLine();
+        PlanetCity.G2Reset(); sw.Restart(); PlanetCity.TouchAll(); PlanetCity.Rebuild(); long tr = sw.ElapsedMilliseconds; log.Append("volledige herbouw ").Append(tr).Append(" ms; Terrein v2 ").AppendLine(PlanetCity.Ground2 ? "aan" : "uit");
+        if (PlanetCity.Ground2) log.Append("  ").AppendLine(PlanetCity.G2Stats());
+        string snap = PlanetCity.Snapshot(); PlanetCity.ClearAll(); sw.Restart(); PlanetCity.Restore(snap); long tl = sw.ElapsedMilliseconds;
+        sw.Restart(); PlanetCity.Rebuild(); long tl2 = sw.ElapsedMilliseconds; log.Append("laden ").Append(tl).Append(" ms, daarna herbouw ").Append(tl2).AppendLine(" ms");
+        // klikken: een nieuwe weg op een leeg stuk ver van de wegen, vijf keer
+        var times = new List<long>(); var rnd = new System.Random(5);
+        for (int k = 0; k < 5; k++)
+        {
+            int a = -1; for (int t = 0; t < 2000 && a < 0; t++) { int c = rnd.Next(Planet.Cells.Length); if (PlanetCity.Cells.ContainsKey(c) || Planet.IsPole(c)) continue; bool free = true; foreach (int j in Nearby(c, 90f)) if (PlanetCity.IsWalk(j) || (PlanetCity.Cells.TryGetValue(j, out var lj) && lj.Count > 0 && lj[0] != "park")) { free = false; break; } if (free) a = c; }   // (geen weg of gebouw binnen 90 m; bos mag)
+            if (a < 0) break; int b = Go(a, 0f, 75f); var line = PlanetCity.LinePlan(a, b); if (line == null || line.Count < 3) continue;
+            PlanetCity.G2Reset(); sw.Restart(); if (PlanetCity.PlaceLine(line, "weg") > 0) { PlanetCity.SetLevel(line, 0, "weg"); if (PlanetCity.Ground2) PlanetCity.Reprofile(line); else { PlanetCity.DipUnder(line); PlanetCity.BoreLine(line); } } long tpk = sw.ElapsedMilliseconds; PlanetCity.Rebuild(); long tk = sw.ElapsedMilliseconds;
+            if (PlanetCity.Ground2 && k == 0) log.Append("  ").AppendLine(PlanetCity.G2Stats());
+            times.Add(tk); log.Append("klik ").Append(k + 1).Append(": profiel ").Append(tpk).Append(" ms (waarvan ProfileAll ").Append(PlanetCity.LastProfileOnlyMs).Append(" ms), met herbouw ").Append(tk).Append(" ms (").Append(line.Count).AppendLine(" vakken)");
+        }
+        File.WriteAllText(Path.Combine(Dir, "volplaneet.txt"), log.ToString());
+        PlanetCity.RebuildGrid(); yield return null; yield return null;
+        yield return Shot("volplaneet_0", Planet.Starts[0], Dh(Planet.Starts[0], 0.4f), 260f, 50f);
         File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true;
     }
     IEnumerator Hoogtetest(bool natuur = false)

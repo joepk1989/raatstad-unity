@@ -142,13 +142,13 @@ public static partial class PlanetCity
     // Het profiel in het spel (Terrein v2, nieuwe opbouw): na elke wijziging opnieuw over alle wegen en paden. line: een net gelegde lijn,
     // daarop zoekt het tunnels en dalbruggen (BoreLine en DipUnder slaat het spel dan over). Terrein v2 uit: het profiel weg, de oude opbouw.
     public static List<int> ProfileNewLine;   // de lijn van de laatste klik (PlanetBuilder), voor Reprofile in Changed
-    public static float LastProfileMs;
+    public static float LastProfileMs, LastProfileOnlyMs;   // het hele profiel met UpdateCuts, en alleen ProfileAll
     public static void Reprofile(List<int> line = null)
     {
         if (!Ground2) { if (RoadH.Count > 0) { foreach (var kv in RoadH) { Touch(kv.Key); foreach (int j in Planet.Cells[kv.Key].nb) Touch(j); } RoadH.Clear(); UpdateCuts(); } return; }
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var ls = new List<List<int>>(); if (line != null && line.Count >= 4) ls.Add(line);
-        ProfileAll(ls); UpdateCuts(); LastProfileMs = sw.ElapsedMilliseconds;
+        ProfileAll(ls); LastProfileOnlyMs = sw.ElapsedMilliseconds; UpdateCuts(); LastProfileMs = sw.ElapsedMilliseconds;
     }
     public static string ProfileAll(List<List<int>> lines)
     {
