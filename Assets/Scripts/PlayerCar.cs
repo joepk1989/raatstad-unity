@@ -67,9 +67,11 @@ public partial class PlanetLife
         pSteerDeg = 0f; pFlipT = 0f; pLastVel = Vector3.zero; playerSlip = 0f;
         player = c; return root;
     }
+    public string LastRemove = "";   // voor een test: wie de auto het laatst weghaalde
+    public bool PlayerLost => player != null && player.root == null;   // het object is weg, de speler niet
     public void RemovePlayer()
     {
-        if (player == null) return; PlayerOut();
+        if (player == null) return; LastRemove = System.Environment.StackTrace; PlayerOut();
         player.dead = true;   // andere auto's die hem nog onthouden (voorligger, vastgezeten achter) zien hem zo als weg
         if (player.root != null) Destroy(player.root.gameObject); player = null; prb = null;
     }
@@ -91,7 +93,11 @@ public partial class PlanetLife
         // de wereldbegrenzing van een gedraaide mesh is ruim: iets kleiner nemen
         float wdt = Mathf.Min(b.size.x * 0.92f, 2.1f), len = b.size.z * 0.94f, top = Mathf.Min(b.max.y, 2.2f) - 0.05f, low = 0.5f, mid = Mathf.Lerp(low, top, 0.5f);
         if (pMat == null) pMat = new PhysicsMaterial("auto") { dynamicFriction = 0.25f, staticFriction = 0.3f, bounciness = 0.05f, frictionCombine = PhysicsMaterialCombine.Minimum, bounceCombine = PhysicsMaterialCombine.Minimum };
-        var a = root.gameObject.AddComponent<BoxCollider>(); a.center = new Vector3(b.center.x, (low + mid) * 0.5f, b.center.z); a.size = new Vector3(wdt, mid - low, len); a.sharedMaterial = pMat;
+        // tussen de wielen laag (bodemvrijheid), voor en achter de wielen hoger: anders stoot de overhang op een stoeprand of randje
+        // voordat het wiel er met de vering overheen kan
+        float zf = PWheels[0].z + 0.35f, zr = PWheels[2].z - 0.35f, over = 0.9f;
+        var a = root.gameObject.AddComponent<BoxCollider>(); a.center = new Vector3(b.center.x, (low + mid) * 0.5f, (zf + zr) * 0.5f); a.size = new Vector3(wdt, mid - low, zf - zr); a.sharedMaterial = pMat;
+        var ov = root.gameObject.AddComponent<BoxCollider>(); ov.center = new Vector3(b.center.x, (over + mid) * 0.5f, b.center.z); ov.size = new Vector3(wdt, Mathf.Max(0.1f, mid - over), len); ov.sharedMaterial = pMat;
         var cb = root.gameObject.AddComponent<BoxCollider>(); cb.center = new Vector3(b.center.x, (mid + top) * 0.5f, b.center.z - len * 0.05f); cb.size = new Vector3(wdt * 0.9f, top - mid, len * 0.55f); cb.sharedMaterial = pMat;
     }
 
