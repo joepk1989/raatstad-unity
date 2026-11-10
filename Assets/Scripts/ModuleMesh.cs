@@ -52,13 +52,14 @@ public static class ModuleMesh
     }
     // glas glad en een beetje metaalachtig: de zon glanst erin en de lucht spiegelt
     static readonly Dictionary<string, (float smooth, float metal)> Shine = new Dictionary<string, (float, float)> { ["w_curtain"] = (0.92f, 0.35f), ["facade"] = (0.94f, 0.3f), ["w_glass"] = (0.95f, 0.1f), ["f_glass"] = (0.95f, 0.1f), ["pane"] = (0.95f, 0.1f), ["frame"] = (0.6f, 0.6f), ["spandrel"] = (0.7f, 0.2f) };
-    static readonly HashSet<Material> shone = new HashSet<Material>();
+    static readonly HashSet<Material> shone = new HashSet<Material>(), textured = new HashSet<Material>();
     // verlichte ruiten: overdag gewoon glas, 's avonds warm licht (ModuleLights, ook bij donker weer)
     public static readonly Color LitDay = new Color(0.4f, 0.53f, 0.63f), LitNight = new Color(1f, 0.84f, 0.55f);
     public static Material Mat(string key)
     {
         if (key == "glow" || key == "lit") return Mats.GetUnlit("mod_" + key, ColOf(key));
         var mt = Mats.Get("mod_" + key, ColOf(key));
+        if (textured.Add(mt)) ModuleTex.Apply(key, mt);   // getekende textuur op ware schaal (baksteen, stucwerk, klinkers …)
         if (Shine.TryGetValue(key, out var sh) && shone.Add(mt)) { if (mt.HasProperty("_Smoothness")) mt.SetFloat("_Smoothness", sh.smooth); if (mt.HasProperty("_Metallic")) mt.SetFloat("_Metallic", sh.metal); }
         return mt;
     }
@@ -83,7 +84,16 @@ public static class ModuleMesh
             keys.Sort((a, b) => (Clear.Contains(a) ? 1 : 0).CompareTo(Clear.Contains(b) ? 1 : 0));
             var subs = new List<int[]>();
             foreach (var k in keys) { var b = mb[k]; int o = v.Count; v.AddRange(b.v); n.AddRange(b.n); var t = new int[b.t.Count]; for (int i = 0; i < t.Length; i++) t[i] = b.t[i] + o; subs.Add(t); }
-            mesh.SetVertices(v); mesh.SetNormals(n); mesh.subMeshCount = subs.Count; for (int i = 0; i < subs.Count; i++) mesh.SetTriangles(subs[i], i, false); mesh.RecalculateBounds();
+            // texturecoördinaten in meters: vlakke vlakken van boven (x, z), de rest langs het vlak (horizontaal, dan omhoog of langs
+            // de helling), zodat een baksteen- of klinkerpatroon doorloopt over muren, verdiepingen en buurvlakken (ModuleTex.cs)
+            var uv = new List<Vector2>(v.Count);
+            for (int i = 0; i < v.Count; i++)
+            {
+                Vector3 p = v[i], nn = n[i];
+                if (Mathf.Abs(nn.y) > 0.95f) { uv.Add(new Vector2(p.x, p.z)); continue; }
+                Vector3 t = Vector3.Cross(Vector3.up, nn).normalized, bt = Vector3.Cross(nn, t); uv.Add(new Vector2(Vector3.Dot(p, t), Vector3.Dot(p, bt)));
+            }
+            mesh.SetVertices(v); mesh.SetNormals(n); mesh.SetUVs(0, uv); mesh.subMeshCount = subs.Count; for (int i = 0; i < subs.Count; i++) mesh.SetTriangles(subs[i], i, false); mesh.RecalculateBounds();
             var mats = new Material[keys.Count]; for (int i = 0; i < keys.Count; i++) mats[i] = Mat(keys[i]);
             return new Built { mesh = mesh, mats = mats };
         }
