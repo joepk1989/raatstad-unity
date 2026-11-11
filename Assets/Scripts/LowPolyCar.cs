@@ -115,10 +115,12 @@ public static class LowPolyCar
     {
         var l = new List<float[]>(); foreach (float x in XsBetween(S, x0, x1)) l.Add(Strip(At(S, x), x, y0, y1, o)); Hull(mb, l);
     }
-    // wielkast: een donkere halve zeshoek boven het wiel, over de flank
+    // wielkast: een donkere halve zeshoek strak om het wiel (straal WR + 10 cm), over de flank
+    const float ArchR = WR + 0.1f;
     static void Arch(MeshBuilder mb, List<float[]> S, float wx, float top)
     {
-        var l = new List<float[]>(); foreach (var (x, y1) in new[] { (wx - 0.74f, 0.42f), (wx - 0.5f, top), (wx + 0.5f, top), (wx + 0.74f, 0.42f) }) l.Add(Strip(At(S, x), x, 0.3f, y1, 0.018f));
+        float h = ArchR * 0.866f;
+        var l = new List<float[]>(); foreach (var (x, y1) in new[] { (wx - ArchR, WR), (wx - ArchR * 0.5f, WR + h), (wx + ArchR * 0.5f, WR + h), (wx + ArchR, WR) }) l.Add(Strip(At(S, x), x, 0.28f, y1, 0.018f));
         Hull(mb, l);
     }
     static void Box(MeshBuilder mb, float sx, float sy, float sz, float x, float y, float z)
@@ -173,8 +175,14 @@ public static class LowPolyCar
         void Dress(List<float[]> B, float yF, float yR, float bumper = 0.42f)
         {
             float xf = B[B.Count - 1][0], xr = B[0][0], wf = At(B, xf - 0.05f)[4], wr = At(B, xr + 0.05f)[4];
-            Box(trim, 0.16f, 0.17f, 2f * wf + 0.06f, xf + 0.02f, bumper, 0f); Box(trim, 0.16f, 0.17f, 2f * wr + 0.06f, xr - 0.02f, bumper, 0f);
-            Box(plate, 0.02f, 0.11f, 0.4f, xf + 0.105f, bumper, 0f); Box(plate, 0.02f, 0.11f, 0.4f, xr - 0.105f, bumper, 0f);
+            Box(trim, 0.08f, 0.13f, 2f * wf - 0.04f, xf + 0.01f, bumper, 0f); Box(trim, 0.08f, 0.13f, 2f * wr - 0.04f, xr - 0.01f, bumper, 0f);   // vlak met de carrosserie
+            Box(plate, 0.02f, 0.1f, 0.38f, xf + 0.055f, bumper, 0f); Box(plate, 0.02f, 0.1f, 0.38f, xr - 0.055f, bumper, 0f);
+            // lichtlijnen: wit over de hele neus net onder de kap, rood over de hele achterkant (strak, zoals de Cybertruck)
+            var nf = B[B.Count - 1]; var nr = B[0];
+            float yL = Mathf.Clamp(Mathf.Max(nf[2], yF), nf[1] + 0.08f, nf[3] - 0.035f), wL = Mathf.Min(nf[4], nf[6], WAt(nf, yL)) * 2f - 0.12f;
+            Lamp(White, 0.02f, 0.045f, wL, xf + 0.008f, yL, 0f);
+            float yR2 = Mathf.Clamp(Mathf.Max(nr[2], yR), nr[1] + 0.08f, nr[3] - 0.04f), wR2 = Mathf.Min(nr[4], nr[6], WAt(nr, yR2)) * 2f - 0.1f;
+            Lamp(Red, 0.02f, 0.05f, wR2, xr - 0.008f, yR2, 0f);
             foreach (int sg in new[] { -1, 1 })
             {
                 var sf = At(B, xf - 0.16f); float yf = Mathf.Clamp(yF, sf[1] + 0.03f, sf[3] - 0.03f); Lamp(Amber, 0.14f, 0.05f, 0.02f, xf - 0.16f, yf, sg * (WAt(sf, yf) + 0.012f));
@@ -203,9 +211,7 @@ public static class LowPolyCar
             var C = L(new[] { -1.62f, 0.92f, 0.92f, 0.95f, 0.79f, 0.79f, 0.77f }, new[] { -1.08f, 0.93f, 0.93f, 1.42f, 0.79f, 0.79f, 0.6f }, new[] { -0.05f, 0.93f, 0.93f, 1.42f, 0.79f, 0.79f, 0.6f }, new[] { 0.64f, 0.92f, 0.92f, 0.94f, 0.79f, 0.79f, 0.77f });
             Car(B, C, new[] { 0.6f, -0.02f }, new[] { -1.58f, -1.1f }, new[] { -1.45f, 0.45f });
             foreach (int sg in new[] { -1, 1 }) foreach (var (x0, x1) in new[] { (-2.2f, -2.25f + 0.0f), (-0.66f, 0.66f), (2.24f, 2.2f) }) if (x1 - x0 > 0.1f) Box(glow, x1 - x0, 0.03f, 0.02f, (x0 + x1) * 0.5f, 0.64f, sg * 0.935f);   // lichtlijn op de gordellijn, tussen de wielkasten
-            Band(trim, B, -2.2f, 2.25f, 0.3f, 0.42f);
-            foreach (int sg in new[] { -1, 1 }) Lamp(White, 0.06f, 0.07f, 0.44f, 2.31f, 0.64f, sg * 0.5f);
-            Lamp(Red, 0.05f, 0.06f, 1.4f, -2.35f, 0.74f, 0f);
+            Band(trim, B, -2.2f, 2.25f, 0.3f, 0.35f);
             Dress(B, 0.6f, 0.74f);
         }
         else if (type == "coupe")   // lage wig: platte neus, steile achterkant, donkere streep over de flanken
@@ -214,8 +220,6 @@ public static class LowPolyCar
             var C = L(new[] { -1.92f, 0.92f, 0.92f, 0.94f, 0.8f, 0.8f, 0.78f }, new[] { -1.2f, 0.91f, 0.91f, 1.28f, 0.8f, 0.8f, 0.6f }, new[] { -0.15f, 0.89f, 0.89f, 1.28f, 0.8f, 0.8f, 0.6f }, new[] { 0.8f, 0.87f, 0.87f, 0.89f, 0.8f, 0.8f, 0.78f });
             Car(B, C, new[] { 0.75f, -0.12f }, new[] { -1.88f, -1.22f }, new[] { -1.65f, 0.6f }, 0.74f);
             Band(trim, B, -2.0f, 1.7f, 0.44f, 0.52f); Band(trim, B, -2.3f, 2.3f, 0.3f, 0.36f);
-            foreach (int sg in new[] { -1, 1 }) foreach (float z in new[] { 0.6f, 0.38f }) Lamp(White, 0.05f, 0.08f, 0.17f, 2.33f, 0.5f, sg * z);
-            foreach (int sg in new[] { -1, 1 }) Lamp(Red, 0.05f, 0.07f, 0.5f, -2.36f, 0.7f, sg * 0.5f);
             Dress(B, 0.5f, 0.7f, 0.4f);
         }
         else if (type == "suv")   // hoge SUV: brede kast, groot glasvlak, donkere onderkant en dakrails
@@ -224,10 +228,9 @@ public static class LowPolyCar
             var C = L(new[] { -2.12f, 1.1f, 1.1f, 1.72f, 0.91f, 0.91f, 0.8f }, new[] { 0.52f, 1.1f, 1.1f, 1.7f, 0.91f, 0.91f, 0.8f }, new[] { 1.1f, 1.08f, 1.08f, 1.1f, 0.91f, 0.91f, 0.9f });
             Car(B, C, new[] { 1.02f, 0.56f }, null, new[] { -1.95f, 0.85f }, 0.92f);
             Hull(glass, L(new[] { -2.135f, 1.2f, 1.2f, 1.62f, 0.75f, 0.75f, 0.66f }, new[] { -2.12f, 1.2f, 1.2f, 1.62f, 0.75f, 0.75f, 0.66f }));   // achterruit
-            Band(trim, B, -2.25f, 2.2f, 0.34f, 0.56f);
+            Band(trim, B, -2.25f, 2.2f, 0.34f, 0.42f);
             foreach (int sg in new[] { -1, 1 }) Box(trim, 2.4f, 0.06f, 0.06f, -0.8f, 1.74f, sg * 0.66f);
             Box(trim, 0.05f, 0.2f, 0.9f, 2.36f, 0.78f, 0f);
-            foreach (int sg in new[] { -1, 1 }) { Lamp(White, 0.05f, 0.05f, 0.42f, 2.33f, 0.9f, sg * 0.6f); Lamp(Red, 0.05f, 0.07f, 0.36f, -2.34f, 0.95f, sg * 0.62f); }
             Dress(B, 0.9f, 0.95f, 0.46f);
         }
         else if (type == "wedge")   // stalen wig-pickup: één schuin vlak van neus tot dak, scherpe wielkasten, lichtbalken
@@ -237,8 +240,7 @@ public static class LowPolyCar
             Hull(body, B);
             WinTop(glass, B, 1.78f, -0.08f, 0.1f); WinSide(glass, B, 1.5f, -0.95f, 0.12f, 0.8f);
             foreach (float wx in new[] { -1.45f, 1.45f }) Arch(trim, B, wx, 0.98f);
-            Band(trim, B, -2.3f, 2.32f, 0.32f, 0.5f);
-            Lamp(White, 0.04f, 0.045f, 1.66f, 2.395f, 0.8f, 0f); Lamp(Red, 0.04f, 0.05f, 1.62f, -2.385f, 1.22f, 0f);
+            Band(trim, B, -2.3f, 2.32f, 0.32f, 0.38f);
             Dress(B, 0.8f, 1.1f, 0.44f); Mirror(B, 1.5f);
         }
         else if (type == "stad" || type == "taxi")   // kleine hatchback (de taxi met een daklicht)
@@ -246,9 +248,8 @@ public static class LowPolyCar
             var B = L(new[] { -2.32f, 0.4f, 0.62f, 0.84f, 0.7f, 0.86f, 0.74f }, new[] { -2.15f, 0.3f, 0.62f, 0.92f, 0.76f, 0.88f, 0.78f }, new[] { 0.55f, 0.3f, 0.62f, 0.9f, 0.78f, 0.89f, 0.78f }, new[] { 2.1f, 0.3f, 0.6f, 0.8f, 0.76f, 0.87f, 0.74f }, new[] { 2.33f, 0.4f, 0.56f, 0.7f, 0.64f, 0.8f, 0.64f });
             var C = L(new[] { -1.58f, 0.9f, 0.9f, 0.93f, 0.79f, 0.79f, 0.77f }, new[] { -1.18f, 0.91f, 0.91f, 1.42f, 0.79f, 0.79f, 0.64f }, new[] { 0.12f, 0.9f, 0.9f, 1.42f, 0.79f, 0.79f, 0.64f }, new[] { 0.74f, 0.88f, 0.88f, 0.9f, 0.79f, 0.79f, 0.77f });
             Car(B, C, new[] { 0.7f, 0.16f }, new[] { -1.55f, -1.2f }, new[] { -1.4f, 0.5f });
-            Band(trim, B, -2.25f, 2.2f, 0.3f, 0.42f);
+            Band(trim, B, -2.25f, 2.2f, 0.3f, 0.35f);
             if (type == "taxi") Lamp(Hex("#ffe08a"), 0.3f, 0.14f, 0.6f, -0.5f, 1.5f, 0f);
-            foreach (int sg in new[] { -1, 1 }) { Lamp(White, 0.06f, 0.1f, 0.3f, 2.31f, 0.64f, sg * 0.55f); Lamp(Red, 0.06f, 0.1f, 0.3f, -2.33f, 0.68f, sg * 0.56f); }
             Dress(B, 0.62f, 0.68f);
         }
         else   // bestelbus
@@ -257,8 +258,7 @@ public static class LowPolyCar
             Hull(body, B);
             WinTop(glass, B, 1.45f, 1.0f, 0.09f); WinSide(glass, B, 1.0f, 1.42f, 0.12f, 0.85f);
             foreach (float wx in new[] { -1.45f, 1.45f }) Arch(trim, B, wx, 0.82f);
-            Band(trim, B, -2.25f, 2.25f, 0.3f, 0.44f);
-            foreach (int sg in new[] { -1, 1 }) { Lamp(White, 0.06f, 0.12f, 0.3f, 2.3f, 0.66f, sg * 0.6f); Lamp(Red, 0.06f, 0.14f, 0.24f, -2.36f, 0.75f, sg * 0.66f); }
+            Band(trim, B, -2.25f, 2.25f, 0.3f, 0.35f);
             Dress(B, 0.66f, 0.75f, 0.42f); Mirror(B, 1.42f);
             Band(trim, B, -2.36f, 1.2f, 0.98f, 1.0f, 0.016f);   // naad van de laadruimte
             Box(trim, 0.012f, 0.95f, 0.02f, -2.345f, 1.4f, 0f);   // achterdeuren

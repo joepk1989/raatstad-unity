@@ -28,6 +28,7 @@ Erbij gekomen op 31 oktober 2026:
 
 - Fietsers houden het stuur vast en trappen mee: na de animatie buigen arm en been (twee botten, cosinusregel) naar handvat en pedaal (`PlanetLife.LateUpdate`); omafietsstuur, trappers draaien met de wielen mee.
 - Voertuigen en rijgedrag van de webversie: zeven low-poly auto's uit zeshoekige doorsneden; netjes verkeer komt los achter een stilstaande auto; Totale chaos (menu) geeft elke auto een persona (racer, ontwijker, jager), met slippen, botsen, schade, brand en mensen omverrijden.
+- Strakker gemaakt (11 november 2026, `LowPolyCar.cs`): wielkasten als halve zeshoek strak om het wiel (`ArchR` = wielstraal + 10 cm) in plaats van brede donkere vlakken, dunne sierstrook onderlangs, bumpers vlak met de carrosserie, en per auto één witte lichtlijn over de neus en een rode over de achterkant (in `Dress`) in plaats van losse lampjes. Close-ups: `DriveTest.cs` met vlag `rijden autos`.
 - Interface: zes vaste bouwcategorieën (1–6) met een lade, Tab vasthouden voor een zeshoekig keuzewiel, middelste klik als pipet, vooraf het effect op de schoonheid bij de muis en een TIP voor het zwakste onderdeel; blokpatronen, laagkiezer, uitleg bij aanwijzen (`Ui.Tip`), interfacegrootte in het menu, ongelukjesteller.
 
 Erbij gekomen op 1 november 2026 (natuur, `PlanetNature.cs`):
