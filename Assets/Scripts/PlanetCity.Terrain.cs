@@ -279,6 +279,35 @@ public static partial class PlanetCity
             }
             lc.Add(q);
             float sg = q.h - 0.05f < hc0 ? 1f : -1f;
+            if (RoadH.Count > 0)   // nieuwe opbouw: alleen de zijden die ergens in deze driehoek de verste zijn (de zeshoekige afstand is het maximum over de zijden), met de echte graten ertussen (vroeger vijf lijnen per zijde, dertig per kop)
+            {
+                int nn = q.n.Length; var NL = new Lin[nn]; for (int a = 0; a < nn; a++) NL[a] = new Lin { a = Vector3.Dot(o3 - q.c, q.n[a]), x = Vector3.Dot(c.east, q.n[a]), y = Vector3.Dot(c.north, q.n[a]) };
+                var act = new List<int>();
+                for (int a = 0; a < nn; a++)
+                {
+                    var poly = new List<Vector2> { Vector2.zero, L1, L2 };
+                    for (int b = 0; b < nn && poly.Count >= 3; b++)
+                    {
+                        if (b == a) continue; Lin d = NL[a] - NL[b]; var outP = new List<Vector2>(poly.Count + 2);   // het deel waar zijde a minstens zo ver is als b (met 1 cm speling)
+                        for (int v = 0; v < poly.Count; v++)
+                        {
+                            Vector2 p0 = poly[v], p1 = poly[(v + 1) % poly.Count]; float f0 = d.At(p0) + 0.01f, f1 = d.At(p1) + 0.01f;
+                            if (f0 >= 0f) outP.Add(p0); if ((f0 >= 0f) != (f1 >= 0f)) outP.Add(Vector2.Lerp(p0, p1, f0 / (f0 - f1)));
+                        }
+                        poly = outP;
+                    }
+                    if (poly.Count >= 3) act.Add(a);
+                }
+                Lin HL0 = new Lin { a = q.h - 0.05f + Vector3.Dot(o3 - q.c, q.g), x = Vector3.Dot(c.east, q.g), y = Vector3.Dot(c.north, q.g) };   // het vlak van de kop (schuin bij een kruispunt)
+                foreach (int a in act)
+                {
+                    Lin N = NL[a];
+                    if (q.wall) { lines.Add(N - Lin.C(q.hw)); lines.Add(N - Lin.C(q.hw + q.wo)); }
+                    else { lines.Add(N - Lin.C(q.hw)); lines.Add(N - Lin.C(q.hw) - (B - HL0) * (sg / FK)); lines.Add(N - Lin.C(q.hw + CR(q))); }   // de zijde, de voet, het bereik
+                    foreach (int b in act) if (b > a) lines.Add(NL[a] - NL[b]);   // de graat tussen twee zijden
+                }
+                continue;
+            }
             foreach (var n in q.n)
             {
                 Lin N = new Lin { a = Vector3.Dot(o3 - q.c, n), x = Vector3.Dot(c.east, n), y = Vector3.Dot(c.north, n) };

@@ -387,12 +387,13 @@ public static partial class PlanetCity
             void Split(Lin f) { var next = new List<List<Vector2>>(); foreach (var pl in polys) if (!SplitBy(pl, f, next)) next.Add(pl); polys = next; }
             var ls = new List<Seg>(); var lc = new List<Cap>(); var spI = RoadH.Count == 0 && spanNear.Count > 0 && spanNear.TryGetValue(i, out var spl) ? spl : null;   // (nieuwe opbouw: geen deklijnen, zie EdgeProfile0)
             G2SwLines.Start(); if (field) { var fls = FieldLines(c, k, hc0, h1, h2, ls, lc); G2Lines += fls.Count; foreach (var f in fls) Split(f); } G2SwLines.Stop();
+            bool fieldT = field && !(RoadH.Count > 0 && ls.Count == 0 && lc.Count == 0 && flatsUse.Count == 0);   // (nieuwe opbouw: geen stuk kan deze driehoek halen: gewoon het terreinvlak, zonder snijden en samenvoegen)
             foreach (var f in SpanLines(c, spI)) Split(f);
-            var wg = new List<int>(); var wnq = new List<bool>(); var wl = field ? WallLins(c, ls, lc, wg, wnq) : new List<Lin>();   // de wanden hier (sokkels en bakken), binnenkant negatief; wg: per lijn de strook of kop
+            var wg = new List<int>(); var wnq = new List<bool>(); var wl = fieldT ? WallLins(c, ls, lc, wg, wnq) : new List<Lin>();   // de wanden hier (sokkels en bakken), binnenkant negatief; wg: per lijn de strook of kop
             Lin B2 = new Lin { a = hc0, x = ((h1 - hc0) * L2.y - (h2 - hc0) * L1.y) / det, y = ((h2 - hc0) * L1.x - (h1 - hc0) * L2.x) / det };
             if (cn) foreach (var n in near) foreach (var f in new[] { n.sd - Lin.C(-0.01f), n.sd - Lin.C(n.fl), n.sd - Lin.C(n.fl + n.rl), n.sd - Lin.C(n.end), n.t - Lin.C(n.q.hw), n.t - Lin.C(-n.q.hw) }) Split(f);
             var prof = plat ? null : EdgeProfile(i, k);
-            triSegs = null; triCaps = null; if (field && RoadH.Count > 0 && TriCull) { triSegs = ls; triCaps = lc; }   // vanaf hier: de hoogte met alleen de stukken van deze driehoek
+            triSegs = null; triCaps = null; if (fieldT && RoadH.Count > 0 && TriCull) { triSegs = ls; triCaps = lc; }   // vanaf hier: de hoogte met alleen de stukken van deze driehoek
             Vector2 E = L2 - L1; float el2 = E.sqrMagnitude, el = Mathf.Sqrt(el2);
             float TOf(Vector2 q) => Vector2.Dot(q - L1, E) / el2;
             bool OnEdge(Vector2 q) => Mathf.Abs((E.x * (q.y - L1.y) - E.y * (q.x - L1.x)) / el) < 1e-3f;
@@ -406,7 +407,7 @@ public static partial class PlanetCity
                 {
                     var pl = work.Pop(); Vector2 ctr = Vector2.zero; foreach (var v in pl) ctr += v; ctr /= pl.Count;
                     bool split = false;
-                    if (++guard < 4000 && (field || cn || spI != null))
+                    if (++guard < 4000 && (fieldT || cn || spI != null))
                     {
                         var fs = PlaneLins(c, B2, ls, lc, cn ? near : null, spI, ctr);
                         for (int x = 0; x < fs.Count && !split; x++) for (int y = x + 1; y < fs.Count && !split; y++)
@@ -423,7 +424,7 @@ public static partial class PlanetCity
             // hoogtefunctie niet knikt is de grond in repen gesneden (een spinnenweb van dunne driehoeken). Twee veelhoeken met een hele
             // zijde gemeen die in hetzelfde vlak liggen (binnenpunten van de een op het vlak van de ander, binnen 4 mm) en samen bol
             // blijven worden weer één veelhoek. Een wand of knik scheidt ze vanzelf: dan klopt het vlak niet.
-            if (Ground2Merge && polys.Count > 1 && (field || cn))
+            if (Ground2Merge && polys.Count > 1 && (fieldT || cn))
             {
                 var P2 = polys; var Hn = new List<List<Vector3>>(P2.Count);   // per veelhoek: binnenpunten (x, y, hoogte)
                 foreach (var pl in P2)
@@ -513,7 +514,7 @@ public static partial class PlanetCity
             // De wandlijnen zijn vlak en de hoogtefunctie leeft op de bol: een punt op een wandlijn ligt millimeters naast de echte sprong.
             // Elk punt binnen 4 cm van een wandlijn (niet op de vakrand: die komen uit het profiel) schuift langs de normaal naar de sprong
             // (bisectie); dezelfde functie van de positie, dus alle kopieën van het punt schuiven gelijk
-            float HQ(Vector2 q) => H2(Dir(q), Base(q), field, cn);
+            float HQ(Vector2 q) => H2(Dir(q), Base(q), fieldT, cn);
             Vector2 SnapWall(Vector2 q)
             {
                 if (OnEdge(q)) return q;
@@ -551,7 +552,7 @@ public static partial class PlanetCity
                 }
                 for (int v = pl.Count - 1; v >= 0 && pl.Count > 3; v--) if ((pl[v].q - pl[(v + pl.Count - 1) % pl.Count].q).sqrMagnitude < 1e-6f) pl.RemoveAt(v);   // dubbele punten (na het snijden)
                 int n = pl.Count; if (n < 3) return; var P = new Vector3[n]; var H = new float[n];
-                float HOf(int v, float bs) { if (pl[v].t >= 0f) return ProfileAt(prof, pl[v].t, bs, pl[v].t0); float ob = wallBias; wallBias = bs; try { return H2(Dir(pl[v].q), Base(pl[v].q), field, cn); } finally { wallBias = ob; } }
+                float HOf(int v, float bs) { if (pl[v].t >= 0f) return ProfileAt(prof, pl[v].t, bs, pl[v].t0); float ob = wallBias; wallBias = bs; try { return H2(Dir(pl[v].q), Base(pl[v].q), fieldT, cn); } finally { wallBias = ob; } }
                 Vector3 DOf(int v) => pl[v].t >= 0f ? Vector3.Lerp(D1 * (Planet.R + h1), D2 * (Planet.R + h2), pl[v].t).normalized : Dir(pl[v].q);
                 var bv = new float[n]; var lv = new int[n];
                 for (int v = 0; v < n; v++)   // (bij een hoek waar twee wanden elkaar raken ligt een punt op twee lijnen: binnen als de veelhoek binnen een van die groepen ligt)
@@ -577,7 +578,7 @@ public static partial class PlanetCity
             }
             void Refine2(Vector2 a, Vector2 b, Vector2 cc, Vector3 Pa, Vector3 Pb, Vector3 Pc, float ha, float hb, float hc2, float bias, int depth)
             {
-                Vector2 m2 = (a + b + cc) / 3f; Vector3 dm = Dir(m2); float ob = wallBias; wallBias = bias; float hm; bool steep; try { hm = H2(dm, Base(m2), field, cn, out steep); } finally { wallBias = ob; }
+                Vector2 m2 = (a + b + cc) / 3f; Vector3 dm = Dir(m2); float ob = wallBias; wallBias = bias; float hm; bool steep; try { hm = H2(dm, Base(m2), fieldT, cn, out steep); } finally { wallBias = ob; }
                 if (depth < 3 && Mathf.Abs(hm - (ha + hb + hc2) / 3f) > 0.06f && (b - a).sqrMagnitude + (cc - a).sqrMagnitude > 0.5f)
                 {
                     Vector3 Pm = dm * (Planet.R + hm);
