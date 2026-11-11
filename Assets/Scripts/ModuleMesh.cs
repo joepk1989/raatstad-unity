@@ -46,7 +46,7 @@ public static class ModuleMesh
             case "roof": return MV2.Hex("#8c4b3a"); case "step": return MV2.Hex("#b7b1a5"); case "ramptop": return MV2.Hex("#a7a298"); case "trunk": return MV2.Hex("#6b4a2e");
             case "leaf0": return MV2.Hex("#4f8a3c"); case "leaf1": return MV2.Hex("#5f9a48"); case "leaf2": return MV2.Hex("#3f7a34"); case "bench": return MV2.Hex("#9b6a3c");
             case "lamp": return MV2.Hex("#2b3138"); case "glow": return MV2.Hex("#ffe6a8"); case "water": return new Color(0.24f, 0.5f, 0.62f, 0.85f); case "bin": return MV2.Hex("#3f5f4a");
-            case "metal": return MV2.Hex("#9aa1a6"); case "lit": return LitDay; case "facade": return new Color(0.5f, 0.66f, 0.78f, 0.72f); case "spandrel": return MV2.Hex("#2b3a46"); case "pane": return new Color(0.66f, 0.83f, 0.92f, 0.38f); case "net": return new Color(0.85f, 0.86f, 0.84f, 0.45f);
+            case "metal": return MV2.Hex("#9aa1a6"); case "lijst": return MV2.Hex("#e3ddd0"); case "plint": return MV2.Hex("#4f4a45"); case "lit": return LitDay; case "facade": return new Color(0.5f, 0.66f, 0.78f, 0.72f); case "spandrel": return MV2.Hex("#2b3a46"); case "pane": return new Color(0.66f, 0.83f, 0.92f, 0.38f); case "net": return new Color(0.85f, 0.86f, 0.84f, 0.45f);
         }
         return new Color(0.7f, 0.7f, 0.68f);
     }
@@ -208,7 +208,8 @@ public static class ModuleMesh
                     if (lifted && kv.Key != "glass") Flat("ceiling", kv.Value, y0 - MV2.FLOOR_T, false);
                 }
                 if (lifted) foreach (var kv in byMat) foreach (var v in kv.Value) for (int e = 0; e < 3; e++) if (edgeCnt.TryGetValue(E(v[e], v[(e + 1) % 3]), out int c1) && c1 == 1) Box("slab", v[e], v[(e + 1) % 3], y0 - MV2.FLOOR_T, y0 + 0.02f, 0.06f);
-                if ((parts & ModuleMesh.WallsP) != 0) { Corners(L, y0); Walls(L, y0); }
+                if (li == roofLi && (parts & ModuleMesh.WallsP) != 0) RoofTop(byMat, edgeCnt, li, y0, area);
+                if ((parts & ModuleMesh.WallsP) != 0) { Corners(L, y0); Walls(L, li, y0); }
                 if ((parts & ModuleMesh.Stairs) != 0) foreach (var S in L.s) Stair(S, li, y0);
                 if ((parts & ModuleMesh.Roofs) != 0) Roofs(L, li, y0);
                 if ((parts & ModuleMesh.Objs) != 0) foreach (var O in L.o)
@@ -217,6 +218,41 @@ public static class ModuleMesh
                     Obj(O, y0);
                 }
             }
+        }
+        // Een plat dak: rondom een dakrand (attiek, 0,7 m) in het gevelmateriaal van de verdieping eronder met een afdekkap, behalve
+        // waar een trap uitkomt of een module bovenop staat; en als er ruimte is een zeshoekige installatiekast.
+        void RoofTop(Dictionary<string, List<Vector2[]>> byMat, Dictionary<(Vector2Int, Vector2Int), int> edgeCnt, int li, float y0, List<Vector2Int> area)
+        {
+            var below = m.lv[li - 1]; var cnt = new Dictionary<string, int>(); string wm = "slab"; int best = 0;
+            foreach (var w in below.w.Values) { if (w.m == "fence" || w.m == "hedge" || w.m == "glass" || w.m == "curtain") continue; cnt.TryGetValue(w.m, out int n0); cnt[w.m] = n0 + 1; if (n0 + 1 > best) { best = n0 + 1; wm = "w_" + w.m; } }
+            var stairs = new List<Vector2>(); foreach (var S in below.s) stairs.Add(MV2.P(S.ai, S.aj, ts));
+            Vector2Int Q(Vector2 p) => new Vector2Int(Mathf.RoundToInt(p.x * 64f), Mathf.RoundToInt(p.y * 64f));
+            int tris = 0; Vector2 sum = Vector2.zero;
+            foreach (var kv in byMat)
+            {
+                if (kv.Key == "glass" || kv.Key == "water") continue;
+                foreach (var v in kv.Value)
+                {
+                    tris++; sum += MV2.Centroid(v);
+                    for (int e = 0; e < 3; e++)
+                    {
+                        Vector2 p = v[e], q = v[(e + 1) % 3]; var a2 = Q(p); var b2 = Q(q); var k2 = a2.x < b2.x || (a2.x == b2.x && a2.y <= b2.y) ? (a2, b2) : (b2, a2);
+                        if (!edgeCnt.TryGetValue(k2, out int c1) || c1 != 1) continue;
+                        Vector2 mid = (p + q) * 0.5f, nn = new Vector2(-(q - p).y, (q - p).x).normalized; bool skip = false;
+                        foreach (var st in stairs) if ((st - mid).magnitude < 4f) skip = true;
+                        if (Covered(mid + nn * 0.4f, area) || Covered(mid - nn * 0.4f, area)) skip = true;
+                        if (skip) continue;
+                        Vector2 cen = MV2.Centroid(v); float sd = Vector2.Dot(cen - mid, nn) > 0f ? -1f : 1f;   // naar buiten: weg van de driehoek
+                        Box(wm, p, q, y0, y0 + 0.7f, T, sd * T / 2f); Box("lijst", p, q, y0 + 0.7f, y0 + 0.78f, T + 0.08f, sd * T / 2f);
+                    }
+                }
+            }
+            if (tris < 30) return;
+            // installatiekast: een zeshoekig blok bij het midden, niet bij voorwerpen (zonnepanelen, groen) en niet onder een module erboven
+            Vector2 c = sum / tris; foreach (var O in m.lv[li].o) if ((new Vector2(O.x, O.z) - c).magnitude < 3f) return;
+            if (Covered(c, area)) return;
+            var hex = new Vector2[6]; for (int k = 0; k < 6; k++) { float an = (30f + 60f * k) * Mathf.Deg2Rad; hex[k] = c + new Vector2(Mathf.Cos(an), Mathf.Sin(an)) * 1.1f; }
+            Prism("slab", hex, y0, y0 + 1.3f); for (int k = 0; k < 6; k++) hex[k] = c + (hex[k] - c) * 1.12f; Prism("metal", hex, y0 + 1.3f, y0 + 1.4f);
         }
         bool Covered(Vector2 p, List<Vector2Int> area)
         {
@@ -248,7 +284,7 @@ public static class ModuleMesh
         }
 
         // --- muren ---
-        void Walls(ModLevel L, float y0)
+        void Walls(ModLevel L, int li, float y0)
         {
             foreach (var kv in L.w)
             {
@@ -272,7 +308,7 @@ public static class ModuleMesh
                 bool glass = W.m == "glass";
                 if (o == "" && W.m == "curtain") { Curtain(a, b, y0, "w_curtain"); continue; }
                 if (glass && (o == "" || o == "window") && Outer(L, a, b)) { Curtain(a, b, y0, "facade"); continue; }   // een glaswand aan de buitenkant: een glasgevel
-                if (o == "") { Box(mat, a, b, y0, y0 + LH, glass ? 0.06f : T); if (glass) { Box("frame", a, b, y0, y0 + 0.12f, T); Box("frame", a, b, y0 + LH - 0.12f, y0 + LH, T); Mullions(a, b, y0 + 0.12f, y0 + LH - 0.12f, T); } continue; }
+                if (o == "") { Box(mat, a, b, y0, y0 + LH, glass ? 0.06f : T); if (glass) { Box("frame", a, b, y0, y0 + 0.12f, T); Box("frame", a, b, y0 + LH - 0.12f, y0 + LH, T); Mullions(a, b, y0 + 0.12f, y0 + LH - 0.12f, T); } else Details(L, li, kv.Key, a, b, "", a, b, 0f, 0f, y0); continue; }
                 float ow = o == "door" ? Mathf.Min(1.2f, len - 0.6f) : o == "window" ? Mathf.Max(0.6f, len - 0.8f) : o == "gate" ? Mathf.Max(1.5f, len - 0.5f) : len - 0.3f;
                 float oy0 = o == "window" ? 0.9f : 0f, oy1 = o == "door" ? 2.2f : o == "window" ? 2.15f : o == "gate" ? 2.8f : LH - 0.3f;
                 float f0 = (len - ow) / 2f / len; Vector2 p0 = Vector2.Lerp(a, b, f0), p1 = Vector2.Lerp(a, b, 1f - f0);
@@ -291,7 +327,32 @@ public static class ModuleMesh
                     Box("trim", p0, Vector2.Lerp(p0, p1, 0.06f / ow), y0, y0 + oy1, T + 0.08f); Box("trim", Vector2.Lerp(p1, p0, 0.06f / ow), p1, y0, y0 + oy1, T + 0.08f);
                 }
                 if (o == "gate") Box("trim", p0, p1, y0 + oy1 - 0.1f, y0 + oy1, T + 0.1f);
+                if (!glass) Details(L, li, kv.Key, a, b, o, p0, p1, oy0, oy1, y0);
             }
+        }
+
+        // Gevel aan de buitenkant (binnenmuren niet): plint onderaan (niet in een deur of doorgang), een lijst op elke verdiepingsvloer,
+        // een bredere kroonlijst onder het dak, een vensterbank onder een raam en een luifel boven een buitendeur. Alles steekt alleen
+        // naar buiten uit (de binnenkant van de muur blijft vlak).
+        void Details(ModLevel L, int li, (int, int, int) key, Vector2 a, Vector2 b, string o, Vector2 p0, Vector2 p1, float oy0, float oy1, float y0)
+        {
+            int side = OuterSide(L, a, b); if (side == 0) return; Vector2 u = (b - a).normalized;
+            bool topWall = li + 1 >= m.lv.Count || !m.lv[li + 1].w.ContainsKey(key);   // hierboven geen muur meer: onder het dak
+            bool gap = o == "door" || o == "gate" || o == "open";
+            if (li == 0 && !stacked) { if (gap) { if ((p0 - a).magnitude > 0.05f) Box("plint", a, p0, y0, y0 + 0.45f, T + 0.06f, side * 0.03f); if ((b - p1).magnitude > 0.05f) Box("plint", p1, b, y0, y0 + 0.45f, T + 0.06f, side * 0.03f); } else Box("plint", a, b, y0, y0 + 0.45f, T + 0.06f, side * 0.03f); }
+            if (topWall) Box("lijst", a - u * 0.12f, b + u * 0.12f, y0 + LH - 0.28f, y0 + LH, T + 0.24f, side * 0.12f);   // kroonlijst
+            else Box("lijst", a, b, y0 + LH - 0.12f, y0 + LH + 0.02f, T + 0.1f, side * 0.05f);                     // verdiepingslijst
+            if (o == "window") Box("lijst", p0 - u * 0.06f, p1 + u * 0.06f, y0 + oy0 - 0.08f, y0 + oy0 - 0.02f, T + 0.14f, side * 0.07f);   // vensterbank
+            if (o == "door") Box("trim", p0 - u * 0.35f, p1 + u * 0.35f, y0 + oy1 + 0.18f, y0 + oy1 + 0.26f, 0.95f, side * (T / 2f + 0.47f));   // luifel
+        }
+        // aan welke kant van de muur is het buiten? +1: de kant van de normaal (−dz, dx), −1: de andere, 0: binnenmuur
+        int OuterSide(ModLevel L, Vector2 a, Vector2 b)
+        {
+            Vector2 d = b - a, n = new Vector2(-d.y, d.x).normalized, mid = (a + b) * 0.5f;
+            bool Inside(Vector2 p) { float fi = p.x / (ts * MV2.SQ3 / 2f), fj = p.y / ts - fi / 2f; int i = Mathf.FloorToInt(fi), j = Mathf.FloorToInt(fj); int t = (fi - i) + (fj - j) < 1f ? 0 : 1;
+                return L.f.TryGetValue((i, j, t), out var f) && f != "paver" && f != "tile" && f != "grass" && f != "asphalt" && f != "water"; }
+            bool pa = Inside(mid + n * 0.7f), pb = Inside(mid - n * 0.7f);
+            return pa == pb ? 0 : pa ? -1 : 1;
         }
 
         // glasgevel (zoals de textuur in de webversie): per verdieping een donkere borstwering van 0,9 m, daarboven de ruit een paar cm
