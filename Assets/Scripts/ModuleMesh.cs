@@ -306,8 +306,10 @@ public static class ModuleMesh
                     continue;
                 }
                 bool glass = W.m == "glass";
+                if (!glass && W.m != "curtain" && (li + 1 >= m.lv.Count || !m.lv[li + 1].w.ContainsKey(kv.Key)) && FreeWall(L, a, b))
+                { Pier(mat, a, y0, LH); Pier(mat, b, y0, LH); Box("lijst", a, b, y0 + LH, y0 + LH + 0.06f, T + 0.08f); }   // tuinmuur: steunpilaren
                 if (o == "" && W.m == "curtain") { Curtain(a, b, y0, "w_curtain"); continue; }
-                if (glass && (o == "" || o == "window") && Outer(L, a, b)) { Curtain(a, b, y0, "facade"); continue; }   // een glaswand aan de buitenkant: een glasgevel
+                if (glass && m.cat != "Verbindingen" && (o == "" || o == "window") && Outer(L, a, b)) { Curtain(a, b, y0, "facade"); continue; }   // een glaswand aan de buitenkant: een glasgevel (een trappenhuis houdt doorzichtig glas)
                 if (o == "") { Box(mat, a, b, y0, y0 + LH, glass ? 0.06f : T); if (glass) { Box("frame", a, b, y0, y0 + 0.12f, T); Box("frame", a, b, y0 + LH - 0.12f, y0 + LH, T); Mullions(a, b, y0 + 0.12f, y0 + LH - 0.12f, T); } else Details(L, li, kv.Key, a, b, "", a, b, 0f, 0f, y0); continue; }
                 float ow = o == "door" ? Mathf.Min(1.2f, len - 0.6f) : o == "window" ? Mathf.Max(0.6f, len - 0.8f) : o == "gate" ? Mathf.Max(1.5f, len - 0.5f) : len - 0.3f;
                 float oy0 = o == "window" ? 0.9f : 0f, oy1 = o == "door" ? 2.2f : o == "window" ? 2.15f : o == "gate" ? 2.8f : LH - 0.3f;
@@ -349,10 +351,27 @@ public static class ModuleMesh
         int OuterSide(ModLevel L, Vector2 a, Vector2 b)
         {
             Vector2 d = b - a, n = new Vector2(-d.y, d.x).normalized, mid = (a + b) * 0.5f;
-            bool Inside(Vector2 p) { float fi = p.x / (ts * MV2.SQ3 / 2f), fj = p.y / ts - fi / 2f; int i = Mathf.FloorToInt(fi), j = Mathf.FloorToInt(fj); int t = (fi - i) + (fj - j) < 1f ? 0 : 1;
-                return L.f.TryGetValue((i, j, t), out var f) && f != "paver" && f != "tile" && f != "grass" && f != "asphalt" && f != "water"; }
-            bool pa = Inside(mid + n * 0.7f), pb = Inside(mid - n * 0.7f);
+            bool pa = Inside(L, mid + n * 0.7f), pb = Inside(L, mid - n * 0.7f);
             return pa == pb ? 0 : pa ? -1 : 1;
+        }
+        // ligt punt p binnen (een binnenvloer, geen bestrating, gras of water)?
+        bool Inside(ModLevel L, Vector2 p)
+        {
+            float fi = p.x / (ts * MV2.SQ3 / 2f), fj = p.y / ts - fi / 2f; int i = Mathf.FloorToInt(fi), j = Mathf.FloorToInt(fj); int t = (fi - i) + (fj - j) < 1f ? 0 : 1;
+            return L.f.TryGetValue((i, j, t), out var f) && f != "paver" && f != "tile" && f != "grass" && f != "asphalt" && f != "water";
+        }
+        // Een vrijstaande muur (aan beide kanten buiten, zoals een tuinmuur): op elk hoekpunt een zeshoekige steunpilaar die aan beide
+        // kanten uitsteekt en iets boven de muur uitkomt, met een afdekkap; over de muur zelf een afdekband.
+        readonly HashSet<(int, int, int)> piers = new HashSet<(int, int, int)>();
+        bool FreeWall(ModLevel L, Vector2 a, Vector2 b)
+        {
+            Vector2 d = b - a, n = new Vector2(-d.y, d.x).normalized, mid = (a + b) * 0.5f;
+            return !Inside(L, mid + n * 0.7f) && !Inside(L, mid - n * 0.7f);
+        }
+        void Pier(string mat, Vector2 p, float y0, float h)
+        {
+            if (!piers.Add((Mathf.RoundToInt(p.x * 20f), Mathf.RoundToInt(p.y * 20f), Mathf.RoundToInt(y0 * 10f)))) return;
+            Cyl(mat, p, 0.34f, 0.34f, y0, h + 0.15f, 6); Cyl("lijst", p, 0.42f, 0.42f, y0 + h + 0.15f, 0.1f, 6); Cyl("lijst", p, 0.2f, 0.3f, y0 + h + 0.25f, 0.12f, 6);
         }
 
         // glasgevel (zoals de textuur in de webversie): per verdieping een donkere borstwering van 0,9 m, daarboven de ruit een paar cm
