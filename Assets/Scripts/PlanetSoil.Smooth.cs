@@ -40,7 +40,7 @@ public static partial class PlanetCity
 
     // v, tris, cells: de grove mesh; nFlat: de normaal per driehoek; sn: de zachte normaal per hoekpunt (ook voor de vorm van Rond);
     // nSmooth: de normalen van Zacht; state per driehoek: 0 strak, 1 zacht, 2 knik; curve per driehoek: bit 0-2 welke rand gebogen is
-    class SoilPart { public Mesh coarse, fine, wire; public Vector3[] v, nFlat, sn, nSmooth; public int[] tris, cells; public byte[] state, curve; public Color[] col; public List<Vector4> ext; }
+    class SoilPart { public Mesh coarse, fine, wire; public Vector3[] v, nFlat, sn, nSmooth, nField; public int[] tris, cells; public byte[] state, curve; public Color[] col; public List<Vector4> ext; }
 
     // Terreinlijnen (Instellingen, onthouden in PlayerPrefs): dunne donkere lijnen langs elke driehoek van de bodem, in elke stand
     const string WireKey = "raatstad-terrein-lijnen";
@@ -133,6 +133,13 @@ public static partial class PlanetCity
     static bool SmoothCell(int i) => i >= 0 && !IsWalk(i) && !Plateau(i) && !fieldCells.Contains(i) && !(RoadH.Count > 0 && RoadH.ContainsKey(i))
         && !(carved.Count > 0 && carved.Contains(i)) && !(boreNear.Count > 0 && boreNear.ContainsKey(i)) && !Planet.IsPole(i) && !NoGround(i) && !Quay(i);
 
+    // Vakken langs een weg of pad (Terrein v2: het veld is in veel kleine stukken gesneden, melding 15): de vorm blijft strak (hij sluit
+    // precies op de weg en de buren aan), maar de belichting wordt zacht: per hoekpunt het gemiddelde van de driehoeken die daar samenkomen
+    // en minder dan FieldCrease van elkaar afwijken (naar oppervlak gewogen, zodat een splinter de grond eromheen volgt). Een echte knik
+    // (de bovenkant van een steil talud, een wand) blijft scherp.
+    static bool FieldSoft(int i) => i >= 0 && !SmoothCell(i) && !Plateau(i) && !Planet.IsPole(i) && !NoGround(i) && !Quay(i) && !(boreNear.Count > 0 && boreNear.ContainsKey(i));
+    const float FieldCrease = 70f;   // (ruim: een splinter in een talud van een paar centimeter staat steil, maar hoort bij de grond eromheen; het oppervlak weegt)
+
     // waarom vak i strak blijft (voor tests)
     public static string SmoothWhy(int i) => IsWalk(i) ? "weg" : Plateau(i) ? "plateau" : fieldCells.Contains(i) ? "veld" : RoadH.Count > 0 && RoadH.ContainsKey(i) ? "profiel" : carved.Contains(i) ? "geul" : boreNear.ContainsKey(i) ? "tunnel" : Planet.IsPole(i) ? "pool" : NoGround(i) ? "geengrond" : Quay(i) ? "kade" : "zacht";
 
@@ -167,6 +174,37 @@ public static partial class PlanetCity
         return s.sqrMagnitude > 1e-10f ? s.normalized : d;
     }
 
+    // de zachte normalen van het veld langs wegen (FieldSoft) per hoekpunt van de grove mesh, Vector3.zero voor de rest; null als er geen is.
+    // fn: de normaal per driehoek (per hoekpunt opgeslagen, zoals nFlat)
+    static Vector3[] FieldNormals(SoilPart part, Vector3[] fn)
+    {
+        var v = part.v; var tris = part.tris; var cells = part.cells; int nt = tris.Length / 3; Dictionary<long, List<int>> at = null; float[] area = null;
+        long PK(Vector3 x) => unchecked(((long)Mathf.RoundToInt(x.x * 200f) * 73856093L) ^ ((long)Mathf.RoundToInt(x.y * 200f) * 19349663L) ^ ((long)Mathf.RoundToInt(x.z * 200f) * 83492791L));   // (op 5 mm)
+        var soft = new Dictionary<int, bool>();
+        for (int q = 0; q < nt; q++)
+        {
+            int a = tris[q * 3], b = tris[q * 3 + 1], c = tris[q * 3 + 2]; int ci = a < cells.Length ? cells[a] : -1; if (ci < 0) continue;
+            if (!soft.TryGetValue(ci, out bool so)) { so = FieldSoft(ci); soft[ci] = so; } if (!so) continue;
+            if (at == null) { at = new Dictionary<long, List<int>>(); area = new float[nt]; }
+            area[q] = Vector3.Cross(v[b] - v[a], v[c] - v[a]).magnitude;
+            foreach (int x in new[] { a, b, c }) { long k = PK(v[x]); if (!at.TryGetValue(k, out var l)) { l = new List<int>(6); at[k] = l; } l.Add(q); }
+        }
+        if (at == null) return null;
+        var o = new Vector3[v.Length]; float cosF = Mathf.Cos(FieldCrease * Mathf.Deg2Rad);
+        for (int q = 0; q < nt; q++)
+        {
+            int a0 = tris[q * 3]; int ci = a0 < cells.Length ? cells[a0] : -1; if (ci < 0 || !soft.TryGetValue(ci, out bool so) || !so) continue;
+            Vector3 fq = fn[a0];
+            for (int e = 0; e < 3; e++)   // het gemiddelde van de driehoeken op dit hoekpunt die minder dan FieldCrease van driehoek q afwijken
+            {
+                int vi = tris[q * 3 + e]; Vector3 sum = Vector3.zero;
+                foreach (int t in at[PK(v[vi])]) { Vector3 ft = fn[tris[t * 3]]; if (Vector3.Dot(ft, fq) >= cosF) sum += ft * area[t]; }
+                o[vi] = sum.sqrMagnitude > 1e-12f ? sum.normalized : fq;
+            }
+        }
+        return o;
+    }
+
     static void Flat(SoilPart part)
     {
         var v = part.v; var tris = part.tris; var nr = new Vector3[v.Length]; Dictionary<int, Vector3> memo = null;
@@ -180,6 +218,10 @@ public static partial class PlanetCity
             }
             nr[a] = nr[b] = nr[c] = fn;
         }
+        // low poly langs een weg: elke driehoek het gemiddelde van de zachte normalen op zijn hoekpunten (nog steeds hoekig, maar zonder
+        // splinters die anders belicht zijn dan de grond eromheen, melding 15)
+        var fv = FieldNormals(part, nr); part.nField = fv;
+        if (fv != null) for (int t = 0; t + 2 < tris.Length; t += 3) { int a = tris[t], b = tris[t + 1], c = tris[t + 2]; if (fv[a] == Vector3.zero) continue; Vector3 m = fv[a] + fv[b] + fv[c]; if (m.sqrMagnitude > 1e-12f) nr[a] = nr[b] = nr[c] = m.normalized; }
         part.nFlat = nr;
     }
 
@@ -202,10 +244,16 @@ public static partial class PlanetCity
         bool Ok(int ci) { if (!ok.TryGetValue(ci, out bool can)) { can = SmoothCell(ci); ok[ci] = can; } return can; }
         float cosC = Mathf.Cos(SmoothCrease * Mathf.Deg2Rad);
         var sn = new Vector3[v.Length]; var ns = (Vector3[])part.nFlat.Clone(); var state = new byte[nt]; var curve = new byte[nt];
+        var fv = part.nField ?? (part.nField = FieldNormals(part, part.nFlat));
         for (int q = 0; q < nt; q++)
         {
             int a = tris[q * 3], b = tris[q * 3 + 1], c = tris[q * 3 + 2]; statTris++;
-            int ci = a < cells.Length ? cells[a] : -1; if (ci < 0 || !Ok(ci)) { statCell++; continue; }
+            int ci = a < cells.Length ? cells[a] : -1;
+            if (fv != null && fv[a] != Vector3.zero)   // langs een weg: zachte normalen, rechte randen (Rond buigt dan niets: de vorm blijft)
+            {
+                sn[a] = ns[a] = fv[a]; sn[b] = ns[b] = fv[b]; sn[c] = ns[c] = fv[c]; state[q] = 1; curve[q] = 0; statSmooth++; continue;
+            }
+            if (ci < 0 || !Ok(ci)) { statCell++; continue; }
             Vector3 fn = part.nFlat[a]; Vector3 na = SmoothNormal(ci, v[a], memo), nb = SmoothNormal(ci, v[b], memo), nc = SmoothNormal(ci, v[c], memo);
             sn[a] = na; sn[b] = nb; sn[c] = nc;
             if (Vector3.Dot(na, fn) < cosC || Vector3.Dot(nb, fn) < cosC || Vector3.Dot(nc, fn) < cosC) { state[q] = 2; statCrease++; }   // een knik: eigen normaal
