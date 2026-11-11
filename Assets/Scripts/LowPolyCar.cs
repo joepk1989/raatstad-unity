@@ -10,9 +10,18 @@ using UnityEngine;
 // Unity wordt dat z (vooruit) en x (opzij). Eigen ontwerpen, geen merken.
 public static class LowPolyCar
 {
-    public static readonly string[] Types = { "sedan", "coupe", "suv", "wedge", "stad", "bestel", "taxi" };
-    static readonly float[] Weight = { 0.2f, 0.12f, 0.18f, 0.1f, 0.2f, 0.12f, 0.08f };
-    static readonly string[] PaintHex = { "#e8c547", "#d9534f", "#4a90a4", "#f2f3f5", "#3d5a80", "#7bb356", "#e07a3f", "#2b2f36", "#b8a9c9", "#c9ced4", "#5a1f2a", "#b5a36a", "#1c1f24" };
+    public static readonly string[] Types = { "sedan", "coupe", "suv", "stad", "bestel", "taxi" };
+    static readonly float[] Weight = { 0.22f, 0.14f, 0.2f, 0.24f, 0.12f, 0.08f };
+    // lakkleuren: veel variatie, zoals echt verkeer (veel grijs, wit en zwart, daarnaast blauw, rood, groen, en een enkele felle)
+    static readonly string[] PaintHex = {
+        "#f2f3f5", "#e6e8ea", "#c9ced4", "#a9b0b8", "#8a9199", "#5c636b", "#3b4047", "#2b2f36", "#1c1f24", "#101215",   // wit, zilver, grijs, zwart
+        "#3d5a80", "#2a4a7f", "#1f3b63", "#4a90a4", "#5aa9e6", "#7fb3d5", "#264653", "#1b6f8a",                             // blauw
+        "#d9534f", "#b3262e", "#8c1c25", "#5a1f2a", "#e63946", "#c0392b",                                                     // rood
+        "#7bb356", "#2d6a4f", "#40916c", "#1b4332", "#8aa66a", "#556b2f",                                                     // groen
+        "#e8c547", "#f4a261", "#e07a3f", "#d4a017", "#f6bd60",                                                                // geel en oranje
+        "#b8a9c9", "#6d597a", "#9b5de5", "#e5989b", "#ffcad4",                                                                // paars en roze
+        "#b5a36a", "#a68a64", "#7f5539", "#ddb892", "#c2b280",                                                                // beige en bruin
+        "#00b4a6", "#0081a7", "#83c5be" };                                                                                     // turquoise
     static readonly Color White = Hex("#fff7d6"), Red = Hex("#ff3b30");
 
     class Parts { public Mesh body, glass, trim, glow, plate; public List<(Mesh m, Color c)> lamps = new List<(Mesh, Color)>(); public bool metal; }
@@ -28,9 +37,10 @@ public static class LowPolyCar
     {
         float r = Random.value, acc = 0f; int t = 0; for (; t < Types.Length - 1; t++) { acc += Weight[t]; if (r < acc) break; }
         string type = Types[t];
-        Color paint = type == "taxi" ? Hex("#f2c230") : type == "wedge" ? Hex("#d3d8dc") : Hex(PaintHex[Random.Range(0, PaintHex.Length)]);
+        Color paint = type == "taxi" ? Hex("#f2c230") : RandomPaint();
         Build(parent, type, paint); return type;
     }
+    public static Color RandomPaint() => Hex(PaintHex[Random.Range(0, PaintHex.Length)]);
     public static void Build(Transform parent, string type, Color paint)
     {
         if (!cache.TryGetValue(type, out var P) || P.body == null) { P = Make(type); cache[type] = P; }   // ook als Unity de mesh na een vorige Play heeft opgeruimd
@@ -232,16 +242,6 @@ public static class LowPolyCar
             foreach (int sg in new[] { -1, 1 }) Box(trim, 2.4f, 0.06f, 0.06f, -0.8f, 1.74f, sg * 0.66f);
             Box(trim, 0.05f, 0.2f, 0.9f, 2.36f, 0.78f, 0f);
             Dress(B, 0.9f, 0.95f, 0.46f);
-        }
-        else if (type == "wedge")   // stalen wig-pickup: één schuin vlak van neus tot dak, scherpe wielkasten, lichtbalken
-        {
-            metal = true;
-            var B = L(new[] { -2.37f, 0.42f, 0.98f, 1.3f, 0.84f, 0.95f, 0.84f }, new[] { -2.22f, 0.32f, 1.0f, 1.36f, 0.88f, 0.98f, 0.86f }, new[] { -0.15f, 0.32f, 1.02f, 1.84f, 0.88f, 0.98f, 0.6f }, new[] { 2.18f, 0.32f, 0.86f, 0.94f, 0.88f, 0.98f, 0.88f }, new[] { 2.38f, 0.44f, 0.74f, 0.86f, 0.8f, 0.94f, 0.86f });
-            Hull(body, B);
-            WinTop(glass, B, 1.78f, -0.08f, 0.1f); WinSide(glass, B, 1.5f, -0.95f, 0.12f, 0.8f);
-            foreach (float wx in new[] { -1.45f, 1.45f }) Arch(trim, B, wx, 0.98f);
-            Band(trim, B, -2.3f, 2.32f, 0.32f, 0.38f);
-            Dress(B, 0.8f, 1.1f, 0.44f); Mirror(B, 1.5f);
         }
         else if (type == "stad" || type == "taxi")   // kleine hatchback (de taxi met een daklicht)
         {
