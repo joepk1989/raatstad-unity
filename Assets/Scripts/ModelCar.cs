@@ -8,7 +8,7 @@ using UnityEngine;
 public static class ModelCar
 {
     class Part { public Mesh mesh; public List<(string name, Color c, float metal, float rough, bool emit)> mats = new List<(string, Color, float, float, bool)>(); }
-    class Model { public Part body, wheel; public List<Vector3> wheels = new List<Vector3>(); public float radius = 0.4f; public Mesh liner; }
+    class Model { public Part body, wheel; public List<Vector3> wheels = new List<Vector3>(); public float radius = 0.4f; }
     static readonly Dictionary<string, Model> cache = new Dictionary<string, Model>();
     public static void ResetStatics() { cache.Clear(); }
 
@@ -30,41 +30,10 @@ public static class ModelCar
             cw.Set(k, axle, wheel, c.x < 0f, c.z > 0f);   // het wiel in het bestand is een rechterwiel; links draait de as het om
         }
         cw.Drive(0f, 0f, 0f);
-        // wielkuipen: donker en dicht, zodat je in de wielkast niet de binnenkant van de carrosserie ziet
-        if (M.liner == null) M.liner = Liner(M);
-        var lg = new GameObject("wielkuipen"); lg.transform.SetParent(parent, false); lg.layer = parent.gameObject.layer;
-        lg.AddComponent<MeshFilter>().sharedMesh = M.liner; lg.AddComponent<MeshRenderer>().sharedMaterial = Mats.Get("auto_wielkuip", new Color(0.05f, 0.05f, 0.055f));
         return true;
     }
 
-    // per wiel een halve koker over het wiel (van iets onder de as voor tot iets onder de as achter) en een wand aan de binnenkant;
-    // beide kanten zichtbaar. De koker ligt binnen de carrosserie en is alleen door de wielkast te zien.
-    public const float ArchUp = 0.2f;   // zoveel ruimte boven de band (het wiel mag niet verder omhoog veren)
-    static Mesh Liner(Model M)
-    {
-        var wb = M.wheel.mesh.bounds; float hw = wb.extents.x;
-        var v = new List<Vector3>(); var t = new List<int>();
-        void Tri(Vector3 a, Vector3 b1, Vector3 c) { for (int side = 0; side < 2; side++) { int i = v.Count; v.Add(a); if (side == 0) { v.Add(b1); v.Add(c); } else { v.Add(c); v.Add(b1); } t.AddRange(new[] { i, i + 1, i + 2 }); } }   // beide kanten, elk met eigen hoekpunten
-        void Quad(Vector3 a, Vector3 b1, Vector3 c, Vector3 d) { Tri(a, b1, c); Tri(a, c, d); }
-        // de vorm van de wielkast van de Cybertruck: een trapezium (gemeten in het model, vanaf het hart van het wiel)
-        var prof = new[] { new Vector2(0.68f, 0.06f), new Vector2(0.42f, 0.70f), new Vector2(-0.42f, 0.70f), new Vector2(-0.68f, 0.06f) };
-        float sc = (M.radius + ArchUp) / 0.68f;
-        foreach (var c in M.wheels)
-        {
-            float sg = Mathf.Sign(c.x), ax = Mathf.Abs(c.x);
-            float xin = ax - hw - 0.1f, xout = ax + hw;   // tot de buitenkant van de band: blijft binnen de huid
-            Vector3 o = new Vector3(0f, c.y, c.z), I = Vector3.right * sg * xin, O = Vector3.right * sg * xout;
-            Vector3 hub = o + I + new Vector3(0f, -0.02f, 0f);
-            for (int k = 0; k + 1 < prof.Length; k++)
-            {
-                Vector3 p = new Vector3(0f, prof[k].y * sc, prof[k].x * sc), q = new Vector3(0f, prof[k + 1].y * sc, prof[k + 1].x * sc);
-                Quad(o + p + I, o + q + I, o + q + O, o + p + O);   // de kuip
-                Tri(hub, o + p + I, o + q + I);   // de binnenwand
-            }
-        }
-        var mesh = new Mesh { name = "wielkuipen" }; mesh.SetVertices(v); mesh.SetTriangles(t, 0); mesh.RecalculateNormals(); mesh.RecalculateBounds();
-        return mesh;
-    }
+    public const float ArchUp = 0.2f;   // zoveel ruimte boven de band in de wielkast (het wiel mag niet verder omhoog veren)
 
     // ear clipping in het vlak van de veelhoek: telkens een bolle hoek zonder andere punten erin afknippen
     static void Triangulate(Vector3[] pv, int[] idx, Vector3 fn, int b0, List<int> tris)
