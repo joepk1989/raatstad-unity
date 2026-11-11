@@ -405,12 +405,14 @@ public partial class PlanetBuilder : MonoBehaviour
         for (int d = 1; d <= b; d++) { int to = res.Count; for (int k = from; k < to; k++) foreach (int j in Planet.Cells[res[k].Item1].nb) if (seen.Add(j)) res.Add((j, d)); from = to; }
         return res;
     }
-    float NbAvg(int c) { float s = 0f; var nb = Planet.Cells[c].nb; foreach (int j in nb) s += PlanetCity.G(j); return s / nb.Length; }
+    // boetseren werkt op het terrein, niet op het wegdek (Terrein v2: G van een wegvak is de weghoogte uit het profiel, en dan zette een
+    // streek over of naast een dijk het terrein ineens op dijkhoogte)
+    float NbAvg(int c) { float s = 0f; var nb = Planet.Cells[c].nb; foreach (int j in nb) s += PlanetCity.Terrain(j); return s / nb.Length; }
 
     void SculptStart(int c)
     {
-        sculpting = true; sA = c; sLast = c; sInv = Inp.Held(K.Shift); sHa = PlanetCity.G(c); sHv = sHa; sAcc = 0f; sPrior.Clear(); sTouched.Clear();
-        if (terrMode == 2 && !sInv) { float s = 0f; var bc = Brush(c, brush); foreach (var x in bc) s += PlanetCity.G(x.c); sHv = Mathf.Round(s / bc.Count * 2f) / 2f; }   // egaliseren: het gemiddelde, op een halve meter
+        sculpting = true; sA = c; sLast = c; sInv = Inp.Held(K.Shift); sHa = PlanetCity.Terrain(c); sHv = sHa; sAcc = 0f; sPrior.Clear(); sTouched.Clear();
+        if (terrMode == 2 && !sInv) { float s = 0f; var bc = Brush(c, brush); foreach (var x in bc) s += PlanetCity.Terrain(x.c); sHv = Mathf.Round(s / bc.Count * 2f) / 2f; }   // egaliseren: het gemiddelde, op een halve meter
         if (terrMode <= 1) SculptStep(0.12f);   // een klik is ook al een stapje
         if (terrMode == 4) SlopeTo(c);
     }
@@ -427,7 +429,7 @@ public partial class PlanetBuilder : MonoBehaviour
         foreach (var x in Brush(sLast, brush))
         {
             if (PlanetCity.Plateau(x.c)) continue;
-            float w = BrushW(x.d, brush), h = PlanetCity.G(x.c), nh = h;
+            float w = BrushW(x.d, brush), h = PlanetCity.Terrain(x.c), nh = h;
             if (terrMode <= 1) nh = h + (raise ? 1f : -1f) * 6f * w * dt;
             else if (terrMode == 2) { float dv = sHv - h; nh = h + Mathf.Sign(dv) * Mathf.Min(Mathf.Abs(dv), 12f * w * dt); }
             else if (terrMode == 3) nh = h + (NbAvg(x.c) - h) * Mathf.Min(1f, 4f * w * dt);
@@ -440,7 +442,7 @@ public partial class PlanetBuilder : MonoBehaviour
     {
         foreach (var kv in sPrior) PlanetCity.SetTerr(kv.Key, kv.Value);
         sPrior.Clear();
-        Vector3 A = Planet.Cells[sA].dir, B = Planet.Cells[b].dir, AB = B - A; float hb = PlanetCity.G(b), L2 = AB.sqrMagnitude;
+        Vector3 A = Planet.Cells[sA].dir, B = Planet.Cells[b].dir, AB = B - A; float hb = PlanetCity.Terrain(b), L2 = AB.sqrMagnitude;
         if (b != sA && L2 > 1e-10f)
         {
             var line = PlanetCity.LinePlan(sA, b) ?? new List<int> { sA, b }; var set = new Dictionary<int, float>();
@@ -449,7 +451,7 @@ public partial class PlanetBuilder : MonoBehaviour
                 if (set.ContainsKey(x.c) || PlanetCity.Plateau(x.c)) continue;
                 float t = Mathf.Clamp01(Vector3.Dot(Planet.Cells[x.c].dir - A, AB) / L2); set[x.c] = sHa + (hb - sHa) * t;
             }
-            foreach (var kv in set) { sPrior[kv.Key] = PlanetCity.G(kv.Key); PlanetCity.SetTerr(kv.Key, kv.Value); sTouched.Add(kv.Key); }
+            foreach (var kv in set) { sPrior[kv.Key] = PlanetCity.Terrain(kv.Key); PlanetCity.SetTerr(kv.Key, kv.Value); sTouched.Add(kv.Key); }
         }
         PlanetCity.Rebuild();
     }
@@ -726,11 +728,11 @@ public partial class PlanetBuilder : MonoBehaviour
     Mesh TerrainGhost(int c, out Vector3 origin)
     {
         origin = Planet.Cells[c].dir * (Planet.R + PlanetCity.G(c)); var m = new MeshBuilder(); bool inv = Inp.Held(K.Shift), raise = (terrMode == 0) != inv;
-        float hv = PlanetCity.G(c); if (terrMode == 2 && !inv) { float s = 0f; var bc = Brush(c, brush); foreach (var x in bc) s += PlanetCity.G(x.c); hv = Mathf.Round(s / bc.Count * 2f) / 2f; }
+        float hv = PlanetCity.Terrain(c); if (terrMode == 2 && !inv) { float s = 0f; var bc = Brush(c, brush); foreach (var x in bc) s += PlanetCity.Terrain(x.c); hv = Mathf.Round(s / bc.Count * 2f) / 2f; }
         foreach (var x in Brush(c, brush))
         {
             if (PlanetCity.Plateau(x.c)) continue;
-            float w = BrushW(x.d, brush), h = PlanetCity.G(x.c), nh = h;
+            float w = BrushW(x.d, brush), h = PlanetCity.Terrain(x.c), nh = h;
             if (terrMode <= 1) nh = Mathf.Clamp(h + (raise ? 1f : -1f) * 1.5f * w, PlanetCity.TerrLow, PlanetCity.TerrTop);
             else if (terrMode == 2) nh = hv;
             else if (terrMode == 3) nh = h + (NbAvg(x.c) - h) * Mathf.Min(1f, 0.8f * w);

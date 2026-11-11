@@ -187,6 +187,25 @@ public static partial class PlanetCity
     public static string CutsTimes = "";   // tijd per fase van CollectCuts (voor de test)
     // cutsOnly: alleen de geulen van onderdoorgangen en schuine kruisingen (CarvePaths), niet de stukken langs wegen; die verzamelt
     // UpdateCuts (bij een klik vier keer alles verzamelen kostte op een volle planeet 1,7 s)
+    // Nieuwe opbouw: een weg of pad op het maaiveld onder een andere weg door (onderdoorgang): van het hart van elk eindvak tot het hart
+    // van het brugvak een bakstuk op de hoogte van wat eronderdoor gaat, met keermuren door de dijk van de bovenste weg (ontwerp 8.3,
+    // test 8). Vroeger een geul (Cut) die niet bij de hoogtefunctie paste: losse driehoeken en tot 2,4 m verschil.
+    static void UnderBak()
+    {
+        if (RoadH.Count == 0) return;
+        foreach (var kv in Under)
+        {
+            int i = kv.Key; if (!Underpass(i) || !Low.TryGetValue(i, out var lo)) continue; bool road = kv.Value == "weg";
+            if (UnderIsLevelled(i, road)) continue;   // (op een eigen niveau: de stukken van dat niveau doen het al)
+            var ends = road ? TunnelEnds(i) : new List<int>(); if (!road) foreach (int j in Partners(i)) if (IsPath(j)) ends.Add(j);
+            Vector3 pi = Planet.Cells[i].dir * Planet.R;
+            foreach (int e in ends)
+            {
+                if (!IsWalk(e)) continue;
+                segs.Add(new Seg { a = Planet.Cells[e].dir * Planet.R, b = pi, ha = G(e), hb = lo, hw = road ? WalkHW(e) : PathHW, bak = true, wall = true, tap0 = true, ia = e, ib = i });   // (tap0: bij het eindvak begint de wand op 0, daar sluit het maaiveldstuk aan)
+            }
+        }
+    }
     static void CollectCuts(List<Cut> o, Dictionary<int, Cut> side, bool cutsOnly = false)
     {
         var swC = System.Diagnostics.Stopwatch.StartNew(); var tms = new System.Text.StringBuilder(); void Lap(string w) { tms.Append(w).Append(' ').Append(swC.ElapsedMilliseconds).Append(" ms, "); swC.Restart(); }
@@ -215,7 +234,7 @@ public static partial class PlanetCity
         {
             if (!Underpass(kv.Key) || !Low.TryGetValue(kv.Key, out var lo)) continue; int i = kv.Key; var cell = Planet.Cells[i]; Topo();
             bool road = kv.Value == "weg";
-            if (UnderIsLevelled(i, road)) continue;   // wat eronderdoor gaat ligt zelf op een niveau: eigen bak, het betonblok tekent de brug (BridgeBlock)
+            if (UnderIsLevelled(i, road) || RoadH.Count > 0) continue;   // wat eronderdoor gaat ligt zelf op een niveau: eigen bak, het betonblok tekent de brug (BridgeBlock); nieuwe opbouw: de bak komt uit de stukken (UnderBak)
             foreach (var od in Openings(i))
             {
                 Vector3 rw = SkewFor(i, od), mdir = (cell.dir * Planet.R + od * FlatL).normalized, out3 = Tan(od, mdir), tt = Vector3.Cross(mdir, out3).normalized;
@@ -318,7 +337,7 @@ public static partial class PlanetCity
         }
         // gewone wegen en paden (niet op een niveau) in de buurt: onder zo'n weg ligt de grond op de hoogte van die weg, wat het talud
         // ernaast ook doet (zoals Cities: Skylines 2), anders loopt een talud bij een kruispunt over de weg heen
-        Lap("tunnels"); SplitWalls(); Lap("indeling en bereik");   // nieuwe opbouw: maaiveld, sokkel of bak per deel van een stuk (ontwerp 8.3)
+        Lap("tunnels"); UnderBak(); SplitWalls(); Lap("indeling en bereik");   // nieuwe opbouw: maaiveld, sokkel of bak per deel van een stuk (ontwerp 8.3)
         FillFieldCells(); Lap("veldvakken");
         flats.Clear();
         if (HasField)

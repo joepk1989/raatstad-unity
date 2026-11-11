@@ -19,7 +19,7 @@ public static partial class PlanetCity
     static bool HalfBuilt(int i) { var l = Cells[i]; for (int k = 1; k < l.Count; k++) if (l[k] != "park" && l[k] != "bos") return true; return false; }   // bomen, meren en grachten liggen in het terrein (PlanetNature.cs)
     public static bool SetTerr(int i, float h)   // geeft true als de hoogte echt veranderde
     {
-        h = Mathf.Clamp(Mathf.Round(h * 100f) / 100f, TerrLow, TerrTop); if (Mathf.Abs(h - G(i)) < 0.005f) return false;
+        h = Mathf.Clamp(Mathf.Round(h * 100f) / 100f, TerrLow, TerrTop); if (Mathf.Abs(h - Terrain(i)) < 0.005f) return false;   // (het terrein, niet de weg erop: Terrein v2 houdt die apart in RoadH)
         if (Mathf.Abs(h) > 0.004f) Terr[i] = h; else Terr.Remove(i);
         Touch(i); foreach (int p in Partners(i)) dirty.Add(p / ChunkN);   // een schuine weg helt ook naar het vak twee stappen verder
         return true;
@@ -370,7 +370,7 @@ public static partial class PlanetCity
     // stukken weg hoeft; vanaf de vakken op een niveau naar buiten zolang een vak binnen bereik ligt
     static readonly HashSet<int> fieldCells = new HashSet<int>();
     // een brugvak boven een weg of pad op een niveau: vlak, met de koker erdoor (BuildGround)
-    static bool FieldBridge(int i) => Underpass(i) && fieldCells.Contains(i) && UnderIsLevelled(i, Under[i] == "weg");
+    static bool FieldBridge(int i) => Underpass(i) && fieldCells.Contains(i) && (RoadH.Count > 0 || UnderIsLevelled(i, Under[i] == "weg"));   // (nieuwe opbouw: elke onderdoorgang, de bak komt uit de stukken, UnderBak)
     static void FillFieldCells()
     {
         fieldCells.Clear(); if (!HasField) return;
@@ -405,7 +405,8 @@ public static partial class PlanetCity
     // tap0/tap1: aan dat eind grenst het aan een maaiveldstuk en loopt de wand schuin aan vanaf de wegrand (zo begint hij op hoogte 0)
     // hardA/hardB: aan dat eind stopt het stuk hard (een tunnelportaal: de berg blijft erboven staan), zonder kegel voorbij het eind
     // reach (nieuwe opbouw): zo ver naast het stuk kan het talud komen (ComputeReach); 0: FieldReach
-    struct Seg { public Vector3 a, b; public float ha, hb, hw, reach; public bool capA, capB, wall, tap0, tap1, hardA, hardB; public int ia, ib; }
+    // bak (nieuwe opbouw): altijd een bakstuk, ook waar het terrein zonder wegen gelijk ligt (de weg onder een andere weg door: de dijk van de bovenste)
+    struct Seg { public Vector3 a, b; public float ha, hb, hw, reach; public bool capA, capB, wall, tap0, tap1, hardA, hardB, bak; public int ia, ib; }
     static float SR(Seg q) => q.reach > 0f ? q.reach : FieldReach;
     static float CR(Cap q) => q.reach > 0f ? q.reach : FieldReach;
     static readonly List<Seg> flats = new List<Seg>();   // gewone wegen bij een weg op een niveau: daaronder de grond op weghoogte
@@ -470,6 +471,7 @@ public static partial class PlanetCity
         foreach (var q in segs)
         {
             Vector3 ab = q.b - q.a; float len = ab.magnitude; if (len < 0.5f) { outL.Add(q); continue; }
+            if (q.bak) { var qb = q; qb.wall = true; outL.Add(qb); continue; }
             int n = Mathf.Max(2, Mathf.CeilToInt(len) + 1); var d = new float[n];
             for (int v = 0; v < n; v++) { float t = v / (n - 1f); d[v] = Mathf.Lerp(q.ha, q.hb, t) - BaseAt((q.a + ab * t).normalized); }
             var parts = new List<(float t0, float t1, bool wall)>(); float tPrev = 0f; bool wPrev = Mathf.Abs(d[0]) > Lim;
