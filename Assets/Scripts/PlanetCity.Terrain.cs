@@ -539,8 +539,22 @@ public static partial class PlanetCity
             for (int it = 0; it < 3; it++) { bool near = false; foreach (int j in cell.nb) if (Mathf.Abs(q.hw + q.wo - 0.5f * Vector3.Distance(Planet.Cells[j].dir, cell.dir) * Planet.R) < 0.08f) near = true; if (!near) break; q.wo -= 0.25f; }
             caps[v] = q;
         }
+        segs.RemoveAll(FlushSeg); caps.RemoveAll(FlushCap);
         ComputeReach();
     }
+    // Een weg of pad op terreinhoogte (nieuwe opbouw): het terrein van zijn vakken en hun buren ligt hooguit 3 cm boven en 30 cm onder het
+    // wegdek. Het asfalt ligt 10 cm boven de weghoogte en de stoep heeft een rand tot onder de grond (RoadDraw), dus de grond hoeft er niet
+    // weg: geen strook, geen talud van een paar centimeter en geen snijlijnen (die gaven splinters langs paden, melding 15). Het stuk doet
+    // niet mee in de hoogtefunctie; een talud van een andere weg houdt flats er nog vanaf.
+    const float FlushUp = 0.03f, FlushDown = 0.3f;
+    static bool FlushAt(int i, float lo, float hi)
+    {
+        if (i < 0 || !IsWalk(i) || WalkLevel(i) != 0 || Underpass(i) || preCarve.ContainsKey(i) || BorePortal(i)) return false;
+        bool Ok(int j) { float t = Terrain(j); return t <= lo + FlushUp && t >= hi - FlushDown; }
+        if (!Ok(i)) return false; foreach (int j in Planet.Cells[i].nb) if (!Ok(j)) return false; return true;
+    }
+    static bool FlushSeg(Seg q) => !q.wall && !q.bak && !q.hardA && !q.hardB && q.ia != q.ib && FlushAt(q.ia, Mathf.Min(q.ha, q.hb), Mathf.Max(q.ha, q.hb)) && FlushAt(q.ib, Mathf.Min(q.ha, q.hb), Mathf.Max(q.ha, q.hb));
+    static bool FlushCap(Cap q) => !q.wall && q.g == Vector3.zero && FlushAt(q.ic, q.h, q.h);
     // Het bereik van elk stuk en elke kop (nieuwe opbouw): zo ver kan zijn talud komen. Vanaf de eigen vakken vak voor vak naar buiten,
     // zolang het talud een vak nog kan halen: het hoogteverschil tussen de weg en het terrein van dat vak en zijn buren (plus een meter)
     // gedeeld door de steilte. Op vlak land een paar meter, in een dal onder een brug tot FieldReach. Zonder dit rekende op een volle
