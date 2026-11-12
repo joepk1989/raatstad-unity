@@ -1063,8 +1063,14 @@ public class WegVoorbeeld : MonoBehaviour
         // opslaan en laden
         var keep = new Dictionary<int, float>(PlanetCity.RoadH); string snap = PlanetCity.Snapshot();
         PlanetCity.ClearAll(); var sw = System.Diagnostics.Stopwatch.StartNew(); bool ok = PlanetCity.Restore(snap); long tl = sw.ElapsedMilliseconds;
-        int diff = 0; foreach (var kv in keep) if (!PlanetCity.RoadH.TryGetValue(kv.Key, out var v) || Mathf.Abs(v - kv.Value) > 0.01f) diff++;
-        log.Append("laden ").Append(ok ? "gelukt" : "MISLUKT").Append(" in ").Append(tl).Append(" ms; RoadH ").Append(PlanetCity.RoadH.Count).Append(", ").Append(diff).AppendLine(" vakken met een andere weghoogte dan voor het opslaan");
+        int diff = 0; var dd = new System.Text.StringBuilder();
+        foreach (var kv in keep) if (!PlanetCity.RoadH.TryGetValue(kv.Key, out var v) || Mathf.Abs(v - kv.Value) > 0.01f)
+        {
+            diff++; int c = kv.Key; dd.Append("  vak ").Append(c).Append(": voor ").Append(kv.Value.ToString("0.00")).Append(", na ").Append(PlanetCity.RoadH.TryGetValue(c, out var v2) ? v2.ToString("0.00") : "-").Append(", terrein ").Append(PlanetCity.Terrain(c).ToString("0.00")).Append("; ").Append(Desc(c)).Append("; partners");
+            foreach (int j in PlanetCity.Partners(c)) dd.Append(' ').Append(j).Append(PlanetCity.IsBore(c, j) ? (PlanetCity.IsSpan(c, j) ? "(dalbrug)" : "(tunnel)") : "").Append(PlanetCity.Underpass(j) ? "(onderdoorgang)" : "");
+            dd.AppendLine();
+        }
+        log.Append("laden ").Append(ok ? "gelukt" : "MISLUKT").Append(" in ").Append(tl).Append(" ms; RoadH ").Append(PlanetCity.RoadH.Count).Append(", ").Append(diff).AppendLine(" vakken met een andere weghoogte dan voor het opslaan"); log.Append(dd);
         // de schakelaar
         PlanetCity.Ground2 = false; PlanetCity.Reprofile(); int off = PlanetCity.RoadH.Count;
         PlanetCity.Ground2 = true; PlanetCity.Reprofile(); log.Append("schakelaar uit: RoadH ").Append(off).Append("; weer aan: RoadH ").Append(PlanetCity.RoadH.Count).AppendLine();

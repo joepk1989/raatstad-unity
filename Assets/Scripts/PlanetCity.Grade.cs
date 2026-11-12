@@ -153,7 +153,8 @@ public static partial class PlanetCity
     public static string ProfileAll(List<List<int>> lines)
     {
         var idx = new Dictionary<int, int>(); var cells = new List<int>();
-        foreach (var kv in Cells) if (IsWalk(kv.Key)) { idx[kv.Key] = cells.Count; cells.Add(kv.Key); }
+        foreach (var kv in Cells) if (IsWalk(kv.Key)) cells.Add(kv.Key);
+        cells.Sort(); for (int k = 0; k < cells.Count; k++) idx[cells[k]] = k;   // vaste volgorde: het rechttrekken hangt van de volgorde af, en na laden lag Cells anders (vier vakken bij een dalbrug kwamen tot 0,3 m anders uit)
         int n = cells.Count; if (n == 0) return "geen wegen"; var h = new float[n]; var fix = new bool[n];
         // vast: onder of naast een brug (de hoogte komt uit de brug), en een kruispunt (dat blijft op het terrein: anders komt het in de
         // berg te liggen en eindigen drie tunnels met hun portalen op elkaar; de armen krijgen de tunnels en bruggen)
@@ -165,6 +166,7 @@ public static partial class PlanetCity
             if (!idx.ContainsKey(p) || !seen.Add(Key(Mathf.Min(c, p), Mathf.Max(c, p)))) continue;
             links.Add((idx[c], idx[p], Vector3.Angle(Planet.Cells[c].dir, Planet.Cells[p].dir) * Mathf.Deg2Rad * Planet.R));
         }
+        links.Sort((x, y) => { int ax = Mathf.Min(x.a, x.b), ay = Mathf.Min(y.a, y.b); if (ax != ay) return ax.CompareTo(ay); int bx = Mathf.Max(x.a, x.b), by = Mathf.Max(y.a, y.b); if (bx != by) return bx.CompareTo(by); return x.a.CompareTo(y.a); });
         for (int it = 0; it < 4000; it++)
         {
             bool any = false;
