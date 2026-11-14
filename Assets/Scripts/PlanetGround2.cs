@@ -96,6 +96,7 @@ public static partial class PlanetCity
     // De stukken en koppen die in de driehoek die Ground2Cell nu tekent kunnen meedoen (FieldLines, nieuwe opbouw): de hoogte daarbinnen
     // rekent alleen met die, de andere halen de driehoek niet (hun talud of dak ligt er overal buiten). Scheelt het meeste rekenwerk.
     static List<Seg> triSegs; static List<Cap> triCaps; public static bool TriCull = true;   // (uit: om te vergelijken)
+    public static bool Ground2Quick = true;   // een stuk dat al in één vlak ligt niet verder snijden (uit: om te vergelijken)
     public static bool Ground2Merge = true;   // stukken met hetzelfde vlak samenvoegen (ontwerp 8.5 punt 3); uit: om te vergelijken
     public static long Ground2Tris;           // teller: driehoeken die Ground2Cell tekende (voor de test)
     // tijdmeting (voor de test): vakken met en zonder hoogtefunctie, randprofielen (opnieuw berekend of uit het geheugen)
@@ -463,7 +464,7 @@ public static partial class PlanetCity
         bool sp = RoadH.Count == 0 && spanNear.Count > 0 && spanNear.ContainsKey(i);
         if (!field && !cn && !sp) return false;
         long h = 1469598103934665603L; float g = G(i);
-        h = MixL(h, i); h = MixL(h, (plat ? 1 : 0) | (walls ? 2 : 0) | (field ? 4 : 0) | (cn ? 8 : 0) | (sp ? 16 : 0) | (RoadShape ? 32 : 0) | (RoadSlopes ? 64 : 0) | (RoadH.Count > 0 ? 128 : 0) | (Ground2Merge ? 256 : 0) | (TriCull ? 512 : 0) | (carved.Count > 0 ? 1024 : 0));
+        h = MixL(h, i); h = MixL(h, (plat ? 1 : 0) | (walls ? 2 : 0) | (field ? 4 : 0) | (cn ? 8 : 0) | (sp ? 16 : 0) | (RoadShape ? 32 : 0) | (RoadSlopes ? 64 : 0) | (RoadH.Count > 0 ? 128 : 0) | (Ground2Merge ? 256 : 0) | (Ground2Quick ? 2048 : 0) | (TriCull ? 512 : 0) | (carved.Count > 0 ? 1024 : 0));
         h = Mix(h, FieldK); h = Mix(h, g); h = Mix(h, plat ? g : Center2(i));
         int sk = 0; for (int k = 0; k < m; k++) { if (skip(k)) sk |= 1 << k; h = Mix(h, plat ? g : CornerBase(i, k)); } h = MixL(h, sk);
         if (inField) h = MixL(h, NearHash(i)); else if (RoadShape) h = MixL(h, AllFlatsHash());
@@ -493,10 +494,10 @@ public static partial class PlanetCity
             var polys = new List<List<Vector2>> { new List<Vector2> { Vector2.zero, L1, L2 } };
             void Split(Lin f) { var next = new List<List<Vector2>>(); foreach (var pl in polys) if (!SplitBy(pl, f, next)) next.Add(pl); polys = next; }
             var ls = new List<Seg>(); var lc = new List<Cap>(); var spI = RoadH.Count == 0 && spanNear.Count > 0 && spanNear.TryGetValue(i, out var spl) ? spl : null;   // (nieuwe opbouw: geen deklijnen, zie EdgeProfile0)
-            G2SwLines.Start(); if (field) { var fls = FieldLines(c, k, hc0, h1, h2, ls, lc); G2Lines += fls.Count; foreach (var f in fls) Split(f); } G2SwLines.Stop();
+            List<Lin> fls = null; G2SwLines.Start(); if (field) { fls = FieldLines(c, k, hc0, h1, h2, ls, lc); G2Lines += fls.Count; if (!Ground2Quick || spI != null) { foreach (var f in fls) Split(f); fls = null; } } G2SwLines.Stop();   // (Ground2Quick: de lijnen snijden pas waar een stuk niet vlak is, zie hieronder)
             bool fieldT = field && !(RoadH.Count > 0 && ls.Count == 0 && lc.Count == 0 && flatsUse.Count == 0);   // (nieuwe opbouw: geen stuk kan deze driehoek halen: gewoon het terreinvlak, zonder snijden en samenvoegen)
             foreach (var f in SpanLines(c, spI)) Split(f);
-            var wg = new List<int>(); var wnq = new List<bool>(); var wl = fieldT ? WallLins(c, ls, lc, wg, wnq) : new List<Lin>();   // de wanden hier (sokkels en bakken), binnenkant negatief; wg: per lijn de strook of kop
+            var wg = new List<int>(); var wnq = new List<bool>(); var wl = fieldT ? WallLins(c, ls, lc, wg, wnq) : new List<Lin>(); if (fls != null) foreach (var f in wl) Split(f);   // (Ground2Quick: een wand is een sprong, daar moet een zijde van een stuk precies op liggen: altijd vooraf snijden)   // de wanden hier (sokkels en bakken), binnenkant negatief; wg: per lijn de strook of kop
             Lin B2 = new Lin { a = hc0, x = ((h1 - hc0) * L2.y - (h2 - hc0) * L1.y) / det, y = ((h2 - hc0) * L1.x - (h1 - hc0) * L2.x) / det };
             if (cn) foreach (var n in near) foreach (var f in new[] { n.sd - Lin.C(-0.01f), n.sd - Lin.C(n.fl), n.sd - Lin.C(n.fl + n.rl), n.sd - Lin.C(n.end), n.t - Lin.C(n.q.hw), n.t - Lin.C(-n.q.hw) }) Split(f);
             var prof = plat ? null : EdgeProfile(i, k);
@@ -517,6 +518,55 @@ public static partial class PlanetCity
                     if (++guard < 4000 && (fieldT || cn || spI != null))
                     {
                         var fs = PlaneLins(c, B2, ls, lc, cn ? near : null, spI, ctr);
+                        // Snel (Ground2Quick): ligt het hele stuk al in het vlak dat in zijn midden geldt (gemeten vlak bij elk hoekpunt en
+                        // elk midden van een zijde, binnen 4 mm: dezelfde maat als het samenvoegen), dan valt er niets te snijden. Zo niet:
+                        // eerst de knik tussen dat vlak en het vlak dat op het afwijkende punt geldt. Zonder dit sneed elk paar vlakken van
+                        // alle stukken weg in de buurt het vak in repen, die het samenvoegen daarna weer aan elkaar moest zetten.
+                        if (Ground2Quick && spI == null)
+                        {
+                            // de meetpunten: vlak bij elk hoekpunt en elk midden van een zijde, en binnenin een raster van 1,2 m (een smal pad dwars door een groot stuk)
+                            float hcq = HQ(ctr); int gi = -1; for (int x = 0; x < fs.Count; x++) if (Mathf.Abs(fs[x].At(ctr) - hcq) < 0.004f) { gi = x; break; }
+                            bool flat = gi >= 0; Vector2 bad = ctr;
+                            if (flat)
+                            {
+                                Vector2 lo = pl[0], hi = pl[0];
+                                for (int v = 0; v < pl.Count && flat; v++)
+                                {
+                                    lo = Vector2.Min(lo, pl[v]); hi = Vector2.Max(hi, pl[v]);
+                                    Vector2 q1 = Vector2.Lerp(pl[v], ctr, 0.04f), q2 = Vector2.Lerp((pl[v] + pl[(v + 1) % pl.Count]) * 0.5f, ctr, 0.04f);
+                                    if (Mathf.Abs(fs[gi].At(q1) - HQ(q1)) > 0.004f) { flat = false; bad = q1; } else if (Mathf.Abs(fs[gi].At(q2) - HQ(q2)) > 0.004f) { flat = false; bad = q2; }
+                                }
+                                const float St = 1.2f;
+                                if (flat && (hi.x - lo.x > St || hi.y - lo.y > St))
+                                    for (float gx = lo.x + St * 0.5f; gx < hi.x && flat; gx += St) for (float gy = lo.y + St * 0.5f; gy < hi.y && flat; gy += St)
+                                    {
+                                        Vector2 q = new Vector2(gx, gy); bool inside = true; int sgn = 0;
+                                        for (int v = 0; v < pl.Count && inside; v++) { Vector2 e = pl[(v + 1) % pl.Count] - pl[v], w = q - pl[v]; float cr = e.x * w.y - e.y * w.x; if (Mathf.Abs(cr) < 1e-6f) continue; int sn = cr > 0f ? 1 : -1; if (sgn == 0) sgn = sn; else if (sn != sgn) inside = false; }
+                                        if (inside && Mathf.Abs(fs[gi].At(q) - HQ(q)) > 0.004f) { flat = false; bad = q; }
+                                    }
+                                if (flat) { done.Add(pl); continue; }
+                            }
+                            // niet vlak: eerst een lijn van een wegstuk die het midden van het afwijkende punt scheidt (de wegrand, een wand, de voet
+                            // van een talud), dan de knik tussen het vlak in het midden en het vlak op het afwijkende punt, dan een andere lijn
+                            if (fls != null) for (int x = 0; x < fls.Count && !split; x++)
+                            {
+                                if ((fls[x].At(ctr) < 0f) == (fls[x].At(bad) < 0f)) continue;
+                                var tmp = new List<List<Vector2>>(); if (SplitBy(pl, fls[x], tmp)) { foreach (var part in tmp) work.Push(part); split = true; }
+                            }
+                            if (gi >= 0 && !split)
+                            {
+                                float hb = HQ(bad);
+                                for (int x = 0; x < fs.Count && !split; x++)
+                                {
+                                    if (x == gi || Mathf.Abs(fs[x].At(bad) - hb) > 0.004f) continue;
+                                    var tmp = new List<List<Vector2>>(); if (SplitBy(pl, fs[gi] - fs[x], tmp)) { foreach (var part in tmp) work.Push(part); split = true; }
+                                }
+                            }
+                            if (fls != null) for (int x = 0; x < fls.Count && !split; x++)
+                            {
+                                var tmp = new List<List<Vector2>>(); if (SplitBy(pl, fls[x], tmp)) { foreach (var part in tmp) work.Push(part); split = true; }
+                            }
+                        }
                         for (int x = 0; x < fs.Count && !split; x++) for (int y = x + 1; y < fs.Count && !split; y++)
                         {
                             var tmp = new List<List<Vector2>>(); if (SplitBy(pl, fs[x] - fs[y], tmp)) { foreach (var part in tmp) work.Push(part); split = true; }
