@@ -4,6 +4,7 @@ using UnityEngine;
 // Aanwijzen (V), zoals 15g-aanwijzen.js van de webversie: niet bouwen maar aanwijzen. Het vak onder de muis licht op met
 // zijn naam; een klik opent opties (meer hiervan, bovenste weg, vak leegmaken, hierheen, lopen vanaf hier). Rechts klikken
 // opent "Oproepen": een meteoor, ander weer of een dorpje op die plek. Buiten Aanwijzen maakt rechts klikken een vak leeg.
+// Op een module staat in de opties ook Bewerken: die opent de module in de Raatmaker.
 public partial class PlanetBuilder
 {
     bool cursorMode; int cursorCell = -1, panelCell = -1, callCell = -1; Vector2 panelAt, cursorRightAt; bool cursorRight;
@@ -47,7 +48,7 @@ public partial class PlanetBuilder
         if (top == "weg") top = StyleIds[Mathf.Clamp(PlanetCity.StyleOf(i), 0, StyleIds.Length - 1)];
         return top;
     }
-    string CellName(int i) { string id = TopId(i); if (id == null) return "Leeg vak"; var it = Find(id); return it.id == id ? it.name : char.ToUpper(id[0]) + id.Substring(1); }
+    string CellName(int i) { if (PlanetCity.ModTop(i, out _, out var mi) && mi.M != null) return mi.M.name; string id = TopId(i); if (id == null) return "Leeg vak"; var it = Find(id); return it.id == id ? it.name : char.ToUpper(id[0]) + id.Substring(1); }
     string CellInfo(int i)
     {
         int n = 0; if (PlanetCity.Cells.TryGetValue(i, out var l)) foreach (var b in l) if (b != "wegdeel") n++;
@@ -97,6 +98,8 @@ public partial class PlanetBuilder
     void OptionsPanel(float W, float H)
     {
         int c = panelCell; string id = TopId(c); var o = new List<Opt>();
+        if (PlanetCity.ModTop(c, out _, out var mi) && ModuleLib.Get(mi.id) is ModuleV2 mm)   // een module: in de Raatmaker bewerken (bewaren past alle exemplaren aan)
+            o.Add(new Opt { label = "Bewerken", icon = "raster", act = () => { panelCell = -1; SetCursorMode(false); Raatmaker.Show(mm, this); } });
         if (id != null) o.Add(new Opt { label = "Meer hiervan", icon = "zoek", act = () => { panelCell = -1; SetCursorMode(false); Pipet(c); } });
         if (id != null) o.Add(new Opt { label = "Bovenste weg", icon = "gum", danger = true, act = () => { Push(); if (PlanetCity.RemoveTop(c)) Changed(); if (TopId(c) == null) panelCell = -1; } });
         if (id != null) o.Add(new Opt { label = "Vak leegmaken", icon = "leeg", danger = true, act = () => { Push(); if (PlanetCity.Clear(c)) { Changed(); Say("Vak leeggemaakt"); } if (TopId(c) == null) panelCell = -1; } });

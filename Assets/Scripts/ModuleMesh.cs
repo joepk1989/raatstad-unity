@@ -179,6 +179,7 @@ public static class ModuleMesh
                 var byMat = new Dictionary<string, List<Vector2[]>>(); var edgeCnt = new Dictionary<(Vector2Int, Vector2Int), int>();
                 Vector2Int Q(Vector2 p) => new Vector2Int(Mathf.RoundToInt(p.x * 64f), Mathf.RoundToInt(p.y * 64f));
                 (Vector2Int, Vector2Int) E(Vector2 p, Vector2 q) { var a = Q(p); var b = Q(q); return a.x < b.x || (a.x == b.x && a.y <= b.y) ? (a, b) : (b, a); }
+                var longW = MV2.LongWalls(L, ts);
                 foreach (var kv in L.f)
                 {
                     var (i, j, t) = kv.Key; var v = MV2.TriVerts(i, j, t, ts); var cen = MV2.Centroid(v); string mat = kv.Value;
@@ -197,8 +198,25 @@ public static class ModuleMesh
                         }
                     }
                     if (li == roofLi && Covered(cen, area)) continue;   // daar staat een module op: geen dakvloer
-                    if (!byMat.TryGetValue(mat, out var lst)) byMat[mat] = lst = new List<Vector2[]>(); lst.Add(v);
-                    for (int e = 0; e < 3; e++) { var k2 = E(v[e], v[(e + 1) % 3]); edgeCnt.TryGetValue(k2, out int c0); edgeCnt[k2] = c0 + 1; }
+                    void AddTri(string mt, Vector2[] tv)
+                    {
+                        if (!byMat.TryGetValue(mt, out var lst)) byMat[mt] = lst = new List<Vector2[]>(); lst.Add(tv);
+                        for (int e = 0; e < 3; e++) { var k2 = E(tv[e], tv[(e + 1) % 3]); edgeCnt.TryGetValue(k2, out int c0); edgeCnt[k2] = c0 + 1; }
+                    }
+                    // een lange muur (haaks op het raster) snijdt deze driehoek doormidden: elke helft krijgt de vloer van de buur aan zijn kant
+                    // (geen buur: geen vloer), zodat een ruimte netjes tot aan de muur gevuld is en buiten leeg blijft
+                    if (longW.Count > 0 && MV2.CrossedBy(longW, cen, ts, out var wa, out var wb))
+                    {
+                        int apex = -1; for (int e = 0; e < 3; e++) if (Mathf.Abs(MV2.SideOf(wa, wb, v[e])) < 0.5f) apex = e;
+                        if (apex >= 0)
+                        {
+                            Vector2 V = v[apex], P1 = v[(apex + 1) % 3], P2 = v[(apex + 2) % 3], Mid = (P1 + P2) * 0.5f; string m1 = NbMat(L, V, P1, P2), m2 = NbMat(L, V, P2, P1);
+                            if (m1 == null && m2 == null) { AddTri(mat, v); continue; }
+                            if (m1 != null) AddTri(m1, new[] { V, P1, Mid }); if (m2 != null) AddTri(m2, new[] { V, Mid, P2 });
+                            continue;
+                        }
+                    }
+                    AddTri(mat, v);
                 }
                 if ((parts & ModuleMesh.Floors) == 0) byMat.Clear();
                 foreach (var kv in byMat)
@@ -306,7 +324,7 @@ public static class ModuleMesh
                     continue;
                 }
                 bool glass = W.m == "glass";
-                if (!glass && W.m != "curtain" && (li + 1 >= m.lv.Count || !m.lv[li + 1].w.ContainsKey(kv.Key)) && FreeWall(L, a, b))
+                if (W.p && !glass && W.m != "curtain" && (li + 1 >= m.lv.Count || !m.lv[li + 1].w.ContainsKey(kv.Key)))
                 { Pier(mat, a, y0, LH); Pier(mat, b, y0, LH); Box("lijst", a, b, y0 + LH, y0 + LH + 0.06f, T + 0.08f); }   // tuinmuur: steunpilaren
                 if (o == "" && W.m == "curtain") { Curtain(a, b, y0, "w_curtain"); continue; }
                 if (glass && m.cat != "Verbindingen" && (o == "" || o == "window") && Outer(L, a, b)) { Curtain(a, b, y0, "facade"); continue; }   // een glaswand aan de buitenkant: een glasgevel (een trappenhuis houdt doorzichtig glas)
@@ -342,7 +360,8 @@ public static class ModuleMesh
             bool topWall = li + 1 >= m.lv.Count || !m.lv[li + 1].w.ContainsKey(key);   // hierboven geen muur meer: onder het dak
             bool gap = o == "door" || o == "gate" || o == "open";
             if (li == 0 && !stacked) { if (gap) { if ((p0 - a).magnitude > 0.05f) Box("plint", a, p0, y0, y0 + 0.45f, T + 0.06f, side * 0.03f); if ((b - p1).magnitude > 0.05f) Box("plint", p1, b, y0, y0 + 0.45f, T + 0.06f, side * 0.03f); } else Box("plint", a, b, y0, y0 + 0.45f, T + 0.06f, side * 0.03f); }
-            if (topWall) Box("lijst", a - u * 0.12f, b + u * 0.12f, y0 + LH - 0.28f, y0 + LH, T + 0.24f, side * 0.12f);   // kroonlijst
+            bool pitched = false; foreach (var rv in L.r.Values) if (rv == "half" || rv == "laan") pitched = true;   // die daken hebben een eigen overstek met boeiboord
+            if (topWall && !pitched) Box("lijst", a - u * 0.12f, b + u * 0.12f, y0 + LH - 0.28f, y0 + LH, T + 0.24f, side * 0.12f);   // kroonlijst
             else Box("lijst", a, b, y0 + LH - 0.12f, y0 + LH + 0.02f, T + 0.1f, side * 0.05f);                     // verdiepingslijst
             if (o == "window") Box("lijst", p0 - u * 0.06f, p1 + u * 0.06f, y0 + oy0 - 0.08f, y0 + oy0 - 0.02f, T + 0.14f, side * 0.07f);   // vensterbank
             if (o == "door") Box("trim", p0 - u * 0.35f, p1 + u * 0.35f, y0 + oy1 + 0.18f, y0 + oy1 + 0.26f, 0.95f, side * (T / 2f + 0.47f));   // luifel
@@ -360,14 +379,9 @@ public static class ModuleMesh
             float fi = p.x / (ts * MV2.SQ3 / 2f), fj = p.y / ts - fi / 2f; int i = Mathf.FloorToInt(fi), j = Mathf.FloorToInt(fj); int t = (fi - i) + (fj - j) < 1f ? 0 : 1;
             return L.f.TryGetValue((i, j, t), out var f) && f != "paver" && f != "tile" && f != "grass" && f != "asphalt" && f != "water";
         }
-        // Een vrijstaande muur (aan beide kanten buiten, zoals een tuinmuur): op elk hoekpunt een zeshoekige steunpilaar die aan beide
+        // Een muur met steunpilaren (optie per muur, ModWall.p, voor een tuinmuur): op elk hoekpunt een zeshoekige steunpilaar die aan beide
         // kanten uitsteekt en iets boven de muur uitkomt, met een afdekkap; over de muur zelf een afdekband.
         readonly HashSet<(int, int, int)> piers = new HashSet<(int, int, int)>();
-        bool FreeWall(ModLevel L, Vector2 a, Vector2 b)
-        {
-            Vector2 d = b - a, n = new Vector2(-d.y, d.x).normalized, mid = (a + b) * 0.5f;
-            return !Inside(L, mid + n * 0.7f) && !Inside(L, mid - n * 0.7f);
-        }
         void Pier(string mat, Vector2 p, float y0, float h)
         {
             if (!piers.Add((Mathf.RoundToInt(p.x * 20f), Mathf.RoundToInt(p.y * 20f), Mathf.RoundToInt(y0 * 10f)))) return;
@@ -520,6 +534,8 @@ public static class ModuleMesh
                 var (q, r) = kv.Key; var c = MV2.CellXZ(q, r); string kind = kv.Value ?? "hip";
                 float rr = MV2.RoofFit(m, li, q, r), ro = rr + (rr < MV2.R ? 0.35f : 0f), yb = y0 + LH, h = 5f * rr / MV2.R;
                 Vector2 Vk(int k, float rad) { float an = (30f + 60f * k) * Mathf.Deg2Rad; return c + new Vector2(Mathf.Cos(an), Mathf.Sin(an)) * rad; }
+                if (kind == "half") { HalfRoof(L, c, rr, ro - rr, yb); continue; }
+                if (kind == "laan") { LaanRoof(L, c, ro, yb); continue; }
                 if (kind == "flat") { var pl = new Vector2[6]; float rf = rr + (rr < MV2.R ? 0.15f : -0.1f); for (int k = 0; k < 6; k++) pl[k] = Vk(k, rf); Prism("slab", pl, yb, yb + 0.3f); continue; }
                 if (kind == "hip" && PlanetCity.DakShape(PlanetCity.Dormers(Mathf.RoundToInt(c.x * 7f) * 31 + Mathf.RoundToInt(c.y * 13f) * 17 + li * 101 + SH(m.id))) is List<PlanetCity.DakTri> shape)   // schilddak: het huisdak uit SketchUp (PlanetCity.Daken.cs), op de maat van de muren
                 {
@@ -547,6 +563,78 @@ public static class ModuleMesh
                     }
                 }
                 else { var top = new Vector3(c.x, yb + h, c.y); for (int k = 0; k < 6; k++) RT(top, V3(k, yb), V3(k + 1, yb)); }
+            }
+        }
+
+        // de vloer van de buurdriehoek aan de ribbe a–b (de overstaande punt is c); null: geen vloer of buiten het gebied
+        string NbMat(ModLevel L, Vector2 a, Vector2 b, Vector2 c)
+        {
+            Vector2 cen = (a + b + (a + b - c)) / 3f; if (!MV2.InArea(m, cen.x, cen.y)) return null;
+            float fi = cen.x / (ts * MV2.SQ3 / 2f), fj = cen.y / ts - fi / 2f; int i = Mathf.FloorToInt(fi), j = Mathf.FloorToInt(fj); int t = (fi - i) + (fj - j) < 1f ? 0 : 1;
+            return L.f.TryGetValue((i, j, t), out var f) ? f : null;
+        }
+        // Half schilddak: een huis op een halve zeshoek (drie driehoeken van 60°). Welke helft volgt uit de vloer van de verdieping,
+        // dus draaien en spiegelen gaan vanzelf goed. De nok ligt halverwege de diepte; alle dakvlakken hebben dezelfde helling.
+        void HalfRoof(ModLevel L, Vector2 c, float rr, float ov, float yb)
+        {
+            Vector2 sum = Vector2.zero; int nf = 0;
+            foreach (var kv in L.f) { var cen = MV2.Centroid(MV2.TriVerts(kv.Key.Item1, kv.Key.Item2, kv.Key.Item3, ts)); if ((cen - c).magnitude < MV2.R) { sum += cen - c; nf++; } }
+            Vector2 Vk(int k, float rad) { float an = (30f + 60f * (((k % 6) + 6) % 6)) * Mathf.Deg2Rad; return c + new Vector2(Mathf.Cos(an), Mathf.Sin(an)) * rad; }
+            int a = 0; float bd = -1e9f; for (int k = 0; k < 6; k++) { float d = Vector2.Dot(sum, Vk(k + 1, 1f) + Vk(k + 2, 1f) - 2f * c); if (d > bd) { bd = d; a = k; } }
+            var P0 = new[] { Vk(a, rr), Vk(a + 1, rr), Vk(a + 2, rr), Vk(a + 3, rr) };
+            Vector2 A = P0[0], B = P0[1], C = P0[2], D = P0[3], u = (D - A).normalized, inn = ((B + C) * 0.5f - (A + D) * 0.5f);
+            float H = Mathf.Abs(Vector2.Dot(inn, new Vector2(-u.y, u.x))); inn = new Vector2(-u.y, u.x) * Mathf.Sign(Vector2.Dot(inn, new Vector2(-u.y, u.x)));
+            Vector2 R1 = A + u * (H / 2f * MV2.SQ3) + inn * (H / 2f), R2 = D - u * (H / 2f * MV2.SQ3) + inn * (H / 2f);
+            const float slope = 0.9f; float h = H / 2f * slope, ye = yb - EAVE * slope; var rf = M("roof");
+            // de voet EAVE buiten de muren (overstek), het dakvlak loopt door en komt daar lager uit
+            var Pp = new Vector2[4]; for (int k = 0; k < 4; k++) Pp[k] = OutCorner(P0[(k + 3) % 4], P0[k], P0[(k + 1) % 4], EAVE);
+            Vector3 T(Vector2 p, float y) => U(p, y);
+            Vector3 eA = T(Pp[0], ye), eB = T(Pp[1], ye), eC = T(Pp[2], ye), eD = T(Pp[3], ye), r1 = T(R1, yb + h), r2 = T(R2, yb + h);
+            rf.Tri(eA, eD, r2, Vector3.up); rf.Tri(eA, r2, r1, Vector3.up); rf.Tri(eC, eB, r1, Vector3.up); rf.Tri(eC, r1, r2, Vector3.up);
+            rf.Tri(eB, eA, r1, Vector3.up); rf.Tri(eD, eC, r2, Vector3.up);
+            Eaves(new[] { eA, eB, eC, eD }, c);
+        }
+
+        // Laandak: een huis op een zeshoek waar aan één hoek een driehoek af is (de voortuin achter een haakse gevel, zoals het
+        // laanhuis). Schilddak met overal dezelfde helling (de rechte skeletlijnen van die vijfhoek, uitgerekend voor straal R);
+        // de punt van de voortuin volgt uit de vloer, dus draaien en spiegelen gaan vanzelf.
+        void LaanRoof(ModLevel L, Vector2 c, float R, float yb)
+        {
+            Vector2 sum = Vector2.zero;
+            foreach (var kv in L.f) { var cen = MV2.Centroid(MV2.TriVerts(kv.Key.Item1, kv.Key.Item2, kv.Key.Item3, ts)); if ((cen - c).magnitude < MV2.R) sum += cen - c; }
+            int k0 = 0; float bd = -1e9f; for (int k = 0; k < 6; k++) { float an = (30f + 60f * k) * Mathf.Deg2Rad; float d = -Vector2.Dot(sum, new Vector2(Mathf.Cos(an), Mathf.Sin(an))); if (d > bd) { bd = d; k0 = k; } }
+            float a0 = (30f + 60f * k0) * Mathf.Deg2Rad; Vector2 u = new Vector2(Mathf.Cos(a0), Mathf.Sin(a0)), v = new Vector2(-u.y, u.x);
+            const float slope = 0.75f; float a = R * MV2.SQ3 / 2f, t = R / 2f;
+            // de voet van het dak ligt EAVE buiten de muren (overstek): elke hoek langs zijn deellijn naar buiten, het dakvlak loopt
+            // gewoon door en komt daar EAVE × helling lager uit; de nok en de hoogste punt blijven waar ze waren
+            var bp = new[] { new Vector2(-a, t), new Vector2(a, t), new Vector2(a, -t), new Vector2(0f, -R), new Vector2(-a, -t) };
+            var Vb = new Vector3[5]; float ye = yb - EAVE * slope;
+            for (int k = 0; k < 5; k++) { var o = OutCorner(bp[(k + 4) % 5], bp[k], bp[(k + 1) % 5], EAVE); Vb[k] = U(c + v * o.x + u * o.y, ye); }
+            Vector3 Pt(float x, float y, float h) { var p = c + v * x + u * y; return U(p, yb + h * slope); }
+            Vector3 A = Vb[0], B = Vb[1], C = Vb[2], D = Vb[3], E = Vb[4];
+            Vector3 R1 = Pt(-0.2887f * R, -0.0774f * R, 0.5774f * R), R2 = Pt(0.2887f * R, -0.0774f * R, 0.5774f * R), X = Pt(0f, -0.244f * R, 0.744f * R);
+            var rf = M("roof"); void Tr(Vector3 p, Vector3 q, Vector3 r) => rf.Tri(p, q, r, Vector3.up);
+            Tr(A, B, R2); Tr(A, R2, X); Tr(A, X, R1);   // voorkant (de gevel aan de voortuin)
+            Tr(E, A, R1); Tr(B, C, R2);                 // de zijkanten
+            Tr(D, E, R1); Tr(D, R1, X); Tr(C, D, X); Tr(C, X, R2);   // de achterkant
+            Eaves(Vb, c);
+        }
+        const float EAVE = 0.45f, FASCIA = 0.2f;
+        // een hoek van een bolle veelhoek EAVE naar buiten, langs de deellijn (zodat elke zijde precies d naar buiten schuift)
+        static Vector2 OutCorner(Vector2 prev, Vector2 p, Vector2 next, float d)
+        {
+            Vector2 u1 = (prev - p).normalized, u2 = (next - p).normalized, bis = (u1 + u2).normalized; float sh = Mathf.Abs(u1.x * bis.y - u1.y * bis.x);
+            return p - bis * (d / Mathf.Max(0.2f, sh));
+        }
+        // de rand van een dak met overstek: een boeiboord (lijst) langs de voet en een vlakke onderkant terug naar de muren
+        void Eaves(Vector3[] vb, Vector2 c)
+        {
+            var fb = M("lijst"); var under = M("ceiling"); Vector3 down = new Vector3(0f, FASCIA, 0f), mid = Vector3.zero; foreach (var p in vb) mid += p; mid /= vb.Length;
+            for (int k = 0; k < vb.Length; k++)
+            {
+                Vector3 p = vb[k], q = vb[(k + 1) % vb.Length], outw = (p + q) * 0.5f - mid; outw.y = 0f;
+                fb.Tri(p, q, q - down, outw); fb.Tri(p, q - down, p - down, outw);
+                under.Tri(mid - down, p - down, q - down, Vector3.down);
             }
         }
 

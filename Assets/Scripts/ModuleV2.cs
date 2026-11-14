@@ -12,7 +12,7 @@ using UnityEngine;
 //
 // Rasterpunt (i, j) ligt op P(i, j) = (i·ts·√3/2, i·ts/2 + j·ts), in het lokale vlak (x, z) van de webversie. Het JSON-formaat
 // blijft precies gelijk, zodat modules uit de webversie hier direct werken (en andersom).
-public class ModWall { public string m = "brick", o = ""; public ModWall Copy() => new ModWall { m = m, o = o }; }
+public class ModWall { public string m = "brick", o = ""; public bool p; public ModWall Copy() => new ModWall { m = m, o = o, p = p }; }   // p: steunpilaren (een vrijstaande muur)
 public class ModStair
 {
     public int ai, aj, d; public float n = 2f, w = 2f, h, off; public string k = ""; public int side; public bool hasSide; public int q, r;
@@ -74,7 +74,7 @@ public class ModuleV2
                     {
                         var L = new ModLevel(); m.lv.Add(L); if (!(lo is Dictionary<string, object> ld)) continue;
                         if (ld.TryGetValue("f", out var fo) && fo is Dictionary<string, object> fd) foreach (var f in fd) L.f[K3(f.Key)] = ModuleJson.S(f.Value, "concrete");
-                        if (ld.TryGetValue("w", out var wo) && wo is Dictionary<string, object> wd) foreach (var w in wd) if (w.Value is Dictionary<string, object> wv) L.w[K3(w.Key)] = new ModWall { m = ModuleJson.S(wv.TryGetValue("m", out var mm) ? mm : null, "brick"), o = ModuleJson.S(wv.TryGetValue("o", out var oo) ? oo : null, "") };
+                        if (ld.TryGetValue("w", out var wo) && wo is Dictionary<string, object> wd) foreach (var w in wd) if (w.Value is Dictionary<string, object> wv) L.w[K3(w.Key)] = new ModWall { m = ModuleJson.S(wv.TryGetValue("m", out var mm) ? mm : null, "brick"), o = ModuleJson.S(wv.TryGetValue("o", out var oo) ? oo : null, ""), p = wv.TryGetValue("p", out var pp) && pp is bool pb && pb };
                         if (ld.TryGetValue("r", out var ro) && ro is Dictionary<string, object> rd) foreach (var r in rd) L.r[K2(r.Key)] = ModuleJson.S(r.Value, "hip");
                         if (ld.TryGetValue("s", out var so) && so is List<object> sl) foreach (var sv in sl)
                         {
@@ -110,7 +110,7 @@ public class ModuleV2
         foreach (var L in lv)
         {
             var f = new Dictionary<string, object>(); foreach (var kv in L.f) f[kv.Key.Item1 + "," + kv.Key.Item2 + "," + kv.Key.Item3] = kv.Value;
-            var w = new Dictionary<string, object>(); foreach (var kv in L.w) w[kv.Key.Item1 + "," + kv.Key.Item2 + "," + kv.Key.Item3] = new Dictionary<string, object> { ["m"] = kv.Value.m, ["o"] = kv.Value.o ?? "" };
+            var w = new Dictionary<string, object>(); foreach (var kv in L.w) w[kv.Key.Item1 + "," + kv.Key.Item2 + "," + kv.Key.Item3] = new Dictionary<string, object> { ["m"] = kv.Value.m, ["o"] = kv.Value.o ?? "" }; foreach (var kv in L.w) if (kv.Value.p) ((Dictionary<string, object>)w[kv.Key.Item1 + "," + kv.Key.Item2 + "," + kv.Key.Item3])["p"] = true;
             var s = new List<object>();
             foreach (var S in L.s)
             {
@@ -206,6 +206,23 @@ public static class MV2
         return o;
     }
     public static List<Vector2Int> AreaCells(int k) { var o = new List<Vector2Int> { Vector2Int.zero }; if (k > 0) for (int s = 0; s < 6; s++) o.Add(NEIGH[s]); return o; }
+    // Lange muren (richting 3–5, haaks op het raster) lopen dwars door driehoeken: van een hoekpunt via het midden van de overstaande
+    // ribbe naar het volgende hoekpunt. LongWalls geeft ze per verdieping; CrossedBy zegt welke een driehoek doormidden snijdt.
+    public static List<(Vector2 a, Vector2 b, ModWall w)> LongWalls(ModLevel L, float ts)
+    {
+        var o = new List<(Vector2, Vector2, ModWall)>(); foreach (var kv in L.w) if (kv.Key.Item3 >= 3 && kv.Key.Item3 <= 5) { var (a, b) = WallSeg(kv.Key, ts); o.Add((a, b, kv.Value)); } return o;
+    }
+    public static bool CrossedBy(List<(Vector2 a, Vector2 b, ModWall w)> lw, Vector2 cen, float ts, out Vector2 a, out Vector2 b, bool blockingOnly = false)
+    {
+        foreach (var (p, q, w) in lw)
+        {
+            if (blockingOnly && w.o == "open") continue;   // vullen: een lange muur houdt tegen, ook met een deur erin (anders loopt een kamer via de voordeur naar buiten)
+            Vector2 d = q - p; float t = Vector2.Dot(cen - p, d) / d.sqrMagnitude; if (t <= 0.01f || t >= 0.99f) continue;
+            if ((p + d * t - cen).magnitude < ts * 0.02f) { a = p; b = q; return true; }
+        }
+        a = b = Vector2.zero; return false;
+    }
+    public static float SideOf(Vector2 a, Vector2 b, Vector2 p) { float c = (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x); return Mathf.Abs(c) < 1e-3f ? 0f : Mathf.Sign(c); }
     public static (Vector2 a, Vector2 b) WallSeg((int, int, int) id, float ts) { var D = DIRW[id.Item3]; return (P(id.Item1, id.Item2, ts), P(id.Item1 + D.x, id.Item2 + D.y, ts)); }
 
     // ---------- randcodes: per buitenrand wat er op de begane grond aan die rand ligt ----------

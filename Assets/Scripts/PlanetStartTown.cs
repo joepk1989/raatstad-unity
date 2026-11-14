@@ -11,6 +11,8 @@ using UnityEngine;
 //  - de ringweg is een laan; drie hoofdstraten onder 120° kruisen haar: naar buiten de stad uit (doodlopend in een ronde kop) en
 //    twee vakken naar binnen tot een keerkop, als kleine straatjes binnen de rondweg;
 //  - daarbuiten rijtjes woningen langs de wegen, een kantorenbuurtje, parken, een meertje en een heuvel met een molen.
+// Versie 5: aan een straat laanhuizen (haakse gevel, voortuin naar de laan; anders een huis met voortuin), en niets op of tegen
+// een weg: elke module en elk park wordt getoetst (RoadClear) zodat muren, bomen en voorwerpen buiten de stoep blijven.
 // Versie 3 (StartTownVersion 3): de gebouwen, pleinen en parkjes zijn modules uit de bibliotheek (Mod), met de deur naar het plein
 // of naar de straat (FaceRot); wegen, paden, de verlaagde ring, de bruggen en het terrein zijn gelijk aan versie 2. Lukt een module
 // niet (een vijfhoek, geen ruimte voor 7 vakken), dan komen er bomen.
@@ -33,7 +35,7 @@ public static partial class PlanetCity
         float[] street = { a0, a0 + Mathf.PI * 2f / 3f, a0 + Mathf.PI * 4f / 3f };   // de drie hoofdstraten, langs de assen van het raster
         float[] lane = { a0 + Mathf.PI / 3f, a0 + Mathf.PI, a0 + Mathf.PI * 5f / 3f };  // daartussen: paden, het meer, de heuvel, de kantoren
         System.Func<int, bool> free = c => !Cells.ContainsKey(c) && c != s;
-        System.Func<int, string, bool> put = (c, t) => free(c) && Place(c, t) == null;
+        System.Func<int, string, bool> put = (c, t) => free(c) && (t != "park" || RoadClear(null, c, 0)) && Place(c, t) == null;   // geen bomen op of tegen een weg
 
         var keep = new HashSet<int>();   // vakken die vrij blijven: een schuin pad loopt over hun gedeelde rand
         // een module uit de lijst, met de deur naar vak face (-1: willekeurig); geeft false als er geen past
@@ -43,7 +45,13 @@ public static partial class PlanetCity
             for (int t = 0; t < 4; t++)
             {
                 string id = ids[rnd.Next(ids.Length)]; bool mir = rnd.Next(2) == 0; var M = ModuleLib.Data(id, mir); if (M == null) continue;
-                if (PlaceModule(id, c, FaceRot(M, c, face, rnd), mir) == null) return true;
+                int r0 = FaceRot(M, c, face, rnd);
+                for (int dr = 0; dr < 6; dr++)   // eerst de deur naar de straat; houdt die draaiing de weg niet vrij, dan een andere
+                {
+                    int rot = (r0 + dr) % 6;
+                    if (!RoadClear(M, c, rot)) continue;
+                    if (PlaceModule(id, c, rot, mir) == null) return true;
+                }
             }
             return false;
         };
@@ -101,7 +109,7 @@ public static partial class PlanetCity
             if (!kerk && d == 5 && dAng(ang, lane[1] + 0.25f) < 10f) { kerk = mod(c, new[] { "kerk-toren-7l" }, s); if (kerk) continue; }   // de kerk
             if (!stadhuis && d == 5 && dAng(ang, lane[2] + 0.25f) < 10f) { stadhuis = mod(c, new[] { "huisarts-wit-2l", "bibliotheek-glas-2l", "kantoor-baksteen-3l" }, s); if (stadhuis) continue; }   // het stadhuis
             if (rnd.NextDouble() < 0.6) { if (rnd.NextDouble() < 0.5 || !mod(c, Groen, -1)) put(c, "park"); }   // parkjes: de helft een module, de rest bomen
-            else if (!mod(c, Huizen, street0(c) >= 0 ? street0(c) : s)) put(c, "park");
+            else if (!mod(c, street0(c) >= 0 ? Laan : Huizen, street0(c) >= 0 ? street0(c) : s) && !(street0(c) >= 0 && mod(c, Voortuin, street0(c)))) put(c, "park");   // aan een straat: een laanhuis (of een huis met voortuin)
         }
 
         // 7. het meer (een paar vakken) en de heuvel met de molen, elk in een eigen hoek tussen de straten
@@ -126,12 +134,12 @@ public static partial class PlanetCity
             if (d == 8 && road)   // langs de buitenkant van de ringweg: rijtjeshuizen, bij de hoofdstraten winkels
             {
                 bool nearStreet = false; foreach (float sa in street) if (dAng(ang, sa) < 14f) nearStreet = true;
-                if (!mod(c, business ? Kantoren : nearStreet ? Winkels : Huizen, street0(c))) put(c, "park");
+                if (!mod(c, business ? Kantoren : nearStreet ? Winkels : street0(c) >= 0 ? Laan : Huizen, street0(c)) && !(!business && street0(c) >= 0 && mod(c, Voortuin, street0(c)))) put(c, "park");
                 continue;
             }
             if (road && d <= 12)   // langs de hoofdstraten
             {
-                if (!mod(c, business ? Kantoren : Huizen, street0(c))) put(c, "park");
+                if (!mod(c, business ? Kantoren : street0(c) >= 0 ? Laan : Huizen, street0(c)) && !(!business && street0(c) >= 0 && mod(c, Voortuin, street0(c)))) put(c, "park");
                 continue;
             }
             if (path && d <= 11) { if (rnd.NextDouble() < 0.7 ? (rnd.NextDouble() < 0.5 || !mod(c, Groen, -1)) : !mod(c, Villas, street0(c))) put(c, "park"); continue; }
@@ -145,6 +153,8 @@ public static partial class PlanetCity
     static readonly string[] Pleinen = { "plein-leeg", "plein-lantaarns", "plein-terras", "plein-zitkuil", "plein-fontein" };
     static readonly string[] Winkels = { "winkel-bakkerij-2l", "winkel-boetiek-1l", "winkel-bovenwoning-3l", "winkel-etalage-2l", "horeca-cafe-met-terras-2l", "horeca-restaurant-2l", "snackbar-frituur-1l" };
     static readonly string[] Huizen = { "rijhuis-baksteen-2l", "rijhuis-baksteen-3l", "rijhuis-wit-2l", "rijhuis-hout-2l", "rijhuis-natuursteen-2l", "stadswoning-wit-3l", "herenhuis-natuursteen-4l" };
+    static readonly string[] Laan = { "laanhuis-wit-2l", "laanhuis-baksteen-2l", "laanhuis-donker-2l", "laanhuis-hout-2l" };   // zoals Joeps IT-kantoor: haakse gevel, voortuin naar de laan
+    static readonly string[] Voortuin = { "voortuinhuis-wit-2l", "voortuinhuis-baksteen-2l", "voortuinhuis-hout-2l", "voortuinhuis-natuursteen-2l" };   // het huis op de achterste halve zeshoek, de tuin naar de straat
     static readonly string[] Villas = { "villa-baksteen-tuin-2l", "villa-wit-tuin-2l", "bungalow-baksteen-1l", "patiowoning-baksteen-1l", "studio-hout-1l" };
     static readonly string[] Kantoren = { "kantoor-glas-3l", "kantoor-glas-5l", "kantoor-beton-4l", "kantoor-baksteen-3l" };
     static readonly string[] Groen = { "park-plantsoen", "park-bankjes", "park-speeltuin", "tuin-rozentuin", "park-vijver" };
@@ -153,21 +163,54 @@ public static partial class PlanetCity
     {
         if (face < 0 || M == null) return rnd.Next(6);
         var codes = MV2.Codes(M); var pts = new List<Vector2>();
-        foreach (string want in new[] { "deur", "stoep" })
+        foreach (string want in new[] { "deur", "stoep", "groen" })
         {
             foreach (var kv in codes) if (kv.Value == want) { var p = kv.Key.Split(','); int q = int.Parse(p[0]), r = int.Parse(p[1]), sd = int.Parse(p[2]); pts.Add(MV2.CellXZ(q, r) + MV2.FN(sd) * MV2.INNER); }
             if (pts.Count > 0) break;
         }
         if (pts.Count == 0) return rnd.Next(6);
-        Vector3 up = Planet.Cells[c].dir, to = Planet.Cells[face].dir - up; to -= up * Vector3.Dot(to, up);
+        Vector2 mean = Vector2.zero; foreach (var p in pts) mean += p; if (mean.magnitude < 0.5f) return rnd.Next(6);   // rondom hetzelfde: maakt niet uit
+        Vector3 up = Planet.Cells[c].dir, to = Vector3.zero;
+        bool road = IsRoad(face) || IsPath(face);   // alle straten (of paden) ernaast samen: een laan langs twee zijden wijst naar de hoek ertussen
+        foreach (int j in Planet.Cells[c].nb) if (j == face || (road && (IsRoad(face) ? IsRoad(j) : IsPath(j)))) { var d = Planet.Cells[j].dir - up; to += (d - up * Vector3.Dot(d, up)).normalized; }
+        if (to.sqrMagnitude < 1e-6f) { to = Planet.Cells[face].dir - up; to -= up * Vector3.Dot(to, up); }
         int best = 0; float bd = -9f;
         for (int rot = 0; rot < 6; rot++)
         {
-            ModAxes(c, rot, out var A, out var B, out _); float sc = -9f;
-            foreach (var p in pts) sc = Mathf.Max(sc, Vector3.Dot((A * p.x + B * p.y).normalized, to.normalized));
+            ModAxes(c, rot, out var A, out var B, out _); float sc = Vector3.Dot((A * mean.x + B * mean.y).normalized, to.normalized);
             if (sc > bd + 1e-4f) { bd = sc; best = rot; }
         }
         return best;
+    }
+    // Blijft de weg vrij als module M op vak c met draaiing rot staat? Muren en voorwerpen moeten buiten de stoep van elke weg of elk
+    // pad in de buurt blijven (met een meter ruimte); vloeren mogen eronder doorlopen (de stoep ligt erbovenop).
+    static float RoadSide(int i) { Dims(StyleOf(i), out _, out float sw); return sw; }
+    static bool RoadClear(ModuleV2 M, int c, int rot)   // M null: een park (bomen tot 5 m van het midden)
+    {
+        Vector3 up = Planet.Cells[c].dir, o = up * Planet.R; ModAxes(c, rot, out var A, out var B, out _);
+        var segs = new List<(Vector3 a, Vector3 b, float hw)>();
+        foreach (var kv in Cells)
+        {
+            int i = kv.Key; if (!IsWalk(i) && !IsHalf(i)) continue; Vector3 pi = Planet.Cells[i].dir * Planet.R; if ((pi - o).magnitude > 60f) continue;
+            float hw = IsRoad(i) ? RoadSide(i) : 3.5f; bool any = false;
+            foreach (int j in Partners(i)) if (IsWalk(j) || IsHalf(j)) { segs.Add((pi, Planet.Cells[j].dir * Planet.R, hw)); any = true; }
+            if (!any) segs.Add((pi, pi, hw));
+        }
+        if (segs.Count == 0) return true;
+        float ts = M != null ? MV2.Ts(M) : 1f;
+        bool Ok(Vector2 p, float extra)
+        {
+            Vector3 w = o + A * p.x + B * p.y;
+            foreach (var (a, b, hw) in segs) { Vector3 ab = b - a; float t = ab.sqrMagnitude < 1e-6f ? 0f : Mathf.Clamp01(Vector3.Dot(w - a, ab) / ab.sqrMagnitude); if ((a + ab * t - w).magnitude < hw + extra) return false; }
+            return true;
+        }
+        if (M == null) { if (!Ok(Vector2.zero, 2f)) return false; for (int k = 0; k < 6; k++) { float an = k * Mathf.PI / 3f; if (!Ok(new Vector2(Mathf.Cos(an), Mathf.Sin(an)) * 5f, 1f)) return false; } return true; }
+        foreach (var L in M.lv)
+        {
+            foreach (var kv in L.w) { if (kv.Key.Item3 < 0 || kv.Key.Item3 > 5) continue; var (a, b) = MV2.WallSeg(kv.Key, ts); if (!Ok(a, 1f) || !Ok(b, 1f) || !Ok((a + b) * 0.5f, 1f)) return false; }
+            foreach (var O in L.o) if (!Ok(new Vector2(O.x, O.z), 0.8f)) return false;
+        }
+        return true;
     }
 
     // de startplek het dichtst bij een punt waar nog niets staat (anders gewoon de dichtstbijzijnde)

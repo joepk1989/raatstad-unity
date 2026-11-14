@@ -220,7 +220,7 @@ public static partial class PlanetCity
     public static int Slot = 1;   // drie opslagslots: planeet1.json, planeet2.json, planeet3.json
     // Een stad die nog de ongewijzigde startstad is, wordt bij het laden opnieuw gebouwd als de startstad in de code veranderd is
     // (StartTownVersion omhoog). Zodra je zelf iets bouwt (UserEdit) blijft je stad zoals hij is.
-    public const int StartTownVersion = 3;   // 3: de gebouwen van de startstad zijn modules (PlanetStartTown.cs)
+    public const int StartTownVersion = 5;   // 3: de gebouwen van de startstad zijn modules (PlanetStartTown.cs); 5: laanhuizen aan de straat, de weg blijft vrij
     public static int StartVer, StartCell = -1; static bool startFresh;
     public static void UserEdit() { if (startFresh) startFresh = false; else StartVer = 0; }
     // Kan blok 'type' op vak i? null = ja, anders de reden. Dezelfde regels als Place (voor blokken, niet voor wegen), zonder iets te veranderen.

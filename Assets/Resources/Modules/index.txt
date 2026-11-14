@@ -157,3 +157,11 @@ steeg-natuursteen-2l
 steeg-wit-2l
 winkelcentrum-klein-2l-7v
 roltrap-glas-2l
+voortuinhuis-wit-2l
+voortuinhuis-baksteen-2l
+voortuinhuis-hout-2l
+voortuinhuis-natuursteen-2l
+laanhuis-wit-2l
+laanhuis-baksteen-2l
+laanhuis-donker-2l
+laanhuis-hout-2l

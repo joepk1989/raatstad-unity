@@ -90,15 +90,21 @@ public partial class Raatmaker
     // vullen: alle driehoeken met dezelfde vloer (of leeg) tot aan de muren en de rand van het gebied
     List<(int, int, int)> FillRegion(Vector2 p)
     {
-        var o = new List<(int, int, int)>(); var s = TriAt(p); if (!OkTri(s)) return o;
-        Lvl.f.TryGetValue(s, out var want); var seen = new HashSet<(int, int, int)> { s }; var q = new Queue<(int, int, int)>(); q.Enqueue(s);
+        // een lange muur (haaks op het raster) snijdt driehoeken doormidden: daar gaat het vullen alleen verder aan de kant waar het binnenkwam
+        var o = new List<(int, int, int)>(); var s = TriAt(p); if (!OkTri(s)) return o; var lw = MV2.LongWalls(Lvl, Ts);
+        float Side((int, int, int) id, Vector2 at) => MV2.CrossedBy(lw, Cen(id), Ts, out var wa, out var wb, true) ? MV2.SideOf(wa, wb, at) : 0f;
+        Lvl.f.TryGetValue(s, out var want); var seen = new HashSet<((int, int, int), float)> { (s, Side(s, p)) }; var q = new Queue<((int, int, int) t, float sd)>(); q.Enqueue((s, Side(s, p)));
+        var got = new HashSet<(int, int, int)>();
         while (q.Count > 0 && o.Count < 4000)
         {
-            var c = q.Dequeue(); o.Add(c);
+            var (c, sd) = q.Dequeue(); if (got.Add(c)) o.Add(c);
             foreach (var (nb, a, b) in TriNb(c))
             {
-                if (seen.Contains(nb) || !OkTri(nb) || Blocked(a, b)) continue; Lvl.f.TryGetValue(nb, out var mt); if (mt != want) continue;
-                seen.Add(nb); q.Enqueue(nb);
+                if (!OkTri(nb) || Blocked(a, b)) continue; Vector2 em = (P(a.x, a.y) + P(b.x, b.y)) * 0.5f;
+                float es = Side(c, em); if (sd != 0f && es != 0f && es != sd) continue;   // de ribbe ligt aan de andere kant van de muur
+                float ns = Side(nb, em); if (ns == 0f && MV2.CrossedBy(lw, Cen(nb), Ts, out _, out _, true)) ns = sd;   // dezelfde muur loopt door
+                if (seen.Contains((nb, ns))) continue; Lvl.f.TryGetValue(nb, out var mt); if (mt != want) continue;
+                seen.Add((nb, ns)); q.Enqueue((nb, ns));
             }
         }
         return o;
@@ -217,6 +223,6 @@ public partial class Raatmaker
     }
     static string OpeningName(string o) => o == "door" ? "Deur" : o == "window" ? "Raam" : o == "gate" ? "Poort" : o == "open" ? "Open" : "Dicht";
     static string StairName(string k) => k == "spiral" ? "wenteltrap" : k == "u" ? "bordestrap" : k == "ramp" ? "helling" : k == "hexramp" ? "schans" : k == "esc" ? "roltrap" : k == "trib" ? "tribune" : "trap";
-    static readonly string[] RoofKinds = { "hip", "gable0", "gable1", "gable2", "flat" }, RoofNames = { "Schilddak", "Zadeldak /", "Zadeldak |", "Zadeldak \\", "Plat dak" };
+    static readonly string[] RoofKinds = { "hip", "gable0", "gable1", "gable2", "flat", "half" }, RoofNames = { "Schilddak", "Zadeldak /", "Zadeldak |", "Zadeldak \\", "Plat dak", "Half schilddak" };
     static string RoofName(string k) { int i = System.Array.IndexOf(RoofKinds, k); return i >= 0 ? RoofNames[i].ToLower() : "dak"; }
 }

@@ -69,32 +69,36 @@ public partial class Raatmaker
         // rechts
         float x = r.xMax - 10f;
         Rect B(float w) { x -= w; var b = new Rect(x, r.y + 9f, w, 30f); x -= 6f; return b; }
-        var bc = B(84f); if (Ui.Button(bc, "Sluiten")) { if (dirty) confirmClose = true; else Close(); } Ui.Tip(bc, "Sluiten", dirty ? "Er is iets niet bewaard: je krijgt eerst de vraag" : "Terug naar de stad", "Esc");
-        var bs = B(96f); if (Ui.Button(bs, "Bewaren", true)) Save(false); Ui.Tip(bs, "Bewaren", string.IsNullOrEmpty(origId) ? "Als nieuwe module in de bibliotheek (Eigen)" : "Alle exemplaren in de stad passen zich aan", "Ctrl+S");
+        var bc = B(100f); if (Ui.Button(bc, "Sluiten", false, "sluit")) { if (dirty) confirmClose = true; else Close(); } Ui.Tip(bc, "Sluiten", dirty ? "Er is iets niet bewaard: je krijgt eerst de vraag" : "Terug naar de stad", "Esc");
+        var bs = B(112f); if (Ui.Button(bs, "Bewaren", true, "rm-save")) Save(false); Ui.Tip(bs, "Bewaren", string.IsNullOrEmpty(origId) ? "Als nieuwe module in de bibliotheek (Eigen)" : "Alle exemplaren in de stad passen zich aan", "Ctrl+S");
         var bk = B(96f); if (Ui.Button(bk, "Als kopie")) Save(true); Ui.Tip(bk, "Als kopie bewaren", "Een nieuwe module; het origineel blijft zoals het was");
         x -= 10f;
         var b3 = B(44f); if (Ui.Button(b3, "3D", v3d)) { v3d = true; meshDirty = true; } Ui.Tip(b3, "3D", "Draaien: middelste muisknop of Alt slepen; schuiven: rechts of Shift slepen; wiel zoomt", "3");
         var b2 = B(44f); if (Ui.Button(b2, "2D", !v3d)) { v3d = false; meshDirty = true; } Ui.Tip(b2, "Bovenaanzicht", "Recht van boven, tot en met deze verdieping", "2");
-        var bf = B(74f); if (Ui.Button(bf, "Passend")) Fit(); Ui.Tip(bf, "Passend", "De hele module in beeld");
+        var bf = B(100f); if (Ui.Button(bf, "Passend", false, "rm-fit")) Fit(); Ui.Tip(bf, "Passend", "De hele module in beeld");
         x -= 10f;
-        var br = B(78f); if (Ui.Button(br, "Opnieuw", false, null, redoS.Count == 0)) Redo(); Ui.Tip(br, "Opnieuw", null, "Ctrl+Y");
+        var br = B(44f); if (Ui.Button(br, null, false, "opnieuw", redoS.Count == 0)) Redo(); Ui.Tip(br, "Opnieuw", null, "Ctrl+Y");
         var bu = B(44f); if (Ui.Button(bu, null, false, "ongedaan", undoS.Count == 0)) Undo(); Ui.Tip(bu, "Ongedaan maken", null, "Ctrl+Z");
     }
 
     void ToolBar(float H)
     {
         int nT = 0, nS = 0; foreach (var t in Tools) if (t == null) nS++; else nT++;
-        float bh = Mathf.Min(32f, (H - 72f - 70f - nS * 8f - 16f) / nT), y = 72f;
-        var r = new Rect(12f, y, 76f, nT * (bh + 2f) + nS * 8f + 12f); Ui.Panel(r, true, 14f); y += 6f;
+        float bh = Mathf.Min(32f, (H - 72f - 70f - nS * 8f - 16f) / nT), y = 72f, isz = Mathf.Min(18f, bh - 6f);
+        var r = new Rect(12f, y, 118f, nT * (bh + 2f) + nS * 8f + 12f); Ui.Panel(r, true, 14f); y += 6f;
         foreach (var t in Tools)
         {
             if (t == null) { Ui.Box(new Rect(r.x + 12f, y + 3f, r.width - 24f, 1f), Ui.Line, Color.clear, 0f); y += 8f; continue; }
             var b = new Rect(r.x + 6f, y, r.width - 12f, bh); y += bh + 2f;
-            if (Ui.Button(b, t[1], tool == t[0], null, false, 8f)) SetTool(t[0]);
-            if (t[2] != "") Ui.Label(new Rect(b.xMax - 14f, b.y + 1f, 12f, 12f), t[2], Ui.T.Tiny, tool == t[0] ? Ui.SignalInk : Ui.InkDim, TextAnchor.UpperRight, 8);
+            bool on = tool == t[0]; Color ink = on ? Ui.SignalInk : Ui.Ink;   // pictogram links, naam ernaast, de toets rechts
+            if (Ui.Button(b, null, on, null, false, 8f)) SetTool(t[0]);
+            Ui.Tex(new Rect(b.x + 8f, b.y + (bh - isz) * 0.5f, isz, isz), Ui.Icon(ToolIcon(t[0])), ink);
+            Ui.Label(new Rect(b.x + 8f + isz + 7f, b.y, b.width - isz - 34f, bh), t[1], Ui.T.Bold, ink, TextAnchor.MiddleLeft, 12);
+            if (t[2] != "") Ui.Label(new Rect(b.xMax - 20f, b.y, 14f, bh), t[2], Ui.T.Tiny, on ? Ui.SignalInk : Ui.InkDim, TextAnchor.MiddleRight, 9);
             Ui.Tip(b, t[3].Split(':')[0], t[3].Contains(":") ? t[3].Substring(t[3].IndexOf(':') + 1).Trim() : null, t[2] != "" ? t[2] : null);
         }
     }
+    static string ToolIcon(string t) => t == "erase" ? "gum" : "rm-" + t;
     void SetTool(string t) { tool = t; dragKind = null; if (t != "select") selOn = false; prevKey = null; }
 
     // ---- rechts: de keuzes bij het gereedschap ----
@@ -149,7 +153,8 @@ public partial class Raatmaker
         else if (pk.kind == "w" && Lvl.w.TryGetValue(pk.key, out var W))
         {
             y = Choice(x, y, iw, new[] { "", "door", "window", "gate", "open" }, new[] { "Dicht", "Deur", "Raam", "Poort", "Open" }, W.o ?? "", s => { Snap(); W.o = s; Changed(); sel.Name = MV2.NameOf(MV2.Walls, MV2.WallNames, W.m) + (s == "" ? "" : " met " + OpeningName(s).ToLower()); }, 3);
-            y += 6f; Swatches(x, y, iw, MV2.Walls, MV2.WallNames, W.m, s => { Snap(); W.m = s; Changed(); });
+            y += 6f; y = Swatches(x, y, iw, MV2.Walls, MV2.WallNames, W.m, s => { Snap(); W.m = s; Changed(); });
+            if (W.m != "glass" && W.m != "curtain" && W.m != "fence" && W.m != "hedge" && Ui.Button(new Rect(x, y + 4f, iw, 28f), W.p ? "Steunpilaren: aan" : "Steunpilaren: uit")) { Snap(); W.p = !W.p; Changed(); }
         }
         else if (pk.kind == "f" && Lvl.f.TryGetValue(pk.key, out var fm))
         {
