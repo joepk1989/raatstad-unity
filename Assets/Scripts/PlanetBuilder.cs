@@ -942,6 +942,7 @@ public partial class PlanetBuilder : MonoBehaviour
         fpsN++; if (Time.time - fpsT > 0.5f) { fps = fpsN / (Time.time - fpsT); fpsN = 0; fpsT = Time.time; }
         if (flying) { if (!photoFrame) FlyGui(W, H); ReportGui(W, H); Ui.End(); return; }   // cameramodus: geen interface
         if (driving) { DriveGui(W, H); ReportGui(W, H); Ui.End(); return; }   // rijden: alleen de snelheidsmeter
+        VehicleAskGui(W, H);   // J: auto of tank
 
         if (!inSpace) CentreArrow(W, H);   // in de ruimte staat je stad als marker op de bol
         if (!walking) { TopLeft(); Incidents(); } TopRight(W);   // lopen: zo min mogelijk in beeld, de stad zelf is het beeld
@@ -1383,13 +1384,14 @@ public partial class PlanetBuilder : MonoBehaviour
         "muis|rondkijken (klik om te vangen)",
         "Esc|muis loslaten",
         "#Rijden",
-        "J|instappen op de weg bij de muis, en uitstappen (ook Esc)",
+        "J|instappen bij de muis: 1 Cybertruck, 2 tank; J of Esc stapt uit",
         "W S  pijltjes|gas, remmen en achteruit",
         "A D|sturen",
         "Spatie|handrem (slippen)",
         "C  wiel|camera: achter de auto of als bestuurder",
         "R|weer rechtop (na over de kop slaan)",
         "W S  A D|in de lucht: kantelen en rollen",
+        "Muis  klik|tank: de koepel volgt de muis, klikken schiet",
         "#Altijd",
         "P|tijd stilzetten en verder",
         "O|ander weer (Shift+O: vorige)",

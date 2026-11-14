@@ -1,20 +1,28 @@
 using UnityEngine;
 
-// Zelf rijden (J): instappen in een auto op de weg die het dichtst bij de muis (of het midden van het beeld) ligt, en weer uitstappen
-// met J of Esc. Het rijden zelf, de camera en het geluid zitten in PlayerCar.cs; hier de toetsen, het in- en uitstappen en de
+// Zelf rijden (J): eerst kiezen (1 de Cybertruck, 2 de tank), dan instappen op de weg die het dichtst bij de muis (of het midden van
+// het beeld) ligt, en weer uitstappen met J of Esc. De tank (richten en schieten) zit in PlanetBuilder.Tank.cs. Het rijden zelf, de camera en het geluid zitten in PlayerCar.cs; hier de toetsen, het in- en uitstappen en de
 // snelheidsmeter rechtsonder.
 public partial class PlanetBuilder
 {
-    bool driving; PlayerCar playerCar; float driveT;
+    bool driving; PlayerCar playerCar; float driveT; bool vehicleAsk; Vector3 askAt; bool askHover; int askCell;
     public bool Driving => driving;
 
     // true zolang er gereden wordt (dan doet de bouwmodus niets)
     bool DriveUpdate()
     {
+        TankTick();
         if (!driving)
         {
-            if (Inp.Down(K.J) && !inSpace && !Modal && !cursorMode) StartDrive();
-            return driving;
+            if (vehicleAsk)   // de keuze: 1 auto, 2 tank; J of Esc annuleert
+            {
+                if (Inp.Down(K.D1)) { vehicleAsk = false; useAsk = true; StartDrive(false); }
+                else if (Inp.Down(K.D2)) { vehicleAsk = false; useAsk = true; StartDrive(true); }
+                else if (Inp.Down(K.J) || Inp.Down(K.Esc) || inSpace) vehicleAsk = false;
+                return true;
+            }
+            if (Inp.Down(K.J) && !inSpace && !Modal && !cursorMode) { vehicleAsk = true; askHover = hasHover; askCell = hover; askAt = focus; }
+            return driving || vehicleAsk;
         }
         if (Inp.Down(K.Slash)) ToggleHelp();
         if (Inp.Down(K.Esc) && helpOpen) helpOpen = false;
@@ -23,11 +31,11 @@ public partial class PlanetBuilder
         return true;
     }
 
-    void StartDrive()
+    void StartDrive(bool tank = false)
     {
         var L = PlanetLife.I; if (L == null) { Say("Rijden kan hier niet"); return; }
         if (walking) ToggleWalk();
-        Vector3 at = (hasHover ? Planet.Cells[hover].dir : focus).normalized;
+        Vector3 at = useAsk ? (askHover ? Planet.Cells[askCell].dir : askAt).normalized : (hasHover ? Planet.Cells[hover].dir : focus).normalized; useAsk = false;
         // de dichtstbijzijnde weg (binnen 400 m), in de richting die het meest op de kijkrichting lijkt
         int best = -1; float bd = 400f / Planet.R;
         foreach (var kv in PlanetCity.Cells)
@@ -55,12 +63,12 @@ public partial class PlanetBuilder
             dir = look - at * Vector3.Dot(look, at); if (dir.sqrMagnitude < 1e-6f) dir = Planet.Cells[Planet.Nearest(at * Planet.R)].north; dir.Normalize();
             pos = at * (Planet.R + PlanetCity.TerrainAt(at) + 0.3f);
         }
-        var root = L.AddPlayer(pos, dir);
+        var root = L.AddPlayer(pos, dir, tank);
         if (playerCar == null) playerCar = gameObject.AddComponent<PlayerCar>();
         playerCar.Enter(root, Cam);
         driving = true; driveT = Time.time; Sounds.Fx("whoosh");
         PlanetCity.ShowGrid(false); catOpen = todOpen = menuOpen = scoreOpen = helpOpen = welcome = wheelOpen = false; WalkHide();
-        Say(best >= 0 ? "Instappen: rijden maar" : "Geen weg in de buurt: je staat op het terrein");
+        Say(tank ? "De tank: richten met de muis, klikken schiet" : best >= 0 ? "Instappen: rijden maar" : "Geen weg in de buurt: je staat op het terrein");
     }
 
     void StopDrive()
@@ -77,8 +85,20 @@ public partial class PlanetBuilder
     }
 
     // rechtsonder de snelheid, onderin even de toetsen
+    bool useAsk;   // StartDrive na de keuze: de plek van toen J werd ingedrukt (de muis staat nu op een knop)
+    // de keuze onder J: twee knoppen onderaan (ook met 1 en 2)
+    void VehicleAskGui(float W, float H)
+    {
+        if (!vehicleAsk) return;
+        float bw = 210f, bh = 46f, gap = 12f, w = bw * 2f + gap + 28f; var r = new Rect((W - w) * 0.5f, H - G - bh - 70f, w, bh + 52f);
+        Ui.Panel(r, false, 14f); Ui.Label(new Rect(r.x, r.y + 6f, r.width, 22f), "Instappen in…", Ui.T.Dim, Ui.InkDim, TextAnchor.MiddleCenter);
+        if (Ui.Button(new Rect(r.x + 14f, r.y + 36f, bw, bh), "1  Cybertruck")) { vehicleAsk = false; useAsk = true; StartDrive(false); }
+        if (Ui.Button(new Rect(r.x + 14f + bw + gap, r.y + 36f, bw, bh), "2  Tank")) { vehicleAsk = false; useAsk = true; StartDrive(true); }
+    }
+
     void DriveGui(float W, float H)
     {
+        TankGui(W, H);
         float kmh = playerCar != null ? playerCar.Kmh : 0f;
         var r = new Rect(W - G - 210f, H - G - 92f, 210f, 92f); Ui.Panel(r, false, 14f);
         Ui.Label(new Rect(r.x + 14f, r.y + 6f, 120f, 52f), Mathf.RoundToInt(kmh).ToString(), Ui.T.Title, Ui.Ink, TextAnchor.MiddleLeft, 44);
@@ -94,7 +114,9 @@ public partial class PlanetBuilder
         }
         float a = Mathf.Clamp01(1f - (Time.time - driveT - 7f)); if (a > 0f)
         {
-            string t = "W S gas en rem · A D sturen · Spatie handrem · R rechtop · C of wiel: camera · muis rondkijken · J of Esc uitstappen"; float tw = Ui.Width(t, Ui.T.Dim) + 40f;
+            bool tk = PlanetLife.I != null && PlanetLife.I.PlayerTank;
+            string t = tk ? "W S rijden · A D draaien · muis richten · klik schieten · Spatie rem · R rechtop · C vizier · J of Esc uitstappen"
+                          : "W S gas en rem · A D sturen · Spatie handrem · R rechtop · C of wiel: camera · muis rondkijken · J of Esc uitstappen"; float tw = Ui.Width(t, Ui.T.Dim) + 40f;
             var hr = new Rect((W - tw) * 0.5f, H - G - 40f, tw, 40f);
             var old = GUI.color; GUI.color = new Color(1f, 1f, 1f, a); Ui.Panel(hr, false, 20f); Ui.Label(hr, t, Ui.T.Dim, null, TextAnchor.MiddleCenter); GUI.color = old;
         }

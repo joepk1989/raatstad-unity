@@ -94,6 +94,7 @@ public class Sounds : MonoBehaviour
     }
     // undo, gen en dergelijke gaan voor het tellen
     public static void Instead(string name) { pendKind = null; Fx(name); }
+    public static void Hush() { pendKind = null; }   // geen bouwgeluid voor deze wijziging (de tank heeft zijn eigen knal)
 
     void LateUpdate()
     {

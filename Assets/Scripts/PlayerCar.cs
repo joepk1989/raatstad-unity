@@ -11,15 +11,26 @@ using UnityEngine;
 public partial class PlanetLife
 {
     Car player; Rigidbody prb; float playerSlip, pThrottle, pSteer, pSteerDeg, pFlipT; bool pHand, playerInList; Vector3 pInPos, pInVel, pLastVel;
-    readonly float[] pLen = new float[4], pShow = new float[4]; readonly bool[] pOn = new bool[4];
+    float[] pLen = new float[4], pShow = new float[4]; bool[] pOn = new bool[4];
+    // de maten van het voertuig: een auto (de Cybertruck) of de tank (TankModel)
+    class Rig { public float mass, rest, spring, dampIn, dampOut, antiRoll, mu, top, accel, back, maxW, maxH, comY; public Vector3[] wheels; public bool tank; }
+    static readonly Rig CarRig = new Rig { mass = 2900f, rest = 0.78f, spring = 30000f, dampIn = 2600f, dampOut = 4200f, antiRoll = 9000f, mu = 1.15f, top = 50f, accel = 9f, back = 12f, maxW = 2.1f, maxH = 2.2f, comY = 0.62f,
+        wheels = new[] { new Vector3(-0.84f, 0f, 1.95f), new Vector3(0.84f, 0f, 1.95f), new Vector3(-0.84f, 0f, -1.73f), new Vector3(0.84f, 0f, -1.73f) } };   // zacht: ~1 Hz, 24 cm inveren bij stilstand, ruim 60 cm slag
+    static readonly Rig TankRigSpec = new Rig { mass = 26000f, rest = 0.7f, spring = 280000f, dampIn = 24000f, dampOut = 32000f, antiRoll = 90000f, mu = 1.3f, top = 19f, accel = 4.5f, back = 8f, maxW = 3.4f, maxH = 2.4f, comY = 0.85f,
+        wheels = TankModel.Wheels, tank = true };   // 26 ton, tot 70 km/u, draait op de plaats
+    Rig rig = CarRig;
+    public bool PlayerTank => rig.tank && player != null;
+    public TankRig PlayerTankRig { get; private set; }
     public Transform PlayerRoot => player != null ? player.root : null;
     public float PlayerSpeed => prb != null ? Vector3.Dot(prb.linearVelocity, player.root.forward) : 0f;   // m/s, negatief achteruit
     public float PlayerSlip => playerSlip;   // dwars glijden (m/s)
     public bool PlayerAir => player != null && player.air;
     public float PlayerSteer => pSteerDeg;
+    public float PlayerYaw; public int PlayerOn;   // voor een test: draaisnelheid (rad/s) en wielen op de grond
+    public Vector3 PlayerVelocity => prb != null ? prb.linearVelocity : Vector3.zero;
+    public void PlayerKick(Vector3 impulse, Vector3 at) { if (prb != null) prb.AddForceAtPosition(impulse, at, ForceMode.Impulse); }   // terugslag van het kanon
     public string PlayerWall = "";   // waar de auto het laatst hard tegenaan botste (voor een test)
-    const float PMass = 2900f, PMount = 1.0f, PRest = 0.78f, PSpring = 30000f, PDampIn = 2600f, PDampOut = 4200f, PAntiRoll = 9000f, PMu = 1.15f;   // zacht: ~1 Hz, 24 cm inveren bij stilstand, ruim 60 cm slag
-    static readonly Vector3[] PWheels = { new Vector3(-0.84f, 0f, 1.95f), new Vector3(0.84f, 0f, 1.95f), new Vector3(-0.84f, 0f, -1.73f), new Vector3(0.84f, 0f, -1.73f) };
+    const float PMount = 1.0f;
     float pWheelR = 0.36f;
     static PhysicsMaterial pMat;
 
@@ -44,13 +55,15 @@ public partial class PlanetLife
         Vector3 dp = player.root.position - pInPos; if (dp.sqrMagnitude > 1e-8f) { player.root.position = pInPos; prb.position += dp; }
     }
 
-    public Transform AddPlayer(Vector3 pos, Vector3 fwd)
+    public Transform AddPlayer(Vector3 pos, Vector3 fwd, bool tank = false)
     {
         RemovePlayer();
+        rig = tank ? TankRigSpec : CarRig; int nw = rig.wheels.Length; pLen = new float[nw]; pShow = new float[nw]; pOn = new bool[nw]; PlayerTankRig = null;
         var c = new Car { free = true, persona = 0, b = Planet.Nearest(pos), hp = 1e9f };
         c.a = c.c = c.n = c.b;
-        var root = new GameObject("Eigen auto").transform; root.SetParent(transform, false); root.gameObject.layer = Layers.Mens; c.root = root;
-        if (ModelCar.Build(root, "cybertruck")) { c.type = "cybertruck"; pWheelR = ModelCar.WheelRadius("cybertruck"); }
+        var root = new GameObject(tank ? "Eigen tank" : "Eigen auto").transform; root.SetParent(transform, false); root.gameObject.layer = Layers.Mens; c.root = root;
+        if (tank) { PlayerTankRig = TankModel.Build(root); c.type = "tank"; pWheelR = TankModel.WheelR; }
+        else if (ModelCar.Build(root, "cybertruck")) { c.type = "cybertruck"; pWheelR = ModelCar.WheelRadius("cybertruck"); }
         else { c.type = LowPolyCar.Build(root); pWheelR = 0.36f; }
         c.wheels = root.GetComponent<CarWheels>();
         Vector3 up = pos.normalized; c.fwd = Flat(fwd, up).normalized; c.vel = Vector3.zero;
@@ -58,12 +71,12 @@ public partial class PlanetLife
         float alt = pos.magnitude - Planet.R;
         if (UnityEngine.Physics.Raycast(up * (Planet.R + alt + 2f), -up, out RaycastHit hit, 12f, Layers.Grond, QueryTriggerInteraction.Ignore)) alt = hit.point.magnitude - Planet.R;
         root.position = up * (Planet.R + alt + 0.25f); root.rotation = Geo.Look(c.fwd, up);
-        Shape(root);
+        Shape(root, rig);
         prb = root.gameObject.AddComponent<Rigidbody>();
-        prb.mass = PMass; prb.useGravity = false; prb.interpolation = RigidbodyInterpolation.Interpolate;
+        prb.mass = rig.mass; prb.useGravity = false; prb.interpolation = RigidbodyInterpolation.Interpolate;
         prb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic; prb.linearDamping = 0f; prb.angularDamping = 0.4f; prb.maxAngularVelocity = 14f;
-        prb.centerOfMass = new Vector3(0f, 0.62f, 0.1f);
-        for (int k = 0; k < 4; k++) { pLen[k] = PRest; pOn[k] = false; }
+        prb.centerOfMass = new Vector3(0f, rig.comY, 0.1f);
+        for (int k = 0; k < nw; k++) { pLen[k] = rig.rest; pOn[k] = false; }
         pSteerDeg = 0f; pFlipT = 0f; pLastVel = Vector3.zero; playerSlip = 0f;
         player = c; return root;
     }
@@ -73,11 +86,11 @@ public partial class PlanetLife
     {
         if (player == null) return; LastRemove = System.Environment.StackTrace; PlayerOut();
         player.dead = true;   // andere auto's die hem nog onthouden (voorligger, vastgezeten achter) zien hem zo als weg
-        if (player.root != null) Destroy(player.root.gameObject); player = null; prb = null;
+        if (player.root != null) Destroy(player.root.gameObject); player = null; prb = null; PlayerTankRig = null;
     }
 
     // de botsvorm: een lage doos over de hele lengte (boven de wielen, de vering doet de grond) en de cabine erboven
-    static void Shape(Transform root)
+    static void Shape(Transform root, Rig rig)
     {
         var b = new Bounds(Vector3.zero, Vector3.zero); bool any = false;
         foreach (var r in root.GetComponentsInChildren<Renderer>())
@@ -90,16 +103,26 @@ public partial class PlanetLife
             }
         }
         if (!any) b = new Bounds(new Vector3(0f, 0.9f, 0f), new Vector3(2f, 1.8f, 5f));
+        if (rig.tank)   // de tank: de romp boven de rupsen (de vering doet de grond) en de koepel
+        {
+            if (pMat == null) MakePMat();
+            float tl = TankModel.Length * 0.96f;
+            var h0 = root.gameObject.AddComponent<BoxCollider>(); h0.center = new Vector3(0f, 1.05f, 0f); h0.size = new Vector3(TankModel.Width * 0.97f, 1.0f, tl); h0.sharedMaterial = pMat;
+            var h1 = root.gameObject.AddComponent<BoxCollider>(); h1.center = new Vector3(0f, 2.0f, -0.4f); h1.size = new Vector3(2.4f, 0.8f, 3.2f); h1.sharedMaterial = pMat;
+            return;
+        }
         // de wereldbegrenzing van een gedraaide mesh is ruim: iets kleiner nemen
-        float wdt = Mathf.Min(b.size.x * 0.92f, 2.1f), len = b.size.z * 0.94f, top = Mathf.Min(b.max.y, 2.2f) - 0.05f, low = 0.5f, mid = Mathf.Lerp(low, top, 0.5f);
-        if (pMat == null) pMat = new PhysicsMaterial("auto") { dynamicFriction = 0.25f, staticFriction = 0.3f, bounciness = 0.05f, frictionCombine = PhysicsMaterialCombine.Minimum, bounceCombine = PhysicsMaterialCombine.Minimum };
+        float wdt = Mathf.Min(b.size.x * 0.92f, rig.maxW), len = b.size.z * 0.94f, top = Mathf.Min(b.max.y, rig.maxH) - 0.05f, low = 0.5f, mid = Mathf.Lerp(low, top, 0.5f);
+        if (pMat == null) MakePMat();
         // tussen de wielen laag (bodemvrijheid), voor en achter de wielen hoger: anders stoot de overhang op een stoeprand of randje
         // voordat het wiel er met de vering overheen kan
-        float zf = PWheels[0].z + 0.35f, zr = PWheels[2].z - 0.35f, over = 0.9f;
+        float zf = rig.wheels[0].z + 0.35f, zr = rig.wheels[rig.wheels.Length - 1].z - 0.35f, over = 0.9f;
         var a = root.gameObject.AddComponent<BoxCollider>(); a.center = new Vector3(b.center.x, (low + mid) * 0.5f, (zf + zr) * 0.5f); a.size = new Vector3(wdt, mid - low, zf - zr); a.sharedMaterial = pMat;
         var ov = root.gameObject.AddComponent<BoxCollider>(); ov.center = new Vector3(b.center.x, (over + mid) * 0.5f, b.center.z); ov.size = new Vector3(wdt, Mathf.Max(0.1f, mid - over), len); ov.sharedMaterial = pMat;
         var cb = root.gameObject.AddComponent<BoxCollider>(); cb.center = new Vector3(b.center.x, (mid + top) * 0.5f, b.center.z - len * 0.05f); cb.size = new Vector3(wdt * 0.9f, top - mid, len * 0.55f); cb.sharedMaterial = pMat;
     }
+
+    static void MakePMat() { pMat = new PhysicsMaterial("auto") { dynamicFriction = 0.25f, staticFriction = 0.3f, bounciness = 0.05f, frictionCombine = PhysicsMaterialCombine.Minimum, bounceCombine = PhysicsMaterialCombine.Minimum }; }
 
     public void SetPlayerInput(float throttle, float steer, bool hand) { pThrottle = throttle; pSteer = steer; pHand = hand; }
 
@@ -134,45 +157,53 @@ public partial class PlanetLife
         Vector3 vel = prb.linearVelocity; float vf = Vector3.Dot(vel, cf), sp = vel.magnitude;
         prb.AddForce(-vel * sp * 0.00045f, ForceMode.Acceleration);   // luchtweerstand
 
-        // sturen: minder uitslag bij hoge snelheid
-        float maxDeg = Mathf.Lerp(34f, 8f, Mathf.Abs(vf) / 40f);
+        // sturen: minder uitslag bij hoge snelheid (de tank stuurt met zijn rupsen: zie onder)
+        float maxDeg = rig.tank ? 0f : Mathf.Lerp(34f, 8f, Mathf.Abs(vf) / 40f);
         pSteerDeg = Mathf.MoveTowards(pSteerDeg, pSteer * maxDeg, 160f * dt);
         // gas, remmen, achteruit: elektrisch, veel trekkracht onderin, tot zo'n 180 km/u; achteruit tot 43 km/u
         float accel = 0f; bool brake = false;
-        if (pThrottle > 0.05f) { if (vf < -0.8f) brake = true; else accel = pThrottle * 9f * Mathf.Clamp01(1f - vf / 50f); }
-        else if (pThrottle < -0.05f) { if (vf > 0.8f) brake = true; else accel = pThrottle * 6f * Mathf.Clamp01(1f + vf / 12f); }
+        if (pThrottle > 0.05f) { if (vf < -0.8f) brake = true; else accel = pThrottle * rig.accel * Mathf.Clamp01(1f - vf / rig.top); }
+        else if (pThrottle < -0.05f) { if (vf > 0.8f) brake = true; else accel = pThrottle * rig.accel * 0.67f * Mathf.Clamp01(1f + vf / rig.back); }
         bool idle = !brake && Mathf.Abs(pThrottle) <= 0.05f;
 
-        var pt = new Vector3[4]; var nm = new Vector3[4]; var load = new float[4]; var comp = new float[4]; var mounts = new Vector3[4]; int on = 0;
-        float maxLen = PRest + pWheelR;
-        for (int k = 0; k < 4; k++)
+        int nw = rig.wheels.Length;
+        var pt = new Vector3[nw]; var nm = new Vector3[nw]; var load = new float[nw]; var comp = new float[nw]; var mounts = new Vector3[nw]; int on = 0;
+        float maxLen = rig.rest + pWheelR;
+        for (int k = 0; k < nw; k++)
         {
-            mounts[k] = pos + rot * new Vector3(PWheels[k].x, PMount, PWheels[k].z);
+            mounts[k] = pos + rot * new Vector3(rig.wheels[k].x, PMount, rig.wheels[k].z);
             pOn[k] = WheelHit(mounts[k], -cu, maxLen, out pt[k], out nm[k], out float d);
-            if (!pOn[k]) { pLen[k] = PRest; continue; }
-            float len = Mathf.Max(0f, d - pWheelR); comp[k] = PRest - len;
-            float sv = (pLen[k] - len) / dt; float f = PSpring * comp[k] + (sv > 0f ? PDampIn : PDampOut) * sv;   // veer en demper (uitveren trager dan inveren)
-            if (len < 0.14f) f += (0.14f - len) * PSpring * 12f;   // aanslag
+            if (!pOn[k]) { pLen[k] = rig.rest; continue; }
+            float len = Mathf.Max(0f, d - pWheelR); comp[k] = rig.rest - len;
+            float sv = (pLen[k] - len) / dt; float f = rig.spring * comp[k] + (sv > 0f ? rig.dampIn : rig.dampOut) * sv;   // veer en demper (uitveren trager dan inveren)
+            if (len < 0.14f) f += (0.14f - len) * rig.spring * 12f;   // aanslag
             load[k] = Mathf.Max(0f, f); pLen[k] = len; on++;
         }
         // stabilisatorstang: links en rechts samen
-        for (int k = 0; k < 4; k += 2)
+        for (int k = 0; k + 1 < nw; k += 2)
         {
-            float ar = (comp[k] - comp[k + 1]) * PAntiRoll;
+            float ar = (comp[k] - comp[k + 1]) * rig.antiRoll;
             if (pOn[k]) load[k] = Mathf.Max(0f, load[k] + ar); if (pOn[k + 1]) load[k + 1] = Mathf.Max(0f, load[k + 1] - ar);
         }
         c.air = on == 0;
-        float m4 = PMass / 4f, slip = 0f;
-        for (int k = 0; k < 4; k++)
+        float m4 = rig.mass / nw, slip = 0f;
+        // de tank draait met zijn rupsen: een gewenste draaisnelheid om de eigen as (op de plaats het snelst); de rupsen houden hem
+        // alleen dwars tegen, niet het draaien zelf
+        if (rig.tank && on > 0)
+        {
+            float want = pSteer * Mathf.Lerp(1.2f, 0.6f, Mathf.Abs(vf) / rig.top) * (vf < -0.5f ? -1f : 1f), wNow = Vector3.Dot(prb.angularVelocity, cu); PlayerYaw = wNow; PlayerOn = on;
+            prb.AddTorque(cu * Mathf.Clamp((want - wNow) * 12f, -10f, 10f) * on / nw, ForceMode.Acceleration);
+        }
+        for (int k = 0; k < nw; k++)
         {
             if (!pOn[k]) continue;
             prb.AddForceAtPosition(cu * load[k], mounts[k]);
             Vector3 n = nm[k];
-            Vector3 wf = k < 2 ? Quaternion.AngleAxis(pSteerDeg, cu) * cf : cf; wf -= n * Vector3.Dot(wf, n); if (wf.sqrMagnitude < 1e-6f) continue; wf.Normalize();
+            Vector3 wf = k < 2 && !rig.tank ? Quaternion.AngleAxis(pSteerDeg, cu) * cf : cf; wf -= n * Vector3.Dot(wf, n); if (wf.sqrMagnitude < 1e-6f) continue; wf.Normalize();
             Vector3 wr = Vector3.Cross(n, wf);
-            Vector3 pv = prb.GetPointVelocity(pt[k]); float vl = Vector3.Dot(pv, wf), vs = Vector3.Dot(pv, wr);
-            bool rear = k >= 2, hand = pHand && rear;
-            float grip = PMu * load[k] * (hand ? 0.4f : 1f);
+            Vector3 pv = rig.tank ? prb.linearVelocity : prb.GetPointVelocity(pt[k]); float vl = Vector3.Dot(pv, wf), vs = Vector3.Dot(pv, wr);
+            bool rear = k >= nw - 2, hand = pHand && (rear || rig.tank);
+            float grip = rig.mu * load[k] * (hand && !rig.tank ? 0.4f : 1f);
             float fLat = -vs * m4 / 0.09f;   // de band duwt het dwars glijden weg
             float fLong;
             if (brake || hand) fLong = -Mathf.Sign(vl) * Mathf.Min(Mathf.Abs(vl) * m4 / 0.05f, m4 * (hand && !brake ? 9f : 13f));
@@ -182,15 +213,15 @@ public partial class PlanetLife
             // wrijvingscirkel: samen nooit meer dan de grip
             float tot = Mathf.Sqrt(fLat * fLat + fLong * fLong); if (tot > grip && tot > 0f) { float s = grip / tot; fLat *= s; fLong *= s; }
             prb.AddForceAtPosition(wf * fLong + wr * fLat, pt[k] + cu * 0.25f);   // iets boven het wegdek: hij helt in de bocht, maar slaat niet zomaar om
-            if (rear) slip = Mathf.Max(slip, Mathf.Abs(vs));
+            if (rear && !rig.tank) slip = Mathf.Max(slip, Mathf.Abs(vs));
         }
         playerSlip = slip;
         // in de lucht een beetje bijsturen (zoals in GTA): W/S kantelt de neus, A/D rolt
-        if (on == 0) prb.AddRelativeTorque(new Vector3(pThrottle * 1.6f, 0f, -pSteer * 1.6f), ForceMode.Acceleration);
+        if (on == 0 && !rig.tank) prb.AddRelativeTorque(new Vector3(pThrottle * 1.6f, 0f, -pSteer * 1.6f), ForceMode.Acceleration);
 
         // klappen: een plotselinge verandering van snelheid die niet van de banden komt
         Vector3 dv = prb.linearVelocity - pLastVel; float jolt = dv.magnitude;
-        if (jolt > 3.5f) { Sounds.Fx("crunch", pos, Mathf.Clamp01(jolt / 14f), 12f); PlayerWall = $"klap {jolt:0.0} m/s"; }
+        if (jolt > (rig.tank ? 2.5f : 3.5f)) { Sounds.Fx("crunch", pos, Mathf.Clamp01(jolt / 14f), 12f); PlayerWall = $"klap {jolt:0.0} m/s"; }
         pLastVel = prb.linearVelocity;
         if (slip > 4f && sp > 5f && on > 0) Sounds.Fx("squeal", pos, Mathf.Clamp01(slip / 10f), 12f);
 
@@ -209,10 +240,18 @@ public partial class PlanetLife
     // de wielen draaien met de snelheid mee en sturen mee (per beeld)
     public void SpinPlayerWheels(float dt)
     {
-        if (player == null || player.wheels == null) return;
+        if (player == null) return;
+        if (rig.tank)   // de rupsen: links en rechts lopen met hun eigen snelheid (vooruit plus of min het draaien)
+        {
+            if (PlayerTankRig == null || prb == null) return;
+            float v = PlayerSpeed, w = Vector3.Dot(prb.angularVelocity, player.root.up), half = (TankModel.TrackX0 + TankModel.TrackX1) * 0.5f;
+            PlayerTankRig.Move((v + w * half) * dt, (v - w * half) * dt);
+            return;
+        }
+        if (player.wheels == null) return;
         player.wheels.Drive(PlayerSpeed * dt * 0.36f / Mathf.Max(0.2f, pWheelR), pSteerDeg, dt);
         // de wielen veren zichtbaar mee: het hart van het wiel ligt de veerlengte onder het ophangpunt
-        for (int k = 0; k < 4; k++)
+        for (int k = 0; k < 4 && k < pLen.Length; k++)
         {
             float want = Mathf.Clamp(PMount - pLen[k] - player.wheels.BaseY(k), -0.3f, ModelCar.ArchUp - 0.03f);   // niet door de wielkast
             pShow[k] = Mathf.Lerp(pShow[k], want, 1f - Mathf.Exp(-dt * 30f)); player.wheels.Travel(k, pShow[k]);
@@ -231,10 +270,12 @@ public class PlayerCar : MonoBehaviour
     public float Kmh => PlanetLife.I != null ? Mathf.Abs(PlanetLife.I.PlayerSpeed) * 3.6f : 0f;
     public bool Reverse => PlanetLife.I != null && PlanetLife.I.PlayerSpeed < -0.5f;
     public float Throttle { get; private set; }
+    static bool Tank => PlanetLife.I != null && PlanetLife.I.PlayerTank;
+    public float AimPitch => 14f + pitchOff;   // voor de tank: de camera bepaalt waar de koepel en het kanon naartoe draaien
 
     public void Enter(Transform car, Camera cam)
     {
-        this.car = car; this.cam = cam; enabled = true; wheelsShown = true; hasCam = false; yawOff = pitchOff = 0f; Throttle = 0f;
+        this.car = car; this.cam = cam; enabled = true; wheelsShown = true; hasCam = false; yawOff = pitchOff = 0f; Throttle = 0f; dist = Tank ? 14f : 9f;
         cam.transform.SetParent(null); cam.nearClipPlane = 0.1f; cam.fieldOfView = 65f;
         if (motorClip == null) MakeClips();
         if (motor == null) { motor = gameObject.AddComponent<AudioSource>(); motor.clip = motorClip; motor.loop = true; motor.spatialBlend = 0f; motor.playOnAwake = false; }
@@ -265,16 +306,18 @@ public class PlayerCar : MonoBehaviour
         float sc = Inp.Scroll;   // het wiel: dichterbij, en helemaal dichtbij de bestuurder
         if (sc > 0f) { if (!inside && dist <= 4.6f) inside = true; else if (!inside) dist = Mathf.Max(4.5f, dist * 0.88f); }
         else if (sc < 0f) { if (inside) { inside = false; dist = 4.6f; } else dist = Mathf.Min(22f, dist / 0.88f); }
-        if (Inp.LeftDown && Cursor.lockState != CursorLockMode.Locked && !Ui.MouseOverUI) Lock(true);
+        if (Inp.LeftDown && Cursor.lockState != CursorLockMode.Locked && !Ui.MouseOverUI) { Lock(true); Clicked = Time.frameCount; }   // deze klik vangt de muis, schiet niet
         if (Cursor.lockState == CursorLockMode.Locked)
         {
             Vector2 d = Inp.Delta;
-            if (d.sqrMagnitude > 0.5f) { yawOff = Mathf.Repeat(yawOff + d.x * 0.15f + 180f, 360f) - 180f; pitchOff = Mathf.Clamp(pitchOff - d.y * 0.1f, -25f, 45f); lookT = Time.time; }
+            if (d.sqrMagnitude > 0.5f) { yawOff = Mathf.Repeat(yawOff + d.x * 0.15f + 180f, 360f) - 180f; pitchOff = Mathf.Clamp(pitchOff - d.y * 0.1f, Tank ? -20f : -25f, Tank ? 30f : 45f); lookT = Time.time; }
         }
         // even niet met de muis gekeken en hij rijdt: de camera komt vanzelf weer achter de auto
-        if (Time.time - lookT > 1.5f && Mathf.Abs(L.PlayerSpeed) > 2f) { float k = 1f - Mathf.Exp(-dt * 1.5f); yawOff = Mathf.Lerp(yawOff, 0f, k); pitchOff = Mathf.Lerp(pitchOff, 0f, k); }
+        if (!Tank && Time.time - lookT > 1.5f && Mathf.Abs(L.PlayerSpeed) > 2f) { float k = 1f - Mathf.Exp(-dt * 1.5f); yawOff = Mathf.Lerp(yawOff, 0f, k); pitchOff = Mathf.Lerp(pitchOff, 0f, k); }
         Sound(L, dt);
     }
+
+    public static int Clicked = -1;   // het beeld waarin een klik de muis vastzette (die klik schiet niet)
 
     void FixedUpdate() { var L = PlanetLife.I; if (car != null && L != null) L.PhysPlayer(Time.fixedDeltaTime); }
 
@@ -286,6 +329,14 @@ public class PlayerCar : MonoBehaviour
         if (cf.sqrMagnitude < 1e-6f) cf = camFwd; cf.Normalize();
         if (!hasCam) { camFwd = cf; hasCam = true; }
         if (wheelsShown == inside) { wheelsShown = !inside; foreach (Transform ch in car) if (ch.name == "as") ch.gameObject.SetActive(!inside); }   // als bestuurder: geen wielen voor je neus (de auto heeft geen interieur)
+        var tr = PlanetLife.I != null ? PlanetLife.I.PlayerTankRig : null;
+        if (inside && tr != null)   // de tank: door het vizier, langs het kanon
+        {
+            cam.nearClipPlane = 0.05f; cam.fieldOfView = 55f;
+            Vector3 gf = tr.gun.forward; cam.transform.position = tr.gun.position + up * 0.55f + gf * 0.4f;
+            cam.transform.rotation = Geo.Look(gf, up);
+            return;
+        }
         if (inside)
         {
             camFwd = cf;
@@ -297,10 +348,10 @@ public class PlayerCar : MonoBehaviour
         cam.nearClipPlane = 0.1f; cam.fieldOfView = 65f;
         // de kijkrichting draait soepel mee met de auto (de plek zelf niet: anders zakt hij bij hoge snelheid ver achter)
         camFwd = camFwd - up * Vector3.Dot(camFwd, up); if (camFwd.sqrMagnitude < 1e-6f) camFwd = cf; camFwd.Normalize();
-        camFwd = Vector3.Slerp(camFwd, cf, 1f - Mathf.Exp(-dt * 3.5f));
+        if (tr == null) camFwd = Vector3.Slerp(camFwd, cf, 1f - Mathf.Exp(-dt * 3.5f));   // de tank: de camera blijft waar je hem neerzet, de koepel volgt hem
         Vector3 dir = Quaternion.AngleAxis(yawOff, up) * camFwd;
-        float el = (14f + pitchOff) * Mathf.Deg2Rad;
-        Vector3 look = p + up * 1.5f, pos = look - dir * (dist * Mathf.Cos(el)) + up * (dist * Mathf.Sin(el));
+        float el = ((tr != null ? 8f : 14f) + pitchOff) * Mathf.Deg2Rad;
+        Vector3 look = p + up * (tr != null ? 3.6f : 1.5f), pos = look - dir * (dist * Mathf.Cos(el)) + up * (dist * Mathf.Sin(el));
         // niet door een muur of de grond: dan dichterbij
         Vector3 to = pos - look; float len = to.magnitude;
         if (UnityEngine.Physics.SphereCast(look, 0.3f, to / len, out RaycastHit hit, len, Layers.Muren, QueryTriggerInteraction.Ignore)) pos = look + to / len * Mathf.Max(1.2f, hit.distance - 0.1f);
@@ -313,7 +364,8 @@ public class PlayerCar : MonoBehaviour
     {
         if (motor == null) return;
         float v = Mathf.Abs(L.PlayerSpeed), rpm = v / 45f;   // één versnelling: het toerental volgt de snelheid
-        motor.pitch = Mathf.Lerp(motor.pitch, 0.45f + rpm * 2.3f + Throttle * 0.08f, Mathf.Min(1f, dt * 8f));
+        float pk = Tank ? 0.42f : 1f;   // de tank bromt lager
+        motor.pitch = Mathf.Lerp(motor.pitch, (0.45f + rpm * (Tank ? 4f : 2.3f) + Throttle * 0.08f) * pk, Mathf.Min(1f, dt * 8f));
         float mv = Ambience.Muted ? 0f : 0.10f + 0.22f * Throttle + 0.18f * rpm;
         motor.volume = Mathf.Lerp(motor.volume, mv, Mathf.Min(1f, dt * 6f));
         road.pitch = 0.7f + rpm * 0.8f;
