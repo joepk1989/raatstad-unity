@@ -62,7 +62,6 @@ public class WegVoorbeeld : MonoBehaviour
         if (mode == "inspel") { yield return Inspel(); yield break; }
         if (mode == "volplaneet") { yield return VolPlaneet(); yield break; }   // Hele planeet vol met Terrein v2: profiel, laden, herbouw en een klik   // Terrein v2 zoals in het spel: wegen een voor een, opslaan en laden, de schakelaar   // de natuurplaneet met de 30 wegen (test 11 van het ontwerp)
         if (mode.StartsWith("ontwerp")) { yield return Ontwerp(home, mode); yield break; }
-        if (mode.StartsWith("lagen")) { yield return Lagen(int.Parse(mode.Substring(5).Trim())); yield break; }   // welke meshes liggen er bij vak N (de stad blijft zoals hij is)
         if (mode == "starttijd") { yield return StartTijd(); yield break; }   // de startstad met Terrein v2: herbouwtijd per stap en de traagste vakken
         if (mode == "zee") { yield return ZeeTest(home); yield break; }
         if (mode == "startnaden") { yield return StartNaden(); yield break; }
@@ -932,15 +931,6 @@ public class WegVoorbeeld : MonoBehaviour
         cam.transform.position = pos; cam.transform.rotation = rot; cam.fieldOfView = 60f; yield return null; yield return null;
         { long nt = 0; foreach (var mf in FindObjectsByType<MeshFilter>(FindObjectsSortMode.None)) if (mf.gameObject.layer == Layers.Bodem && mf.sharedMesh != null) nt += mf.sharedMesh.triangles.Length / 3; File.WriteAllText(Path.Combine(Dir, "melding_driehoeken.txt"), "bodem: " + nt + " driehoeken, Terrein v2 " + (PlanetCity.Ground2 ? "aan" : "uit") + (PlanetCity.RoadH.Count > 0 ? ", profiel" : "")); }   // de hele bodem
         ScreenCapture.CaptureScreenshot(Path.Combine(Dir, "melding_" + dir.Name + (uit ? "_uit" : "") + ".png")); yield return null; yield return null;
-        if (System.Array.IndexOf(parts, "schaduw") >= 0) { var why = new Dictionary<string, int>(); foreach (int i in Nearby(vak, 60f)) { string w = PlanetCity.SmoothWhy(i); why[w] = (why.TryGetValue(w, out int c0) ? c0 : 0) + 1; } var wb = new System.Text.StringBuilder("detail " + PlanetCity.SoilDetail + "\n"); foreach (var kv in why) wb.Append(kv.Key).Append(": ").Append(kv.Value).AppendLine(); File.WriteAllText(Path.Combine(Dir, "melding_zacht.txt"), wb.ToString()); }
-        if (System.Array.IndexOf(parts, "schaduw") >= 0)   // dezelfde blik zonder schaduw op de bodem, en zonder dat de bodem schaduw werpt
-        {
-            var bod = new List<Renderer>(); foreach (var r in FindObjectsByType<Renderer>(FindObjectsSortMode.None)) if (r.gameObject.layer == Layers.Bodem) bod.Add(r);
-            foreach (var r in bod) r.receiveShadows = false; yield return null; ScreenCapture.CaptureScreenshot(Path.Combine(Dir, "melding_zonderontvangen.png")); yield return null; yield return null; foreach (var r in bod) r.receiveShadows = true;
-            foreach (var r in bod) r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; yield return null; ScreenCapture.CaptureScreenshot(Path.Combine(Dir, "melding_zonderwerpen.png")); yield return null; yield return null; foreach (var r in bod) r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
-            int det0 = PlanetCity.SoilDetail; PlanetCity.SoilDetail = 1; for (int f = 0; f < 120; f++) yield return null;   // medium poly (rond komt per beeld een paar delen)
-            ScreenCapture.CaptureScreenshot(Path.Combine(Dir, "melding_medium.png")); yield return null; yield return null; PlanetCity.SoilDetail = det0;
-        }
         Hc = vak; bouw = new System.Text.StringBuilder(dir.Name + (uit ? " (terrein door wegen uit)" : "") + "\n"); yield return Scan(vak, 45f, "melding");
         var dbg = new System.Text.StringBuilder();
         foreach (int i in Nearby(vak, 60f)) if (PlanetCity.IsHalf(i))
@@ -983,37 +973,9 @@ public class WegVoorbeeld : MonoBehaviour
             int fc = st.c == hill ? near : bump; yield return Shot("ontwerp12_" + st.nm, fc, Quaternion.AngleAxis(-35f, Planet.Cells[fc].dir) * Dh(fc, D90), 55f, 25f);
         }
     }
-    IEnumerator Lagen(int cell)
-    {
-        var sb = new System.Text.StringBuilder(); Vector3 p = Planet.Cells[cell].dir * (Planet.R + PlanetCity.G(cell));
-        foreach (var r in Object.FindObjectsByType<Renderer>(FindObjectsSortMode.None))
-        {
-            if (!r.enabled || !r.gameObject.activeInHierarchy || !r.bounds.Intersects(new Bounds(p, Vector3.one * 20f))) continue;
-            sb.Append(r.name).Append(" | ouder ").Append(r.transform.parent != null ? r.transform.parent.name : "-").Append(" | laag ").Append(r.gameObject.layer).Append(" | schaduw ").Append(r.shadowCastingMode).Append('/').Append(r.receiveShadows);
-            var mf = r.GetComponent<MeshFilter>(); if (mf != null && mf.sharedMesh != null) sb.Append(" | mesh ").Append(mf.sharedMesh.name).Append(' ').Append(mf.sharedMesh.vertexCount);
-            if (mf != null && mf.sharedMesh != null && r.gameObject.layer == Layers.Bodem)   // driehoeken die ondersteboven liggen (normaal omlaag), en hoeveel daarvan bij dit vak
-            {
-                var vv = mf.sharedMesh.vertices; var tt = mf.sharedMesh.triangles; int down = 0, downNear = 0; float downA = 0f; var tf = r.transform; var ex = new System.Text.StringBuilder();
-                for (int q = 0; q + 2 < tt.Length; q += 3)
-                {
-                    Vector3 a = tf.TransformPoint(vv[tt[q]]), b = tf.TransformPoint(vv[tt[q + 1]]), c = tf.TransformPoint(vv[tt[q + 2]]); Vector3 n = Vector3.Cross(b - a, c - a); float ar = n.magnitude * 0.5f; if (ar < 1e-5f) continue;
-                    if (Vector3.Dot(n / (2f * ar), ((a + b + c) / 3f).normalized) < -0.05f) { down++; downA += ar; if (((a + b + c) / 3f - p).magnitude < 30f) { downNear++; if (downNear <= 5) ex.Append("    omlaag: vak ").Append(Planet.Nearest((a + b + c) / 3f)).Append(" opp ").Append(ar.ToString("0.00")).Append(" h ").Append((a.magnitude - Planet.R).ToString("0.00")).Append('/').Append((b.magnitude - Planet.R).ToString("0.00")).Append('/').Append((c.magnitude - Planet.R).ToString("0.00")).AppendLine(); } }
-                }
-                sb.Append(" | omlaag ").Append(down).Append(" (").Append(downA.ToString("0.0")).Append(" m2), bij het vak ").Append(downNear).AppendLine().Append(ex);
-            }
-            foreach (var m in r.sharedMaterials) if (m != null) sb.Append(" | mat ").Append(m.name).Append(" (").Append(m.shader != null ? m.shader.name : "?").Append(", wachtrij ").Append(m.renderQueue).Append(')');
-            sb.AppendLine();
-        }
-        File.WriteAllText(Path.Combine(Dir, "lagen.txt"), sb.ToString());
-        Vector3 fw = Dh(cell, 0f); yield return Shot("lagen_met", cell, fw, 45f, 55f);   // dezelfde plek met en zonder schaduw op de bodem
-        var bod = new List<Renderer>(); foreach (var r in Object.FindObjectsByType<Renderer>(FindObjectsSortMode.None)) if (r.gameObject.layer == Layers.Bodem && r.receiveShadows) { r.receiveShadows = false; bod.Add(r); }
-        yield return Shot("lagen_zonder", cell, fw, 45f, 55f);
-        foreach (var r in bod) r.receiveShadows = true;
-        File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar");
-    }
     IEnumerator Ontwerp(int home, string mode)
     {
-        PlanetCity.TriCull = !mode.Contains("geencull"); mode = mode.Replace(" geencull", ""); int nr = 1; int.TryParse(mode.Substring(7).Trim(), out nr); PlanetCity.Ground2 = true; Hc = home; bouw = new System.Text.StringBuilder();
+        int nr = 1; int.TryParse(mode.Substring(7).Trim(), out nr); PlanetCity.Ground2 = true; Hc = home; bouw = new System.Text.StringBuilder();
         float D90 = Mathf.PI / 2f; var lines = new List<List<int>>(); var centers = new List<int>();
         void Terrein(System.Func<float, float, float> f, float r)   // hoogte als functie van x (langs de weg) en y (dwars), afgerond op 5 cm
         {
@@ -1101,11 +1063,7 @@ public class WegVoorbeeld : MonoBehaviour
         // de schakelaar
         PlanetCity.Ground2 = false; PlanetCity.Reprofile(); int off = PlanetCity.RoadH.Count;
         PlanetCity.Ground2 = true; PlanetCity.Reprofile(); log.Append("schakelaar uit: RoadH ").Append(off).Append("; weer aan: RoadH ").Append(PlanetCity.RoadH.Count).AppendLine();
-        {   // de bodem zonder en met samenvoegen: driehoeken en tijd
-            PlanetCity.Ground2Merge = false; PlanetCity.Ground2Tris = 0; var sw0 = System.Diagnostics.Stopwatch.StartNew(); PlanetCity.TouchAll(); PlanetCity.Rebuild(); long n0 = PlanetCity.Ground2Tris, t0m = sw0.ElapsedMilliseconds;
-            PlanetCity.Ground2Merge = true; PlanetCity.Ground2Tris = 0; var sw1 = System.Diagnostics.Stopwatch.StartNew(); PlanetCity.TouchAll(); PlanetCity.Rebuild(); long n1 = PlanetCity.Ground2Tris;
-            log.Append("bodem: ").Append(n0).Append(" driehoeken in ").Append(t0m).Append(" ms zonder samenvoegen, ").Append(n1).Append(" in ").Append(sw1.ElapsedMilliseconds).AppendLine(" ms met");
-        }
+        { PlanetCity.Ground2Tris = 0; var sw1 = System.Diagnostics.Stopwatch.StartNew(); PlanetCity.TouchAll(); PlanetCity.Rebuild(); log.Append("bodem: ").Append(PlanetCity.Ground2Tris).Append(" driehoeken in ").Append(sw1.ElapsedMilliseconds).AppendLine(" ms"); }
         PlanetCity.TouchAll(); PlanetCity.Rebuild(); PlanetCity.Rebuild(); PlanetCity.RebuildGrid(); yield return null; yield return null;
         File.WriteAllText(Path.Combine(Dir, "inspel.txt"), log.ToString());
         var centers = new List<int>(); foreach (var kv in PlanetCity.Cells) { if (!PlanetCity.IsRoad(kv.Key)) continue; bool far = true; foreach (int c in centers) if (Vector3.Distance(Planet.Cells[c].dir, Planet.Cells[kv.Key].dir) * Planet.R < 40f) { far = false; break; } if (far) centers.Add(kv.Key); }

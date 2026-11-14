@@ -171,6 +171,8 @@ public static partial class PlanetCity
     static string cutSig = "";
     static void UpdateCuts0()
     {
+        // Terrein v2 rekent altijd met een wegprofiel: wie wegen legde zonder Reprofile (Hele planeet vol, het voorbeeldstadje) krijgt het hier
+        if (Ground2 && RoadH.Count == 0) { bool walk = false; foreach (var kv in Cells) if (IsWalk(kv.Key)) { walk = true; break; } if (walk) ProfileAll(new List<List<int>>()); }
         var orphan = new List<int>(); foreach (var kv in Under) if (kv.Value == "weg" && TunnelEnds(kv.Key).Count == 0) orphan.Add(kv.Key);   // brug zonder weg eronder: weg ermee
         foreach (int i in orphan) { if (Low.TryGetValue(i, out var lo0) && !IsRoad(i)) SetTerr(i, lo0); Under.Remove(i); Low.Remove(i); Touch(i); }
         cuts.Clear(); deckSide.Clear(); CollectCuts(cuts, deckSide); RestoreCarve();

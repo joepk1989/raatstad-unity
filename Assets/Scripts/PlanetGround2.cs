@@ -95,9 +95,7 @@ public static partial class PlanetCity
     // ---------- stap 2: de bodem uit H, met gedeelde randpunten per vakrand ----------
     // De stukken en koppen die in de driehoek die Ground2Cell nu tekent kunnen meedoen (FieldLines, nieuwe opbouw): de hoogte daarbinnen
     // rekent alleen met die, de andere halen de driehoek niet (hun talud of dak ligt er overal buiten). Scheelt het meeste rekenwerk.
-    static List<Seg> triSegs; static List<Cap> triCaps; public static bool TriCull = true;   // (uit: om te vergelijken)
-    public static bool Ground2Quick = true;   // een stuk dat al in één vlak ligt niet verder snijden (uit: om te vergelijken)
-    public static bool Ground2Merge = true;   // stukken met hetzelfde vlak samenvoegen (ontwerp 8.5 punt 3); uit: om te vergelijken
+    static List<Seg> triSegs; static List<Cap> triCaps;
     public static long Ground2Tris;           // teller: driehoeken die Ground2Cell tekende (voor de test)
     // tijdmeting (voor de test): vakken met en zonder hoogtefunctie, randprofielen (opnieuw berekend of uit het geheugen)
     public static long G2Cells, G2Field, G2EdgeNew, G2EdgeHit; public static readonly System.Diagnostics.Stopwatch G2SwField = new System.Diagnostics.Stopwatch(), G2SwPlain = new System.Diagnostics.Stopwatch(), G2SwEdge = new System.Diagnostics.Stopwatch();
@@ -129,10 +127,8 @@ public static partial class PlanetCity
     {
         var c = Planet.Cells[i]; int m = c.corners.Length;
         if (levelled.Contains(i)) { float s = 0f; for (int k = 0; k < m; k++) s += CornerBase(i, k); return s / m + CenterOfs1(i); }
-        if (RoadH.Count > 0 && IsWalk(i)) return Terrain(i) + CenterOfs1(i);   // nieuwe opbouw: het terrein onder de weg; de weg zelf komt uit de hoogtefunctie
-        float hc = G(i) + CenterOfs1(i);
-        if (IsWalk(i) && !carved.Contains(i)) for (int k = 0; k < m; k++) hc = Mathf.Min(hc, CornerBase(i, k));
-        return hc;
+        if (IsWalk(i)) return Terrain(i) + CenterOfs1(i);   // nieuwe opbouw: het terrein onder de weg; de weg zelf komt uit de hoogtefunctie
+        return G(i) + CenterOfs1(i);
     }
     // Een randpunt: t langs de rand (0 bij hoek k, 1 bij hoek k+1) en de hoogte van het maaiveld daar
     // side: bij een wand staan er twee punten op dezelfde t, side +1 het punt aan de kant van de strook (de binnenkant), -1 aan de kant van het terrein
@@ -145,7 +141,6 @@ public static partial class PlanetCity
         void L(long x) { h = unchecked((h ^ x) * 1099511628211L); }
         // (de inhoud waar het profiel van afhangt, niet fieldVer: zo blijft een rand staan als er elders een weg of het terrein verandert)
         for (int s = 0; s < 2; s++) { int x = s == 0 ? Mathf.Min(i, j) : Mathf.Max(i, j); if (x < 0) continue; bool px = Plateau(x); L(NearHash(x)); F(px ? 1f : 0f); F(px ? G(x) : Center2(x)); if (!fieldCells.Contains(x) && RoadShape) L(AllFlatsHash()); }   // (een vak buiten het bereik rekent met alle vlakke stukken, PlaneLins)
-        if (RoadH.Count == 0 && spans.Count > 0) L(SpansHash());
         F(cutsHash); F(FieldK); F((RoadShape ? 1f : 0f) + (RoadSlopes ? 2f : 0f)); F(Mathf.Min(G(i), G(j))); F(Mathf.Max(G(i), G(j))); float c1 = CornerBase(i, k), c2 = CornerBase(i, (k + 1) % m); F(Mathf.Min(c1, c2)); F(Mathf.Max(c1, c2)); F(spans.Count); F(cuts.Count);   // (symmetrisch: van beide kanten dezelfde sleutel)
         return h;
     }
@@ -191,7 +186,6 @@ public static partial class PlanetCity
         var ls = new List<Seg>(); var lc = new List<Cap>(); bool fld = field && NearSeg(c.dir, c.radius);
         if (fld) foreach (var f in FieldLines(c, ka, hc0, bA, bB, ls, lc)) Cross(f);
         if (cn) foreach (var n in near) foreach (var f in new[] { n.sd - Lin.C(-0.01f), n.sd - Lin.C(n.fl), n.sd - Lin.C(n.fl + n.rl), n.sd - Lin.C(n.end), n.t - Lin.C(n.q.hw), n.t - Lin.C(-n.q.hw) }) Cross(f);
-        var spI = RoadH.Count == 0 && spanNear.Count > 0 && spanNear.TryGetValue(a, out var spl) ? spl : null; foreach (var f in SpanLines(c, spI)) Cross(f);   // (nieuwe opbouw: het terrein onder een dek blijft liggen, SpanBottom staat uit: geen deklijnen in de grond)
         ts.Sort();
         {   // de snijlijnen van de vlakken die in elk stuk gelden (gemeten in het midden van het stuk), daar de snijpunten met de rand bij
             float det0 = L1.x * L2.y - L1.y * L2.x; Lin BL = new Lin { a = hc0, x = ((bA - hc0) * L2.y - (bB - hc0) * L1.y) / det0, y = ((bB - hc0) * L1.x - (bA - hc0) * L2.x) / det0 };
@@ -199,7 +193,7 @@ public static partial class PlanetCity
             for (int v = 0; v + 1 < ts.Count; v++)
             {
                 if (ts[v + 1] - ts[v] < 1e-3f) continue; Vector2 pm = Vector2.Lerp(L1, L2, (ts[v] + ts[v + 1]) * 0.5f);
-                var lins = PlaneLins(c, BL, ls, lc, cn ? near : null, spI, pm);
+                var lins = PlaneLins(c, BL, ls, lc, cn ? near : null, pm);
                 for (int x = 0; x < lins.Count; x++) for (int y = x + 1; y < lins.Count; y++)
                 {
                     Lin f = lins[x] - lins[y]; float f1 = f.At(L1), f2 = f.At(L2); if ((f1 < 0f) == (f2 < 0f) || Mathf.Abs(f1 - f2) < 1e-6f) continue;
@@ -239,9 +233,8 @@ public static partial class PlanetCity
         var all = new List<EPt>();
         for (int v = 0; v + 1 < pts.Count; v++)
         {
-            all.Add(pts[v]); var ks = new List<(float t, bool step)>(); Kinks(HAt, pts[v].h, pts[v + 1].h, pts[v].t, pts[v + 1].t, len, ks, 0); ks.Sort((x, y) => x.t.CompareTo(y.t));
-            float dq = 0.01f / len;
-            foreach (var kk in ks) { if (kk.step) { all.Add(new EPt { t = kk.t - dq, h = HAt(kk.t - dq) }); all.Add(new EPt { t = kk.t + dq, h = HAt(kk.t + dq) }); } else all.Add(new EPt { t = kk.t, h = HAt(kk.t) }); }
+            all.Add(pts[v]); var ks = new List<float>(); Kinks(HAt, pts[v].h, pts[v + 1].h, pts[v].t, pts[v + 1].t, len, ks, 0); ks.Sort();
+            foreach (float kt in ks) all.Add(new EPt { t = kt, h = HAt(kt) });
         }
         all.Add(pts[pts.Count - 1]);
         // Punten waar de rand niet knikt weg (een snijlijn die de rand kruist zonder dat de hoogte er verandert): elk randpunt wordt in
@@ -265,7 +258,7 @@ public static partial class PlanetCity
     // is stuksgewijs vlak, dus langs een lijn stuksgewijs lineair: waar ze van de rechte lijn tussen de einden afwijkt zit een knik, en de
     // afwijking is daar het grootst (ternair zoeken). Dan aan beide kanten verder, tot er geen afwijking meer is (2 cm) of stukjes van 10 cm.
     // Een sprong (step: een wand, meer dan 15 cm verschil binnen 4 cm) wordt apart gemerkt: daar hoort een punt aan elke kant van de wand.
-    static void Kinks(System.Func<float, float> f, float f0, float f1, float t0, float t1, float len, List<(float t, bool step)> outT, int depth)
+    static void Kinks(System.Func<float, float> f, float f0, float f1, float t0, float t1, float len, List<float> outT, int depth)
     {
         if (depth > 5 || (t1 - t0) * len < 0.1f) return;
         float D(float t) => f(t) - Mathf.Lerp(f0, f1, (t - t0) / (t1 - t0));
@@ -274,8 +267,8 @@ public static partial class PlanetCity
         float lo = t0, hi = t1;
         for (int it = 0; it < 26; it++) { float a = lo + (hi - lo) / 3f, b = hi - (hi - lo) / 3f; if (Mathf.Abs(D(a)) < Mathf.Abs(D(b))) lo = a; else hi = b; }
         float tk = (lo + hi) * 0.5f; if (tk - t0 < 1e-4f || t1 - tk < 1e-4f) return;
-        float dq = 0.02f / len, fa = f(Mathf.Max(t0, tk - dq)), fb = f(Mathf.Min(t1, tk + dq)); bool step = Mathf.Abs(fb - fa) > 0.15f;
-        outT.Add((tk, step && RoadH.Count == 0));   // zonder profiel (het spel nu): een punt aan elke kant van een sprong, anders wordt een klif op het bereik een scheve flap (melding 9). Met profiel komen de wanden uit de paren (EdgeProfile0) en is een sprong hier een fout die de meting moet laten zien
+        float dq = 0.02f / len, fa = f(Mathf.Max(t0, tk - dq)), fb = f(Mathf.Min(t1, tk + dq));
+        outT.Add(tk);   // (een sprong hier is een fout die de meting moet laten zien: de wanden komen uit de paren, EdgeProfile0)
         Kinks(f, f0, fa, t0, Mathf.Max(t0, tk - dq), len, outT, depth + 1); Kinks(f, fb, f1, Mathf.Min(t1, tk + dq), t1, len, outT, depth + 1);
     }
     // De hoogtefunctie is een min/max van vlakken (hoogte als lineaire functie van de vlakke coördinaten): het basisterrein, per stuk
@@ -283,7 +276,7 @@ public static partial class PlanetCity
     // stukken, de geulen en dijken (CutLin), het dek van een dalbrug. Waar twee van die vlakken elkaar snijden knikt de functie: die
     // lijnen zijn de snijlijnen die de losse lijnen (FieldLines) niet geven. Alleen de vlakken die bij p gelden (de zijkanten zijn al
     // gesneden langs T = ±hw, de graten van een kop en de randen van een geul, dus binnen één stuk verandert dat niet).
-    static List<Lin> PlaneLins(Planet.Cell c, Lin B, List<Seg> ls, List<Cap> lc, List<NearCut> near, List<int> spanIdx, Vector2 p)
+    static List<Lin> PlaneLins(Planet.Cell c, Lin B, List<Seg> ls, List<Cap> lc, List<NearCut> near, Vector2 p)
     {
         var o3 = c.dir * Planet.R; var res = new List<Lin> { B };
         foreach (var q in ls)
@@ -300,7 +293,7 @@ public static partial class PlanetCity
                 if (Mathf.Abs(tp) > q.hw + wo || sp < -EndSlack || sp > len + EndSlack) continue; res.Add(hr - Lin.C(0.05f)); continue;
             }
             Lin side = tp > q.hw ? (T - Lin.C(q.hw)) * FK : tp < -q.hw ? (Lin.C(-q.hw) - T) * FK : Lin.C(0f);
-            if (RoadH.Count > 0) { float ov = Mathf.Max(0f, Mathf.Max(-sp, sp - len)); bool hard = sp < 0f ? q.hardA : q.hardB; if (ov > 0f && !hard && ov > Mathf.Abs(tp) - q.hw) side = (sp < 0f ? Lin.C(0f) - S : S - Lin.C(len)) * FK; }   // voorbij het eind: de kegel in de lengterichting (niet aan een hard eind)
+            { float ov = Mathf.Max(0f, Mathf.Max(-sp, sp - len)); bool hard = sp < 0f ? q.hardA : q.hardB; if (ov > 0f && !hard && ov > Mathf.Abs(tp) - q.hw) side = (sp < 0f ? Lin.C(0f) - S : S - Lin.C(len)) * FK; }   // voorbij het eind: de kegel in de lengterichting (niet aan een hard eind)
             res.Add(hr - side - Lin.C(0.05f)); res.Add(hr + side - Lin.C(0.05f));
         }
         foreach (var q in lc)
@@ -318,31 +311,13 @@ public static partial class PlanetCity
             Vector3 along = Tan(ab, c.dir), across = Vector3.Cross(c.dir, along).normalized;
             Lin T = new Lin { a = Vector3.Dot(o3 - q.a, across), x = Vector3.Dot(c.east, across), y = Vector3.Dot(c.north, across) };
             Lin S = new Lin { a = Vector3.Dot(o3 - q.a, along), x = Vector3.Dot(c.east, along), y = Vector3.Dot(c.north, along) };
+            if ((o3 - q.a).sqrMagnitude > (len + q.hw + c.radius + 25f) * (len + q.hw + c.radius + 25f)) continue;   // (aan de overkant van de bol lijkt een stuk plat gerekend vlakbij)
             if (Mathf.Abs(T.a) > q.hw + c.radius + 21f || S.a < -c.radius - 21f || S.a > len + c.radius + 21f) continue;
             float sp = S.At(p); Lin hr = (sp <= 0f ? Lin.C(q.ha) : sp >= len ? Lin.C(q.hb) : Lin.C(q.ha) + S * ((q.hb - q.ha) / len)) - Lin.C(0.03f);
             float tp = T.At(p); Lin side = tp > q.hw ? (T - Lin.C(q.hw)) * FK : tp < -q.hw ? (Lin.C(-q.hw) - T) * FK : Lin.C(0f);
             res.Add(hr - side); res.Add(hr + side);
         }
         if (near != null) foreach (var n in near) { var f = CutLin(n, p); if (f.HasValue) res.Add(f.Value); }
-        if (spanIdx != null) foreach (int si in spanIdx)
-        {
-            var q = spans[si]; Lin S = new Lin { a = Vector3.Dot(o3 - q.dA * Planet.R, q.eA), x = Vector3.Dot(c.east, q.eA), y = Vector3.Dot(c.north, q.eA) };
-            Lin X = new Lin { a = Vector3.Dot(o3, q.n), x = Vector3.Dot(c.east, q.n), y = Vector3.Dot(c.north, q.n) };
-            float sp = S.At(p); if (sp <= q.s0 || sp >= q.s1 || Mathf.Abs(X.At(p)) > q.hw + 0.6f) continue;
-            res.Add(Lin.C(q.ha - 1.5f) + S * ((q.hb - q.ha) / q.L));
-        }
-        return res;
-    }
-    // de grenslijnen van de dekken van dalbruggen boven vak c (daaronder ligt de grond lager, SpanBottom)
-    static List<Lin> SpanLines(Planet.Cell c, List<int> spanIdx)
-    {
-        var res = new List<Lin>(); if (spanIdx == null) return res; var o3 = c.dir * Planet.R;
-        foreach (int si in spanIdx)
-        {
-            var q = spans[si]; Lin S = new Lin { a = Vector3.Dot(o3 - q.dA * Planet.R, q.eA), x = Vector3.Dot(c.east, q.eA), y = Vector3.Dot(c.north, q.eA) };
-            Lin X = new Lin { a = Vector3.Dot(o3, q.n), x = Vector3.Dot(c.east, q.n), y = Vector3.Dot(c.north, q.n) };
-            res.Add(S - Lin.C(q.s0)); res.Add(S - Lin.C(q.s1)); res.Add(X - Lin.C(q.hw + 0.6f)); res.Add(X + Lin.C(q.hw + 0.6f));
-        }
         return res;
     }
     // De hoogte van het randprofiel op t. Op een wand (twee punten op dezelfde t) kiest bias de kant: > 0 de strook, < 0 het terrein;
@@ -449,27 +424,19 @@ public static partial class PlanetCity
     }
     static (int ver, long h) allFlats = (-1, 0);
     static long AllFlatsHash() { if (allFlats.ver != fieldVer) allFlats = (fieldVer, MixSegs(1469598103934665603L, flats)); return allFlats.h; }
-    static long SpansHash()
-    {
-        long h = 1469598103934665603L;
-        foreach (var q in spans) { h = MixL(h, ((long)q.a << 32) ^ (uint)q.b); h = Mix(h, q.dA); h = Mix(h, q.eA); h = Mix(h, q.n); h = Mix(h, q.L); h = Mix(h, q.ha); h = Mix(h, q.hb); h = Mix(h, q.hw); h = Mix(h, q.s0); h = Mix(h, q.s1); }
-        return h;
-    }
     // De sleutel van vak i; false: een gewoon vak (geen weg, geul of dek in de buurt), dat is zo getekend en wordt niet onthouden
     static bool CellKey(int i, bool plat, System.Func<int, bool> skip, bool walls, out long key)
     {
         var c = Planet.Cells[i]; int m = c.corners.Length; key = 0;
         bool inField = fieldCells.Contains(i), field = inField && NearSeg(c.dir, c.radius);
         var near = cuts.Count > 0 && !plat ? CutsNear(c) : null; bool cn = near != null && near.Count > 0;
-        bool sp = RoadH.Count == 0 && spanNear.Count > 0 && spanNear.ContainsKey(i);
-        if (!field && !cn && !sp) return false;
+        if (!field && !cn) return false;
         long h = 1469598103934665603L; float g = G(i);
-        h = MixL(h, i); h = MixL(h, (plat ? 1 : 0) | (walls ? 2 : 0) | (field ? 4 : 0) | (cn ? 8 : 0) | (sp ? 16 : 0) | (RoadShape ? 32 : 0) | (RoadSlopes ? 64 : 0) | (RoadH.Count > 0 ? 128 : 0) | (Ground2Merge ? 256 : 0) | (Ground2Quick ? 2048 : 0) | (TriCull ? 512 : 0) | (carved.Count > 0 ? 1024 : 0));
+        h = MixL(h, i); h = MixL(h, (plat ? 1 : 0) | (walls ? 2 : 0) | (field ? 4 : 0) | (cn ? 8 : 0) | (RoadShape ? 32 : 0) | (RoadSlopes ? 64 : 0) | (carved.Count > 0 ? 1024 : 0));
         h = Mix(h, FieldK); h = Mix(h, g); h = Mix(h, plat ? g : Center2(i));
         int sk = 0; for (int k = 0; k < m; k++) { if (skip(k)) sk |= 1 << k; h = Mix(h, plat ? g : CornerBase(i, k)); } h = MixL(h, sk);
         if (inField) h = MixL(h, NearHash(i)); else if (RoadShape) h = MixL(h, AllFlatsHash());
         if (cuts.Count > 0) { h = MixL(h, cutsHash); h = MixL(h, fillN); }
-        if (RoadH.Count == 0 && spans.Count > 0) { h = MixL(h, SpansHash()); if (spanNear.TryGetValue(i, out var sl)) foreach (int x in sl) h = MixL(h, x); }
         if (!plat) for (int k = 0; k < m; k++)
         {
             if ((sk & (1 << k)) != 0) continue; var pr = EdgeProfile(i, k); h = MixL(h, pr.Count);
@@ -493,15 +460,14 @@ public static partial class PlanetCity
             Vector3 V0 = D0 * (Planet.R + hc0), V1 = D1 * (Planet.R + h1), V2 = D2 * (Planet.R + h2), Nrm = Vector3.Cross(V1 - V0, V2 - V0); float ND = Vector3.Dot(V0, Nrm);   // het vlak door de drie hoekpunten
             var polys = new List<List<Vector2>> { new List<Vector2> { Vector2.zero, L1, L2 } };
             void Split(Lin f) { var next = new List<List<Vector2>>(); foreach (var pl in polys) if (!SplitBy(pl, f, next)) next.Add(pl); polys = next; }
-            var ls = new List<Seg>(); var lc = new List<Cap>(); var spI = RoadH.Count == 0 && spanNear.Count > 0 && spanNear.TryGetValue(i, out var spl) ? spl : null;   // (nieuwe opbouw: geen deklijnen, zie EdgeProfile0)
-            List<Lin> fls = null; G2SwLines.Start(); if (field) { fls = FieldLines(c, k, hc0, h1, h2, ls, lc); G2Lines += fls.Count; if (!Ground2Quick || spI != null) { foreach (var f in fls) Split(f); fls = null; } } G2SwLines.Stop();   // (Ground2Quick: de lijnen snijden pas waar een stuk niet vlak is, zie hieronder)
-            bool fieldT = field && !(RoadH.Count > 0 && ls.Count == 0 && lc.Count == 0 && flatsUse.Count == 0);   // (nieuwe opbouw: geen stuk kan deze driehoek halen: gewoon het terreinvlak, zonder snijden en samenvoegen)
-            foreach (var f in SpanLines(c, spI)) Split(f);
-            var wg = new List<int>(); var wnq = new List<bool>(); var wl = fieldT ? WallLins(c, ls, lc, wg, wnq) : new List<Lin>(); if (fls != null) foreach (var f in wl) Split(f);   // (Ground2Quick: een wand is een sprong, daar moet een zijde van een stuk precies op liggen: altijd vooraf snijden)   // de wanden hier (sokkels en bakken), binnenkant negatief; wg: per lijn de strook of kop
+            var ls = new List<Seg>(); var lc = new List<Cap>();
+            List<Lin> fls = null; G2SwLines.Start(); if (field) { fls = FieldLines(c, k, hc0, h1, h2, ls, lc); G2Lines += fls.Count; } G2SwLines.Stop();   // (de lijnen snijden pas waar een stuk niet vlak is, zie hieronder)
+            bool fieldT = field && !(ls.Count == 0 && lc.Count == 0 && flatsUse.Count == 0);   // (geen stuk kan deze driehoek halen: gewoon het terreinvlak, zonder snijden en samenvoegen)
+            var wg = new List<int>(); var wnq = new List<bool>(); var wl = fieldT ? WallLins(c, ls, lc, wg, wnq) : new List<Lin>(); if (fls != null) foreach (var f in wl) Split(f);   // (een wand is een sprong, daar moet een zijde van een stuk precies op liggen: altijd vooraf snijden)   // de wanden hier (sokkels en bakken), binnenkant negatief; wg: per lijn de strook of kop
             Lin B2 = new Lin { a = hc0, x = ((h1 - hc0) * L2.y - (h2 - hc0) * L1.y) / det, y = ((h2 - hc0) * L1.x - (h1 - hc0) * L2.x) / det };
             if (cn) foreach (var n in near) foreach (var f in new[] { n.sd - Lin.C(-0.01f), n.sd - Lin.C(n.fl), n.sd - Lin.C(n.fl + n.rl), n.sd - Lin.C(n.end), n.t - Lin.C(n.q.hw), n.t - Lin.C(-n.q.hw) }) Split(f);
             var prof = plat ? null : EdgeProfile(i, k);
-            triSegs = null; triCaps = null; if (fieldT && RoadH.Count > 0 && TriCull) { triSegs = ls; triCaps = lc; }   // vanaf hier: de hoogte met alleen de stukken van deze driehoek
+            triSegs = null; triCaps = null; if (fieldT) { triSegs = ls; triCaps = lc; }   // vanaf hier: de hoogte met alleen de stukken van deze driehoek
             Vector2 E = L2 - L1; float el2 = E.sqrMagnitude, el = Mathf.Sqrt(el2);
             float TOf(Vector2 q) => Vector2.Dot(q - L1, E) / el2;
             bool OnEdge(Vector2 q) => Mathf.Abs((E.x * (q.y - L1.y) - E.y * (q.x - L1.x)) / el) < 1e-3f;
@@ -515,14 +481,13 @@ public static partial class PlanetCity
                 {
                     var pl = work.Pop(); Vector2 ctr = Vector2.zero; foreach (var v in pl) ctr += v; ctr /= pl.Count;
                     bool split = false;
-                    if (++guard < 4000 && (fieldT || cn || spI != null))
+                    if (++guard < 4000 && (fieldT || cn))
                     {
-                        var fs = PlaneLins(c, B2, ls, lc, cn ? near : null, spI, ctr);
-                        // Snel (Ground2Quick): ligt het hele stuk al in het vlak dat in zijn midden geldt (gemeten vlak bij elk hoekpunt en
+                        var fs = PlaneLins(c, B2, ls, lc, cn ? near : null, ctr);
+                        // Snel: ligt het hele stuk al in het vlak dat in zijn midden geldt (gemeten vlak bij elk hoekpunt en
                         // elk midden van een zijde, binnen 4 mm: dezelfde maat als het samenvoegen), dan valt er niets te snijden. Zo niet:
                         // eerst de knik tussen dat vlak en het vlak dat op het afwijkende punt geldt. Zonder dit sneed elk paar vlakken van
                         // alle stukken weg in de buurt het vak in repen, die het samenvoegen daarna weer aan elkaar moest zetten.
-                        if (Ground2Quick && spI == null)
                         {
                             // de meetpunten: vlak bij elk hoekpunt en elk midden van een zijde, en binnenin een raster van 1,2 m (een smal pad dwars door een groot stuk)
                             float hcq = HQ(ctr); int gi = -1; for (int x = 0; x < fs.Count; x++) if (Mathf.Abs(fs[x].At(ctr) - hcq) < 0.004f) { gi = x; break; }
@@ -581,7 +546,7 @@ public static partial class PlanetCity
             // hoogtefunctie niet knikt is de grond in repen gesneden (een spinnenweb van dunne driehoeken). Twee veelhoeken met een hele
             // zijde gemeen die in hetzelfde vlak liggen (binnenpunten van de een op het vlak van de ander, binnen 4 mm) en samen bol
             // blijven worden weer één veelhoek. Een wand of knik scheidt ze vanzelf: dan klopt het vlak niet.
-            if (Ground2Merge && polys.Count > 1 && (fieldT || cn))
+            if (polys.Count > 1 && (fieldT || cn))
             {
                 var P2 = polys; var Hn = new List<List<Vector3>>(P2.Count);   // per veelhoek: binnenpunten (x, y, hoogte)
                 foreach (var pl in P2)

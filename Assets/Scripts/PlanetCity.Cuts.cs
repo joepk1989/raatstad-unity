@@ -100,6 +100,7 @@ public static partial class PlanetCity
             float fl = q.flat > 0f ? q.flat : FlatL, rl = q.ramp > 0f ? q.ramp : RampL, end = q.end > 0f ? q.end : FlatL + RampL + 20f;
             System.Func<Vector2, float> SD = q2 => { Vector3 d = W(q2) - q.p; return Vector3.Dot(d, q.o) - q.skew * Vector3.Dot(d, q.t); };
             System.Func<Vector2, float> TT = q2 => Vector3.Dot(W(q2) - q.p, q.t);
+            if ((o3 - q.p).sqrMagnitude > (end + 60f + c.radius) * (end + 60f + c.radius)) continue;   // (aan de overkant van de bol lijkt een geul plat gerekend vlakbij)
             float s0 = SD(Vector2.zero), t0 = TT(Vector2.zero);
             if (s0 < -c.radius - 2f || s0 > end + c.radius + 2f || Mathf.Abs(t0) > 40f + c.radius + 2f) continue;
             const float st = 5f;
