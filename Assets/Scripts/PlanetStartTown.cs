@@ -18,7 +18,10 @@ using UnityEngine;
 // niet (een vijfhoek, geen ruimte voor 7 vakken), dan komen er bomen.
 public static partial class PlanetCity
 {
-    public static void StartTown(int s)
+    // Na het bouwen meteen het wegprofiel (Terrein v2): het startscherm, een nieuwe stad en een nieuwe versie roepen StartTown aan zonder
+    // PlanetBuilder.Changed, en zonder profiel (RoadH leeg) tekent Terrein v2 de velden op de oude manier: 116 s in plaats van 6 s
+    public static void StartTown(int s) { StartTown0(s); Reprofile(); }
+    static void StartTown0(int s)
     {
         StartVer = StartTownVersion; StartCell = s; startFresh = true;   // nog de ongewijzigde startstad: wordt bij een nieuwe versie opnieuw gebouwd
         byte keepStyle = DragStyle; bool keepOne = DragOneWay; DragStyle = 0; DragOneWay = false;

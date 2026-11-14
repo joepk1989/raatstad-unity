@@ -63,6 +63,7 @@ public class WegVoorbeeld : MonoBehaviour
         if (mode == "volplaneet") { yield return VolPlaneet(); yield break; }   // Hele planeet vol met Terrein v2: profiel, laden, herbouw en een klik   // Terrein v2 zoals in het spel: wegen een voor een, opslaan en laden, de schakelaar   // de natuurplaneet met de 30 wegen (test 11 van het ontwerp)
         if (mode.StartsWith("ontwerp")) { yield return Ontwerp(home, mode); yield break; }
         if (mode.StartsWith("lagen")) { yield return Lagen(int.Parse(mode.Substring(5).Trim())); yield break; }   // welke meshes liggen er bij vak N (de stad blijft zoals hij is)
+        if (mode == "starttijd") { yield return StartTijd(); yield break; }   // de startstad met Terrein v2: herbouwtijd per stap en de traagste vakken
         if (mode == "zee") { yield return ZeeTest(home); yield break; }
         if (mode == "startnaden") { yield return StartNaden(); yield break; }
         if (mode == "aiterrein") { yield return AiTerrein(); yield break; }
@@ -786,6 +787,32 @@ public class WegVoorbeeld : MonoBehaviour
         File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true;
     }
     // de startstad bouwen op de startplek bij de zuidpool en fotograferen (overzicht, het meer, een brug, het plein)
+    IEnumerator StartTijd()
+    {
+        PlanetCity.Ground2 = true; PlanetCity.Slot = 9; PlanetCity.ClearAll(); var log = new System.Text.StringBuilder(); var sw = System.Diagnostics.Stopwatch.StartNew();
+        PlanetCity.StartTown(Planet.North); long tPl = sw.ElapsedMilliseconds; long tPr = PlanetCity.RoadH.Count;   // (StartTown maakt zelf het profiel)
+        PlanetCity.G2Reset(); PlanetCity.G2CellMs = new Dictionary<int, long>(); sw.Restart(); PlanetCity.TouchAll(); PlanetCity.Rebuild(); long tRb = sw.ElapsedMilliseconds;
+        log.Append("plaatsen met profiel ").Append(tPl).Append(" ms, RoadH ").Append(tPr).Append(" vakken, herbouwen ").Append(tRb).AppendLine(" ms").AppendLine(PlanetCity.G2Stats()).AppendLine(PlanetCity.G2Steps()).AppendLine(PlanetCity.UpdateTimes);
+        var l = new List<KeyValuePair<int, long>>(PlanetCity.G2CellMs); l.Sort((a, b) => b.Value.CompareTo(a.Value)); double tk = 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        for (int k = 0; k < Mathf.Min(15, l.Count); k++) { int c = l[k].Key; PlanetCity.UseNearPub(c); log.Append("  vak ").Append(c).Append(": ").Append((l[k].Value * tk).ToString("0")).Append(" ms, stukken ").Append(PlanetCity.SegsNear).Append(", koppen ").Append(PlanetCity.CapsNear).Append("; ").AppendLine(Desc(c)); }
+        PlanetCity.G2CellMs = null;
+        log.Append("na de eerste bouw: ").AppendLine(PlanetCity.Ground2EdgeCheck());
+        // het geheugen per vak (Ground2Cache): nog eens alles zonder wijziging, dan een krater naast het traagste vak, dan hetzelfde zonder geheugen
+        {
+            PlanetCity.G2Reset(); PlanetCity.Ground2Tris = 0; sw.Restart(); PlanetCity.TouchAll(); PlanetCity.Rebuild();
+            log.Append("nog eens, niets veranderd: ").Append(sw.ElapsedMilliseconds).Append(" ms; ").AppendLine(PlanetCity.G2Stats());
+            int c0 = l[0].Key, cj = Planet.Cells[c0].nb[0]; foreach (int j in Planet.Cells[c0].nb) if (!PlanetCity.Cells.ContainsKey(j)) { cj = j; break; }
+            PlanetCity.SetTerr(cj, PlanetCity.Terrain(cj) - 3f); PlanetCity.Touch(cj);
+            PlanetCity.G2Reset(); PlanetCity.Ground2Tris = 0; sw.Restart(); PlanetCity.Rebuild();
+            log.Append("krater in vak ").Append(cj).Append(" (alleen de geraakte delen): ").Append(sw.ElapsedMilliseconds).Append(" ms; ").AppendLine(PlanetCity.G2Stats());
+            PlanetCity.G2Reset(); PlanetCity.Ground2Tris = 0; PlanetCity.TouchAll(); PlanetCity.Rebuild(); long trA = PlanetCity.Ground2Tris;
+            PlanetCity.G2CacheWrong = new List<string>(); PlanetCity.TouchAll(); PlanetCity.Rebuild(); log.Append("uit het geheugen maar anders: ").Append(PlanetCity.G2CacheWrong.Count).Append(": ").AppendLine(string.Join(", ", PlanetCity.G2CacheWrong.GetRange(0, Mathf.Min(20, PlanetCity.G2CacheWrong.Count)))); PlanetCity.G2CacheWrong = null; log.AppendLine(PlanetCity.Ground2EdgeCheck());
+            PlanetCity.Ground2Cache = false; PlanetCity.Ground2CacheClear(); PlanetCity.G2Reset(); PlanetCity.Ground2Tris = 0; sw.Restart(); PlanetCity.TouchAll(); PlanetCity.Rebuild(); long trB = PlanetCity.Ground2Tris;
+            PlanetCity.Ground2Cache = true;
+            log.Append("alles met geheugen ").Append(trA).Append(" driehoeken, zonder geheugen ").Append(trB).Append(" (").Append(sw.ElapsedMilliseconds).Append(" ms): ").AppendLine(trA == trB ? "gelijk" : "ONGELIJK");
+        }
+        File.WriteAllText(Path.Combine(Dir, "starttijd.txt"), log.ToString()); File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); yield break;
+    }
     IEnumerator Startstad()
     {
         int st = PlanetCity.FreeStart(Planet.Cells[Planet.South].dir); Hc = st; PlanetCity.StartTown(st);

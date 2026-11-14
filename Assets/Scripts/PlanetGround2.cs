@@ -100,11 +100,13 @@ public static partial class PlanetCity
     public static long Ground2Tris;           // teller: driehoeken die Ground2Cell tekende (voor de test)
     // tijdmeting (voor de test): vakken met en zonder hoogtefunctie, randprofielen (opnieuw berekend of uit het geheugen)
     public static long G2Cells, G2Field, G2EdgeNew, G2EdgeHit; public static readonly System.Diagnostics.Stopwatch G2SwField = new System.Diagnostics.Stopwatch(), G2SwPlain = new System.Diagnostics.Stopwatch(), G2SwEdge = new System.Diagnostics.Stopwatch();
-    public static string G2Stats() => G2Cells + " vakken (" + G2Field + " met hoogtefunctie): " + G2SwField.ElapsedMilliseconds + " ms met, " + G2SwPlain.ElapsedMilliseconds + " ms zonder; randprofielen " + G2EdgeNew + " berekend (" + G2SwEdge.ElapsedMilliseconds + " ms), " + G2EdgeHit + " uit het geheugen";
+    public static Dictionary<int, long> G2CellMs;   // (voor de test: de tijd per vak in ticks van de stopwatch, als niet null)
+    public static int SegsNear => segsUse.Count; public static int CapsNear => capsUse.Count; public static void UseNearPub(int i) => UseNear(i);
+    public static string G2Stats() => G2Cells + " vakken (" + G2Field + " met hoogtefunctie): " + G2SwField.ElapsedMilliseconds + " ms met, " + G2SwPlain.ElapsedMilliseconds + " ms zonder; randprofielen " + G2EdgeNew + " berekend (" + G2SwEdge.ElapsedMilliseconds + " ms), " + G2EdgeHit + " uit het geheugen; vakken " + G2CacheHit + " uit het geheugen, " + G2CacheMiss + " berekend";
     public static readonly System.Diagnostics.Stopwatch G2SwLines = new System.Diagnostics.Stopwatch(), G2SwPlanes = new System.Diagnostics.Stopwatch(), G2SwMerge = new System.Diagnostics.Stopwatch(), G2SwPiece = new System.Diagnostics.Stopwatch(), G2SwNear = new System.Diagnostics.Stopwatch();
     public static long G2Polys, G2Lines;
     public static string G2Steps() => "lijnen " + G2SwLines.ElapsedMilliseconds + " ms (" + G2Lines + " lijnen), vlakken snijden " + G2SwPlanes.ElapsedMilliseconds + " ms (" + G2Polys + " stukken), samenvoegen " + G2SwMerge.ElapsedMilliseconds + " ms, tekenen " + G2SwPiece.ElapsedMilliseconds + " ms, UseNear " + G2SwNear.ElapsedMilliseconds + " ms";
-    public static void G2Reset() { G2Cells = G2Field = G2EdgeNew = G2EdgeHit = G2Polys = G2Lines = 0; G2SwField.Reset(); G2SwPlain.Reset(); G2SwEdge.Reset(); G2SwLines.Reset(); G2SwPlanes.Reset(); G2SwMerge.Reset(); G2SwPiece.Reset(); G2SwNear.Reset(); }
+    public static void G2Reset() { G2Cells = G2Field = G2EdgeNew = G2EdgeHit = G2Polys = G2Lines = G2CacheHit = G2CacheMiss = 0; G2SwField.Reset(); G2SwPlain.Reset(); G2SwEdge.Reset(); G2SwLines.Reset(); G2SwPlanes.Reset(); G2SwMerge.Reset(); G2SwPiece.Reset(); G2SwNear.Reset(); }
     public static bool Ground2 = true;   // Terrein v2 (standaard aan; uit in de ontwikkelaarsmodus, voor die speelsessie): de bodem van elk vak uit de hoogtefunctie, de randen gedeeld met de buren, wegen met een profiel (RoadH)
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     static void Ground2Default() { Ground2 = true; }   // bij elke start van Play weer aan (statische velden overleven een herstart zonder domein-herladen)
@@ -139,7 +141,11 @@ public static partial class PlanetCity
     {
         long h = 1469598103934665603L; void F(float f) { h = unchecked((h ^ (uint)System.BitConverter.SingleToInt32Bits(f)) * 1099511628211L); }
         var c = Planet.Cells[i]; int m = c.corners.Length;
-        F(fieldVer); F(cutsHash); F(FieldK); F((RoadShape ? 1f : 0f) + (RoadSlopes ? 2f : 0f)); F(Mathf.Min(G(i), G(j))); F(Mathf.Max(G(i), G(j))); float c1 = CornerBase(i, k), c2 = CornerBase(i, (k + 1) % m); F(Mathf.Min(c1, c2)); F(Mathf.Max(c1, c2)); F(spans.Count); F(cuts.Count);   // (symmetrisch: van beide kanten dezelfde sleutel)
+        void L(long x) { h = unchecked((h ^ x) * 1099511628211L); }
+        // (de inhoud waar het profiel van afhangt, niet fieldVer: zo blijft een rand staan als er elders een weg of het terrein verandert)
+        for (int s = 0; s < 2; s++) { int x = s == 0 ? Mathf.Min(i, j) : Mathf.Max(i, j); if (x < 0) continue; bool px = Plateau(x); L(NearHash(x)); F(px ? 1f : 0f); F(px ? G(x) : Center2(x)); if (!fieldCells.Contains(x) && RoadShape) L(AllFlatsHash()); }   // (een vak buiten het bereik rekent met alle vlakke stukken, PlaneLins)
+        if (RoadH.Count == 0 && spans.Count > 0) L(SpansHash());
+        F(cutsHash); F(FieldK); F((RoadShape ? 1f : 0f) + (RoadSlopes ? 2f : 0f)); F(Mathf.Min(G(i), G(j))); F(Mathf.Max(G(i), G(j))); float c1 = CornerBase(i, k), c2 = CornerBase(i, (k + 1) % m); F(Mathf.Min(c1, c2)); F(Mathf.Max(c1, c2)); F(spans.Count); F(cuts.Count);   // (symmetrisch: van beide kanten dezelfde sleutel)
         return h;
     }
     // De randpunten van rand k van vak i, gedeeld met de buur aan die kant: de hoogte van het maaiveld langs de rand als polylijn,
@@ -366,8 +372,109 @@ public static partial class PlanetCity
     // wall: een wandquad (boven a-b, onder c-d, outw naar de lage kant), naar het materiaal sokkel
     static void Ground2Cell(int i, bool plat, System.Action<Vector3, Vector3, Vector3, float, float, float, bool> emit, System.Func<int, bool> skip, System.Action<Vector3, Vector3, Vector3, Vector3, Vector3> wall = null)
     {
-        bool fld0 = fieldCells.Contains(i); var swc = fld0 ? G2SwField : G2SwPlain; G2Cells++; if (fld0) G2Field++; swc.Start();
-        try { Ground2Cell0(i, plat, emit, skip, wall); } finally { swc.Stop(); triSegs = null; triCaps = null; }
+        bool fld0 = fieldCells.Contains(i); var swc = fld0 ? G2SwField : G2SwPlain; G2Cells++; if (fld0) G2Field++; swc.Start(); long t0 = G2CellMs != null ? swc.ElapsedTicks : 0;
+        try
+        {
+            if (Ground2Cache && !FlatGround(i) && CellKey(i, plat, skip, wall != null, out long key))
+            {
+                if (cellCache.TryGetValue(i, out var e) && e.key == key)   // hetzelfde als de vorige keer: de onthouden driehoeken en wanden
+                {
+                    G2CacheHit++; Ground2Tris += e.t.Length;
+                    if (G2CacheWrong != null)   // (voor de test: toch uitrekenen en vergelijken)
+                    {
+                        var chk = new List<G2Tri>(); long tr0 = Ground2Tris; Ground2Cell0(i, plat, (a, b, cc, ha, hb, hc, st) => chk.Add(new G2Tri { a = a, b = b, c = cc }), skip, wall == null ? null : (a, b, cc, d, o) => { }); Ground2Tris = tr0;
+                        bool same = chk.Count == e.t.Length; if (same) for (int q = 0; q < chk.Count; q++) if ((chk[q].a - e.t[q].a).sqrMagnitude + (chk[q].b - e.t[q].b).sqrMagnitude + (chk[q].c - e.t[q].c).sqrMagnitude > 1e-6f) { same = false; break; }
+                        if (!same) G2CacheWrong.Add(i + " (" + e.t.Length + " onthouden, " + chk.Count + " nu)");
+                    }
+                    foreach (var t in e.t) emit(t.a, t.b, t.c, t.ha, t.hb, t.hc, t.steep);
+                    if (wall != null) foreach (var w in e.w) wall(w.a, w.b, w.c, w.d, w.o);
+                    return;
+                }
+                G2CacheMiss++; var lt = new List<G2Tri>(); var lw = new List<G2Wall>();
+                Ground2Cell0(i, plat, (a, b, cc, ha, hb, hc, st) => { lt.Add(new G2Tri { a = a, b = b, c = cc, ha = ha, hb = hb, hc = hc, steep = st }); emit(a, b, cc, ha, hb, hc, st); }, skip,
+                    wall == null ? null : (a, b, cc, d, o) => { lw.Add(new G2Wall { a = a, b = b, c = cc, d = d, o = o }); wall(a, b, cc, d, o); });
+                cellCache[i] = (key, lt.ToArray(), lw.ToArray()); return;
+            }
+            Ground2Cell0(i, plat, emit, skip, wall);
+        }
+        finally { swc.Stop(); triSegs = null; triCaps = null; if (G2CellMs != null) G2CellMs[i] = (G2CellMs.TryGetValue(i, out long o2) ? o2 : 0) + swc.ElapsedTicks - t0; }
+    }
+    // ---------- onthouden per vak ----------
+    // Een vak langs een weg of geul kost het meeste rekenwerk (snijden, samenvoegen). Zijn driehoeken en wanden blijven bewaard onder een
+    // sleutel van alles waar ze van afhangen: de hoogtes van het vak en zijn hoeken, de stukken weg in de buurt, de geulen, en de
+    // randprofielen zelf. Verandert er elders iets (een krater, een weg verderop), dan komt dit vak uit het geheugen.
+    public static bool Ground2Cache = true; public static long G2CacheHit, G2CacheMiss; public static List<string> G2CacheWrong;   // (voor de test, als niet null: de vakken die uit het geheugen anders kwamen dan opnieuw berekend)
+    public static void Ground2CacheClear() { cellCache.Clear(); edgeCache.Clear(); nearHash.Clear(); }
+    // Voor de test: de onthouden randprofielen opnieuw uitrekenen en vergelijken (een rand die bleef staan terwijl hij veranderd is)
+    public static string Ground2EdgeCheck()
+    {
+        Topo(); var sb = new System.Text.StringBuilder(); int bad = 0, n = 0; var su = segsUse; var fu = flatsUse; var cu = capsUse;
+        foreach (var kv in new List<KeyValuePair<long, (long key, List<EPt> pts)>>(edgeCache))
+        {
+            int a = (int)(kv.Key >> 32), b = (int)(kv.Key & 0xFFFFFFFF), ka = -1; var ca = Planet.Cells[a]; for (int q = 0; q < ca.corners.Length; q++) if (edN[a][q] == b) { ka = q; break; }
+            if (ka < 0 || kv.Value.key != EdgeKey(a, b, ka)) continue; n++;
+            List<EPt> fr; try { fr = EdgeProfile0(a, ka); } finally { segsUse = su; flatsUse = fu; capsUse = cu; }
+            bool same = fr.Count == kv.Value.pts.Count; if (same) for (int q = 0; q < fr.Count; q++) if (Mathf.Abs(fr[q].h - kv.Value.pts[q].h) > 1e-4f || Mathf.Abs(fr[q].t - kv.Value.pts[q].t) > 1e-5f) { same = false; break; }
+            if (!same) { bad++; if (bad <= 12) sb.Append("  rand ").Append(a).Append('-').Append(b).Append(": ").Append(kv.Value.pts.Count).Append(" punten onthouden, ").Append(fr.Count).Append(" nu; ").Append(Desc(a)).Append(" | ").Append(Desc(b)); sb.Append(" veld ").Append(fieldCells.Contains(a)).Append(" geulen ").Append(cuts.Count > 0 ? (CutsNear(ca)?.Count ?? 0) : 0).Append(" G ").Append(G(a).ToString("0.00")).Append(" oud:"); foreach (var x in kv.Value.pts) sb.Append(' ').Append(x.t.ToString("0.000")).Append('=').Append(x.h.ToString("0.00")); sb.Append(" nu:"); foreach (var x in fr) sb.Append(' ').Append(x.t.ToString("0.000")).Append('=').Append(x.h.ToString("0.00")); sb.AppendLine(); }
+        }
+        return "randen onthouden en nog geldig: " + n + ", anders dan opnieuw berekend: " + bad + (bad > 0 ? " " + sb : "");
+    }
+    struct G2Tri { public Vector3 a, b, c; public float ha, hb, hc; public bool steep; }
+    struct G2Wall { public Vector3 a, b, c, d, o; }
+    static readonly Dictionary<int, (long key, G2Tri[] t, G2Wall[] w)> cellCache = new Dictionary<int, (long, G2Tri[], G2Wall[])>();
+    static readonly Dictionary<int, (int ver, long h)> nearHash = new Dictionary<int, (int, long)>();
+    static long Mix(long h, float f) => unchecked((h ^ (uint)System.BitConverter.SingleToInt32Bits(f)) * 1099511628211L);
+    static long Mix(long h, Vector3 v) => Mix(Mix(Mix(h, v.x), v.y), v.z);
+    static long MixL(long h, long x) => unchecked((h ^ x) * 1099511628211L);
+    static long MixSegs(long h, List<Seg> l)
+    {
+        h = MixL(h, l.Count);
+        foreach (var q in l) { h = Mix(h, q.a); h = Mix(h, q.b); h = Mix(h, q.ha); h = Mix(h, q.hb); h = Mix(h, q.hw); h = Mix(h, q.reach); h = MixL(h, ((long)q.ia << 32) ^ (uint)q.ib); h = MixL(h, (q.capA ? 1 : 0) | (q.capB ? 2 : 0) | (q.wall ? 4 : 0) | (q.tap0 ? 8 : 0) | (q.tap1 ? 16 : 0) | (q.hardA ? 32 : 0) | (q.hardB ? 64 : 0) | (q.bak ? 128 : 0)); }
+        return h;
+    }
+    // de stukken en koppen in de buurt van vak i (UseNear) als één getal; per verzameling stukken (fieldVer) een keer
+    static long NearHash(int i)
+    {
+        if (!fieldCells.Contains(i)) return 0;
+        if (nearHash.TryGetValue(i, out var e) && e.ver == fieldVer) return e.h;
+        var su = segsUse; var fu = flatsUse; var cu = capsUse; long h = 1469598103934665603L;
+        try
+        {
+            UseNear(i); h = MixSegs(h, segsUse); h = MixSegs(h, flatsUse); h = MixL(h, capsUse.Count);
+            foreach (var q in capsUse) { h = Mix(h, q.c); h = Mix(h, q.g); h = Mix(h, q.h); h = Mix(h, q.hw); h = Mix(h, q.wo); h = Mix(h, q.reach); h = MixL(h, q.ic * 2 + (q.wall ? 1 : 0)); if (q.n != null) foreach (var n in q.n) h = Mix(h, n); }
+        }
+        finally { segsUse = su; flatsUse = fu; capsUse = cu; }
+        if (h == 0) h = 1; nearHash[i] = (fieldVer, h); return h;
+    }
+    static (int ver, long h) allFlats = (-1, 0);
+    static long AllFlatsHash() { if (allFlats.ver != fieldVer) allFlats = (fieldVer, MixSegs(1469598103934665603L, flats)); return allFlats.h; }
+    static long SpansHash()
+    {
+        long h = 1469598103934665603L;
+        foreach (var q in spans) { h = MixL(h, ((long)q.a << 32) ^ (uint)q.b); h = Mix(h, q.dA); h = Mix(h, q.eA); h = Mix(h, q.n); h = Mix(h, q.L); h = Mix(h, q.ha); h = Mix(h, q.hb); h = Mix(h, q.hw); h = Mix(h, q.s0); h = Mix(h, q.s1); }
+        return h;
+    }
+    // De sleutel van vak i; false: een gewoon vak (geen weg, geul of dek in de buurt), dat is zo getekend en wordt niet onthouden
+    static bool CellKey(int i, bool plat, System.Func<int, bool> skip, bool walls, out long key)
+    {
+        var c = Planet.Cells[i]; int m = c.corners.Length; key = 0;
+        bool inField = fieldCells.Contains(i), field = inField && NearSeg(c.dir, c.radius);
+        var near = cuts.Count > 0 && !plat ? CutsNear(c) : null; bool cn = near != null && near.Count > 0;
+        bool sp = RoadH.Count == 0 && spanNear.Count > 0 && spanNear.ContainsKey(i);
+        if (!field && !cn && !sp) return false;
+        long h = 1469598103934665603L; float g = G(i);
+        h = MixL(h, i); h = MixL(h, (plat ? 1 : 0) | (walls ? 2 : 0) | (field ? 4 : 0) | (cn ? 8 : 0) | (sp ? 16 : 0) | (RoadShape ? 32 : 0) | (RoadSlopes ? 64 : 0) | (RoadH.Count > 0 ? 128 : 0) | (Ground2Merge ? 256 : 0) | (TriCull ? 512 : 0) | (carved.Count > 0 ? 1024 : 0));
+        h = Mix(h, FieldK); h = Mix(h, g); h = Mix(h, plat ? g : Center2(i));
+        int sk = 0; for (int k = 0; k < m; k++) { if (skip(k)) sk |= 1 << k; h = Mix(h, plat ? g : CornerBase(i, k)); } h = MixL(h, sk);
+        if (inField) h = MixL(h, NearHash(i)); else if (RoadShape) h = MixL(h, AllFlatsHash());
+        if (cuts.Count > 0) { h = MixL(h, cutsHash); h = MixL(h, fillN); }
+        if (RoadH.Count == 0 && spans.Count > 0) { h = MixL(h, SpansHash()); if (spanNear.TryGetValue(i, out var sl)) foreach (int x in sl) h = MixL(h, x); }
+        if (!plat) for (int k = 0; k < m; k++)
+        {
+            if ((sk & (1 << k)) != 0) continue; var pr = EdgeProfile(i, k); h = MixL(h, pr.Count);
+            foreach (var ep in pr) { h = Mix(h, ep.t); h = Mix(h, ep.h); h = MixL(h, ep.side); }
+        }
+        key = h; return true;
     }
     static void Ground2Cell0(int i, bool plat, System.Action<Vector3, Vector3, Vector3, float, float, float, bool> emit, System.Func<int, bool> skip, System.Action<Vector3, Vector3, Vector3, Vector3, Vector3> wall)
     {
