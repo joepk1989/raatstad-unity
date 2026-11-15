@@ -35,8 +35,7 @@ public partial class PlanetBuilder
             if (aiOn) g.Add(new MItem { name = "AI-bouwer stoppen", sub = PlanetAI.Moves + " zetten gedaan", danger = true, act = () => { menuOpen = false; AiStop(); } });
             else g.Add(new MItem { name = "Tempo AI-bouwer", value = AiTempoNames[aiTempo], act = () => aiTempo = (aiTempo + 1) % AiTempoNames.Length });
             return g; } });
-        l.Add(new MItem { name = "Oorlogsmodus", sub = "Tankgevecht tegen de AI", icon = "onweer", kids = () => new List<MItem> {
-            new MItem { name = "Tankgevecht", sub = "Jij in een tank tegen een tank van de AI · T toeschouwer", danger = true, act = () => { menuOpen = false; if (space) { distGoal = LandDist; battleAfterLanding = true; } else StartBattle(); } } } });   // PlanetBuilder.Battle.cs
+        l.Add(new MItem { name = "Oorlogsmodus", sub = "Tankgevecht " + BattleName + " tegen de AI", icon = "onweer", kids = () => BattleMenuItems(space) });   // PlanetBuilder.Battle.cs
         l.Add(new MItem { name = "Instellingen", sub = "Beeld, geluid, leven, planeet en meer", icon = "zon", kids = SettingsMenuItems });   // in secties (PlanetBuilder.Settings.cs)
         l.Add(new MItem { name = "Bediening", sub = "Alle toetsen op een rij (?)", icon = "menu", act = () => { menuOpen = false; helpOpen = true; } });
         return l;

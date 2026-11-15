@@ -285,7 +285,7 @@ public partial class PlanetBuilder
 
     void ModesPanel(Rect r)
     {
-        r.height = 14f + 42f + Modes.Length * 50f + 34f + (mode == 3 ? 50f : 0f); Ui.Panel(r, true, 16f);
+        r.height = 14f + 42f + Modes.Length * 50f + 34f + (mode == 3 ? 150f : 0f); Ui.Panel(r, true, 16f);
         float x = r.x + 18f, iw = r.width - 36f, y = r.y + 14f;
         PanelHead(r, "SPELMODUS", ref y);
         for (int k = 0; k < Modes.Length; k++)
@@ -297,8 +297,13 @@ public partial class PlanetBuilder
         if (mode == 3)   // oorlogsmodus: het tankgevecht in de laatste stad
         {
             var last = CityFiles.Last;
-            if (HexRow(new Rect(x + 24f, y, iw - 24f, 44f), "Tankgevecht", last != null ? "In " + last.name + ": jij tegen een tank van de AI" : "Eerst een stad maken", null, false, last == null) && last != null)
+            if (HexRow(new Rect(x + 24f, y, iw - 24f, 44f), "Tankgevecht " + BattleName, last != null ? "In " + last.name + ": " + BattleSub : "Eerst een stad maken", null, false, last == null) && last != null)
             { battleAfterLanding = true; OpenCity(last); }
+            y += 50f;
+            // de grootte: klikken telt op (1 tot 5, daarna weer 1)
+            if (HexRow(new Rect(x + 24f, y, iw - 24f, 44f), "Jouw team", "Tanks in jouw team, jij meegeteld (klik: meer)", tankTeam.ToString(), false)) { tankTeam = tankTeam % 5 + 1; SaveBattleSize(); }
+            y += 50f;
+            if (HexRow(new Rect(x + 24f, y, iw - 24f, 44f), "Tegenstanders", "Tanks van de tegenstander (klik: meer)", tankFoes.ToString(), false)) { tankFoes = tankFoes % 5 + 1; SaveBattleSize(); }
             y += 50f;
         }
         Ui.Label(new Rect(x, y, iw, 24f), "De vrije modus en het tankgevecht (oorlogsmodus) werken nu.", Ui.T.Dim, null, null, 11);

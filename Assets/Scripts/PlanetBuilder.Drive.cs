@@ -97,7 +97,7 @@ public partial class PlanetBuilder
         Ui.Panel(r, false, 14f); Ui.Label(new Rect(r.x, r.y + 6f, r.width, 22f), "Instappen in…", Ui.T.Dim, Ui.InkDim, TextAnchor.MiddleCenter);
         if (Ui.Button(new Rect(r.x + 14f, r.y + 36f, bw, bh), "1  Cybertruck")) { vehicleAsk = false; useAsk = true; StartDrive(false); }
         if (Ui.Button(new Rect(r.x + 14f + bw + gap, r.y + 36f, bw, bh), "2  Tank")) { vehicleAsk = false; useAsk = true; StartDrive(true); }
-        if (Ui.Button(new Rect(r.x + 14f + (bw + gap) * 2f, r.y + 36f, bw, bh), "3  Tankgevecht")) { vehicleAsk = false; useAsk = true; StartBattle(); }
+        if (Ui.Button(new Rect(r.x + 14f + (bw + gap) * 2f, r.y + 36f, bw, bh), "3  Tankgevecht " + BattleName)) { vehicleAsk = false; useAsk = true; StartBattle(); }
     }
 
     void DriveGui(float W, float H)

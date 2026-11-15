@@ -35,7 +35,7 @@ public partial class PlanetBuilder
             case 2: return new[] {
                 new Sub { name = "Jij tegen Claude", sub = "Komt na de vrije modus" } };
             default: return new[] {
-                new Sub { name = "Tankgevecht", sub = "Jij in een tank tegen een tank van de AI · T toeschouwer", act = () => { mode = 3; if (inSpace) { distGoal = LandDist; battleAfterLanding = true; } else StartBattle(); } },
+                new Sub { name = "Tankgevecht " + BattleName, sub = BattleSub + " · T toeschouwer", act = () => { mode = 3; if (inSpace) { distGoal = LandDist; battleAfterLanding = true; } else StartBattle(); } },
                 new Sub { name = "Meer", sub = "Meer tanks, teams, een stad verdedigen: later" } };
         }
     }

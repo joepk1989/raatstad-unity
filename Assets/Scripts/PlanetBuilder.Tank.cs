@@ -82,7 +82,7 @@ public partial class PlanetBuilder
         Vector3 at = tr.muzzle.position;
         var vis = MakeShellVis(); vis.position = at; vis.rotation = Quaternion.LookRotation(dir, at.normalized);
         shells.Add(new Shell { pos = at, vel = dir * ShellSpeed + carV, vis = vis, owner = owner });
-        if (battle) { if (owner != null && owner.GetComponent<EnemyTank>() != null) BattleStats[2]++; else BattleStats[0]++; }
+        if (battle) { var et = owner != null ? owner.GetComponent<EnemyTank>() : null; BattleStats[et != null && et.team == 1 ? 2 : 0]++; }   // voor een test: per team
         // mondingsvuur en een wolkje
         Burst(at + dir * 0.6f, dir, 0.5f, 3, true);
         PlayAt(ShotClip(), at, 0.9f);

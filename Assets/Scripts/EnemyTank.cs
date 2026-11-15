@@ -91,6 +91,7 @@ public class TankBrain
 public class EnemyTank : MonoBehaviour
 {
     public TankRig rig; public Rigidbody rb; public float hp = 100f; public bool Dead => hp <= 0f;
+    public int team = 1;   // 0: jouw team (bondgenoten), 1: de tegenstanders
     public readonly TankBrain brain = new TankBrain();
     public Transform target; public Rigidbody targetRb;
     public System.Action<EnemyTank, Vector3> fire;   // de PlanetBuilder laat de granaat vliegen
@@ -100,17 +101,17 @@ public class EnemyTank : MonoBehaviour
     const float PMount = 1f;
     static Material tint;
 
-    public static EnemyTank Spawn(Transform parent, Vector3 pos, Vector3 fwd)
+    public static EnemyTank Spawn(Transform parent, Vector3 pos, Vector3 fwd, int team = 1)
     {
-        var root = new GameObject("Tank van de tegenstander").transform; root.SetParent(parent, false); root.gameObject.layer = Layers.Mens;
+        var root = new GameObject(team == 0 ? "Tank van je team" : "Tank van de tegenstander").transform; root.SetParent(parent, false); root.gameObject.layer = Layers.Mens;
         var trg = ModelTank.Build(root) ?? TankModel.Build(root);
         // een andere tint, zodat je hem herkent: roestrood
-        if (ModelTank.Body != null)
+        if (team == 1 && ModelTank.Body != null)   // je eigen team houdt de kleur van je eigen tank
         {
             if (tint == null) { tint = new Material(ModelTank.Body); tint.SetColor("_BaseColor", new Color(1f, 0.55f, 0.48f)); }
             foreach (var r in root.GetComponentsInChildren<MeshRenderer>(true)) { var ms = r.sharedMaterials; for (int k = 0; k < ms.Length; k++) if (ms[k] == ModelTank.Body) ms[k] = tint; r.sharedMaterials = ms; }
         }
-        var e = root.gameObject.AddComponent<EnemyTank>(); e.rig = trg; e.wheelR = trg.WheelR;
+        var e = root.gameObject.AddComponent<EnemyTank>(); e.rig = trg; e.wheelR = trg.WheelR; e.team = team;
         int nw = trg.PhysWheels.Length;
         e.rest = PMount - e.wheelR + PlanetLife.TankMass * 9.81f / nw / PlanetLife.TankSpring;
         e.len = new float[nw]; e.pt = new Vector3[nw]; e.nm = new Vector3[nw]; e.mounts = new Vector3[nw]; e.load = new float[nw]; e.comp = new float[nw]; e.on = new bool[nw];
