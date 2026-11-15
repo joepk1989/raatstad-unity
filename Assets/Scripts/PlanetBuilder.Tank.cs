@@ -3,11 +3,10 @@ using UnityEngine;
 
 // De tank (J, dan 2): de koepel en het kanon draaien naar waar de camera naartoe kijkt (het vizier in het midden van het beeld), met
 // voorhouden voor de zwaartekracht; een klik schiet een granaat (120 m/s, valt naar het middelpunt van de planeet; raakt hij na 3 s
-// niets, dan ontploft hij in de lucht). Bij de inslag
-// een flits, vuurbal, rook en brokstukken; er verdwijnt niets (geen wegen, geen huizen: huizen beschadigen komt later), kaal
-// terrein krijgt een kuiltje en het vak en zijn buren worden zwartgeblakerd (PlanetCity.Scorch); op een weg of gebouw komt een
-// roetvlek op het oppervlak (Soot). Mensen en auto's in de buurt vliegen weg
-// (PlanetLife.Blast). Elk schot is één stap in de undo (Ctrl+Z na het uitstappen zet het terug).
+// niets, dan ontploft hij in de lucht). Bij de inslag een flits, vuurbal, rook en brokstukken, en mensen en auto's in de buurt vliegen
+// weg (PlanetLife.Blast). Er verdwijnt niets (geen wegen, geen huizen: huizen beschadigen komt later). Op de plek van de inslag een
+// spoor (Soot): op terrein een kuiltje met een zeshoekige wal, op wegen, gebouwen en plantenbakken een roetvlek. De stad zelf
+// verandert niet: geen undo-stap, niet opslaan, niets opnieuw tekenen (dat maakte elke inslag traag).
 public partial class PlanetBuilder
 {
     class Shell { public Vector3 pos, vel; public float t; public Transform vis; }
@@ -112,32 +111,20 @@ public partial class PlanetBuilder
         PlayAt(BoomClip(), p, 1f);
         if (Cam != null) { float dist = Vector3.Distance(Cam.transform.position, p); if (dist < 60f) Shake(Mathf.Lerp(0.5f, 0f, dist / 60f)); }
         PlanetLife.Blast(p, 3f);
-        // schade: één stap in de undo
-        int c = Planet.Nearest(p); if (c < 0) return;
-        float above = p.magnitude - Planet.R - PlanetCity.G(c);
-        if (above > 25f) return;   // hoog in de lucht (een flank van een berg in de verte): geen schade aan het vak eronder
-        Push();
-        // een tank haalt niets weg (geen wegen, geen huizen; huizen beschadigen komt later): alleen een kuiltje in kaal terrein,
-        // en niet naast een weg, pad of gebouw (dan zou de rand ervan meezakken)
-        bool bare = !PlanetCity.Cells.ContainsKey(c) && !PlanetCity.Wet(c);
-        foreach (int j in Planet.Cells[c].nb) if (PlanetCity.Cells.ContainsKey(j)) bare = false;
-        if (bare) PlanetCity.SetTerr(c, PlanetCity.G(c) - 0.6f);
-        Blacken(c, 70); foreach (int j in Planet.Cells[c].nb) Blacken(j, 25);
-        // op een weg, stoep of gebouw: een roetvlek op het oppervlak zelf (de schroeiplekken in Scorch kleuren alleen het terrein)
-        if (layer == Layers.Weg || layer == Layers.Gebouw) Soot(p, n, layer == Layers.Gebouw ? 1.1f : 1.8f);
-        Changed(); Sounds.Hush();
-    }
-    static void Blacken(int c, byte v)
-    {
-        if (!PlanetCity.Scorch.TryGetValue(c, out byte old) || (old < v && old < PlanetCity.ScorchRim)) PlanetCity.Scorch[c] = v;
-        PlanetCity.Touch(c);
+        // sporen: alleen iets om te zien, de stad zelf verandert niet (dus geen undo-stap, niet opslaan, niets opnieuw tekenen: dat
+        // maakte elke inslag traag). Op terrein een kuiltje met een zeshoekige wal van opgeworpen aarde en roet in het midden, op een
+        // weg, gebouw of plantenbak alleen een roetvlek. Een tank haalt niets weg (huizen beschadigen komt later).
+        float above = p.magnitude - Planet.R - PlanetCity.TerrainAt(up);
+        if (above > 25f) return;   // hoog in de lucht: geen spoor
+        bool terrain = layer != Layers.Weg && layer != Layers.Gebouw && layer != Layers.Water;
+        Soot(p, n, layer == Layers.Gebouw ? 1.1f : layer == Layers.Weg ? 1.8f : 1.3f, terrain);
     }
 
-    // ---- roetvlekken op wegen en gebouwen: een platte, rafelige vlek net boven het oppervlak. Ze horen bij de undo-stap van het
-    // schot (Ctrl+Z haalt ze weg) en verdwijnen als er niets meer onder zit (het gebouw is weg); ze worden niet bewaard.
-    class SootMark { public GameObject g; public int undoN, miss; public Vector3 at; }
+    // ---- sporen van een inslag: een platte, rafelige roetvlek net boven het oppervlak, op terrein met een wal eromheen. Alleen om
+    // te zien: niet in de undo, niet bewaard; hooguit 80 (de oudste gaan weg), en weg als er niets meer onder zit.
+    class SootMark { public GameObject g; public int miss; public Vector3 at; }
     readonly List<SootMark> soot = new List<SootMark>(); Transform sootRoot; float sootCheckT;
-    void Soot(Vector3 p, Vector3 n, float r)
+    void Soot(Vector3 p, Vector3 n, float r, bool pit = false)
     {
         if (sootRoot == null) sootRoot = new GameObject("Roetvlekken").transform;
         Vector3 t = Vector3.Cross(n, Mathf.Abs(Vector3.Dot(n, Vector3.up)) > 0.9f ? Vector3.right : Vector3.up).normalized, b = Vector3.Cross(n, t);
@@ -153,11 +140,28 @@ public partial class PlanetBuilder
         var g = new GameObject("roet"); g.transform.SetParent(sootRoot, true);
         var a1 = new GameObject("rand"); a1.transform.SetParent(g.transform, true); a1.AddComponent<MeshFilter>().sharedMesh = mb.Build(); a1.AddComponent<MeshRenderer>().sharedMaterial = Mats.Get("tank_roetgrijs", new Color(0.2f, 0.19f, 0.18f));
         var a2 = new GameObject("kern"); a2.transform.SetParent(g.transform, true); a2.AddComponent<MeshFilter>().sharedMesh = core.Build(); a2.AddComponent<MeshRenderer>().sharedMaterial = Mats.Get("tank_roet", new Color(0.07f, 0.065f, 0.06f));
-        soot.Add(new SootMark { g = g, undoN = undo.Count, at = p });
+        if (pit)   // de wal: zes lage, schuine stukken rond het kuiltje (zeshoek, zoals alles in de stad), net iets onregelmatig
+        {
+            var wal = new MeshBuilder(); float ri = r * 0.95f, ro = r * 1.9f;
+            Vector3 P(int k, float rad, float h) { float a = (k * 60f + 30f) * Mathf.Deg2Rad; return p + (t * Mathf.Cos(a) + b * Mathf.Sin(a)) * rad + n * h; }
+            var hs = new float[6]; for (int k = 0; k < 6; k++) hs[k] = Random.Range(0.28f, 0.45f);
+            for (int k = 0; k < 6; k++)
+            {
+                int k2 = (k + 1) % 6; float h0 = hs[k], h1 = hs[k2];
+                Vector3 ib0 = P(k, ri, -0.05f), ib1 = P(k2, ri, -0.05f), it0 = P(k, ri + 0.25f, h0), it1 = P(k2, ri + 0.25f, h1), ot0 = P(k, ro - 0.45f, h0 * 0.8f), ot1 = P(k2, ro - 0.45f, h1 * 0.8f), ob0 = P(k, ro, -0.1f), ob1 = P(k2, ro, -0.1f);
+                Vector3 mid = (P(k, ri, 0f) + P(k2, ri, 0f)) * 0.5f - p;
+                wal.Quad(ib0, it0, it1, ib1, -mid);            // de binnenkant, naar het kuiltje toe
+                wal.Quad(it0, ot0, ot1, it1, n);               // de top
+                wal.Quad(ot0, ob0, ob1, ot1, mid);             // de buitenkant
+            }
+            var a3 = new GameObject("wal"); a3.transform.SetParent(g.transform, true); a3.AddComponent<MeshFilter>().sharedMesh = wal.Build(); a3.AddComponent<MeshRenderer>().sharedMaterial = Mats.Get("tank_aarde", new Color(0.36f, 0.31f, 0.25f));
+        }
+        soot.Add(new SootMark { g = g, at = p });
+        if (soot.Count > 80) { if (soot[0].g != null) Destroy(soot[0].g); soot.RemoveAt(0); }   // de oudste sporen verdwijnen
     }
     void SootTick(float dt)
     {
-        for (int i = soot.Count - 1; i >= 0; i--) if (soot[i].g == null || undo.Count < soot[i].undoN) { if (soot[i].g != null) Destroy(soot[i].g); soot.RemoveAt(i); }   // ongedaan gemaakt
+        for (int i = soot.Count - 1; i >= 0; i--) if (soot[i].g == null) soot.RemoveAt(i);
         sootCheckT -= dt; if (sootCheckT > 0f) return; sootCheckT = 1f;
         for (int i = soot.Count - 1; i >= 0; i--)   // er zit niets meer onder (twee keer achter elkaar: tijdens het opnieuw tekenen ontbreekt een botsvorm even)
         {
