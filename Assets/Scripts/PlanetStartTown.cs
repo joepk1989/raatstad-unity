@@ -11,6 +11,8 @@ using UnityEngine;
 //  - de ringweg is een laan; drie hoofdstraten onder 120° kruisen haar: naar buiten de stad uit (doodlopend in een ronde kop) en
 //    twee vakken naar binnen tot een keerkop, als kleine straatjes binnen de rondweg;
 //  - daarbuiten rijtjes woningen langs de wegen, een kantorenbuurtje, parken, een meertje en een heuvel met een molen.
+// Versie 6: een groene rand tot 22 vakken (GreenEdge): glooiend terrein, bos dat naar buiten dichter wordt, open plekken met heide,
+// twee meertjes in een laagte en boomgroepen tussen de buitenste huizen; langs de uitgaande straten blijft een strook vrij.
 // Versie 5: aan een straat laanhuizen (haakse gevel, voortuin naar de laan; anders een huis met voortuin), en niets op of tegen
 // een weg: elke module en elk park wordt getoetst (RoadClear) zodat muren, bomen en voorwerpen buiten de stoep blijven.
 // Versie 3 (StartTownVersion 3): de gebouwen, pleinen en parkjes zijn modules uit de bibliotheek (Mod), met de deur naar het plein
@@ -26,9 +28,9 @@ public static partial class PlanetCity
         StartVer = StartTownVersion; StartCell = s; startFresh = true;   // nog de ongewijzigde startstad: wordt bij een nieuwe versie opnieuw gebouwd
         byte keepStyle = DragStyle; bool keepOne = DragOneWay; DragStyle = 0; DragOneWay = false;
         var S = Planet.Cells[s]; var rnd = new System.Random(s * 7919 + 13);
-        // afstanden in vakken vanaf de vlag
+        // afstanden in vakken vanaf de vlag (tot 22: de groene rand van versie 6)
         var dist = new Dictionary<int, int> { { s, 0 } }; var q = new Queue<int>(); q.Enqueue(s);
-        while (q.Count > 0) { int c = q.Dequeue(); if (dist[c] >= 13) continue; foreach (int j in Planet.Cells[c].nb) if (!dist.ContainsKey(j)) { dist[j] = dist[c] + 1; q.Enqueue(j); } }
+        while (q.Count > 0) { int c = q.Dequeue(); if (dist[c] >= 22) continue; foreach (int j in Planet.Cells[c].nb) if (!dist.ContainsKey(j)) { dist[j] = dist[c] + 1; q.Enqueue(j); } }
         const float P = 15.6f;   // hart tot hart
         System.Func<float, float, int> cellAt = (ang, r) => Planet.Nearest((S.dir * Mathf.Cos(r / Planet.R) + (S.east * Mathf.Cos(ang) + S.north * Mathf.Sin(ang)) * Mathf.Sin(r / Planet.R)).normalized * Planet.R);
         System.Func<int, List<int>> ring = k => { var l = new List<int>(); foreach (var kv in dist) if (kv.Value == k) l.Add(kv.Key); l.Sort((x, y) => Ang(S, x).CompareTo(Ang(S, y))); return l; };
@@ -42,17 +44,30 @@ public static partial class PlanetCity
 
         var keep = new HashSet<int>();   // vakken die vrij blijven: een schuin pad loopt over hun gedeelde rand
         // een module uit de lijst, met de deur naar vak face (-1: willekeurig); geeft false als er geen past
+        // Iedereen moet bij zijn voordeur kunnen komen: een gebouw komt alleen waar zijn deur uitkomt op een weg, een pad of een plein
+        // op dezelfde hoogte (niet op het verdiepte fietspad, niet tegen een ander gebouw of in het gras). Is er geen zo'n buur, dan
+        // komt er eerst een pleintje op een vrij buurvak dat zelf aan een weg, pad of plein ligt; lukt ook dat niet, dan geen gebouw.
+        System.Func<int, bool> flatPath = j => { if (WalkLevel(j) != 0) return false; foreach (int x in Partners(j)) if (WalkLevel(x) != 0) return false; return true; };   // geen helling naar het verdiepte pad
+        System.Func<int, int, bool> acc = (j, c) => Mathf.Abs(G(j) - G(c)) < 0.6f && ((IsRoad(j) && !Underpass(j)) || (IsPath(j) && flatPath(j)) || Inhoud(j).soort == Soort.Plein);
+        System.Func<int, bool> hasAcc = c => { foreach (int j in Planet.Cells[c].nb) if (acc(j, c)) return true; return false; };
         System.Func<int, string[], int, bool> mod = (c, ids, face) =>
         {
             if (!free(c) || keep.Contains(c)) return false;
             for (int t = 0; t < 4; t++)
             {
                 string id = ids[rnd.Next(ids.Length)]; bool mir = rnd.Next(2) == 0; var M = ModuleLib.Data(id, mir); if (M == null) continue;
+                bool door = MV2.MetaOf(M).bouw && ModHasDoor(M);
+                if (door && !hasAcc(c))
+                {
+                    int yard = -1; foreach (int n in Planet.Cells[c].nb) if (free(n) && !keep.Contains(n) && Mathf.Abs(G(n) - G(c)) < 0.6f && hasAcc(n)) { yard = n; break; }
+                    if (yard < 0 || Place(yard, "plein") != null) return false;
+                }
                 int r0 = FaceRot(M, c, face, rnd);
                 for (int dr = 0; dr < 6; dr++)   // eerst de deur naar de straat; houdt die draaiing de weg niet vrij, dan een andere
                 {
                     int rot = (r0 + dr) % 6;
                     if (!RoadClear(M, c, rot)) continue;
+                    if (door) { bool ok = false; foreach (var d in ModDoorCells(M, c, rot)) if (acc(d.buur, c)) { ok = true; break; } if (!ok) continue; }
                     if (PlaceModule(id, c, rot, mir) == null) return true;
                 }
             }
@@ -149,7 +164,63 @@ public static partial class PlanetCity
             if (d <= 10) { if (rnd.NextDouble() < 0.75 ? (rnd.NextDouble() < 0.6 || !mod(c, Groen, -1)) : !mod(c, Villas, street0(c))) put(c, "park"); continue; }
             if (d <= 12 && rnd.NextDouble() < 0.45) put(c, "park");   // aan de rand: wat losse bosjes
         }
+        GreenEdge(S, s, dist, street, lane, rnd, cellAt, free);
         DragStyle = keepStyle; DragOneWay = keepOne; TouchAll(); RebuildGrid();
+    }
+
+    // 9. (versie 6) De groene rand: buiten de rondweg licht glooiend terrein, bos dat naar buiten dichter wordt met open plekken,
+    // heide, twee meertjes in een laagte en losse boomgroepen tussen de buitenste huizen. Langs de straten die de stad uit lopen
+    // blijft een strook vrij om verder te bouwen; bij wegen en paden blijft alles weg (RoadClear) en het terrein vlak.
+    static void GreenEdge(Planet.Cell S, int s, Dictionary<int, int> dist, float[] street, float[] lane, System.Random rnd, System.Func<float, float, int> cellAt, System.Func<int, bool> free)
+    {
+        const float P = 15.6f; float o = (s % 997) * 0.37f;
+        System.Func<float, float, float> dAng = (a, b) => Mathf.Abs(Mathf.DeltaAngle(a * Mathf.Rad2Deg, b * Mathf.Rad2Deg));
+        bool Corridor(int c)   // in het verlengde van een straat die de stad uit loopt: hier bouwt de speler verder
+        {
+            int d = dist[c]; if (d < 11) return false; float a = Ang(S, c);
+            foreach (float sa in street) { float da = dAng(a, sa); if (da < 80f && d * Mathf.Sin(da * Mathf.Deg2Rad) < 1.8f) return true; }
+            return false;
+        }
+        bool NearWalk(int c, int r)
+        {
+            var seen = new HashSet<int> { c }; var ring = new List<int> { c };
+            for (int k = 0; k <= r; k++)
+            {
+                var next = new List<int>();
+                foreach (int x in ring) { if (IsWalk(x) || IsHalf(x)) return true; if (k < r) foreach (int n in Planet.Cells[x].nb) if (seen.Add(n)) next.Add(n); }
+                ring = next;
+            }
+            return false;
+        }
+        // twee meertjes in een laagte, tussen de straten in
+        var lakes = new List<int>();
+        foreach (var (ang, r) in new[] { (lane[0] - 0.3f, 16.5f), (lane[2] + 0.35f, 15.5f) })
+        {
+            int lc = cellAt(ang, r * P); if (!dist.ContainsKey(lc) || !free(lc) || NearWalk(lc, 2) || Corridor(lc)) continue;
+            lakes.Add(lc); var cells = new List<int> { lc }; foreach (int j in Planet.Cells[lc].nb) if (rnd.NextDouble() < 0.5) cells.Add(j);
+            foreach (int c in cells) if (free(c) && !NearWalk(c, 1) && !Corridor(c)) Place(c, "meer");
+        }
+        // licht glooiend terrein buiten de rondweg (tot 3,5 m), vlak bij wegen; rond een meertje een rand zodat het in een kom ligt
+        foreach (var kv in dist)
+        {
+            int c = kv.Key, d = kv.Value; if (d < 9 || Terr.ContainsKey(c) || NearWalk(c, 1)) continue;
+            if (Cells.TryGetValue(c, out var l) && !(l.Count == 1 && l[0] == "park")) continue;
+            Vector3 dir = Planet.Cells[c].dir; float amp = Mathf.Clamp01((d - 9) / 5f) * 3.5f;
+            if (NearWalk(c, 2)) amp *= 0.35f;
+            float h = amp * (Noise(dir, 1f / 80f, o + 5f) * 0.75f + Noise(dir, 1f / 30f, o + 19f) * 0.25f);
+            foreach (int lc in lakes) { float ld = Vector3.Distance(dir, Planet.Cells[lc].dir) * Planet.R / P; if (ld < 2.6f) h = Mathf.Max(h, Mathf.Lerp(1.6f, 0.4f, (ld - 1f) / 1.6f)); }
+            if (h >= 0.5f) SetTerr(c, Mathf.Round(h * 2f) / 2f);
+        }
+        // bos, open plekken, heide en wat rotsen; binnen 12 vakken alleen losse boomgroepen tussen de huizen
+        foreach (var kv in dist)
+        {
+            int c = kv.Key, d = kv.Value; if (d < 9 || !free(c) || Corridor(c) || NearWalk(c, 1) || !RoadClear(null, c, 0)) continue;
+            Vector3 dir = Planet.Cells[c].dir; float f = Mathf.Clamp01((d - 11) / 9f), wood = Noise(dir, 1f / 90f, o + 3f), open = Noise(dir, 1f / 45f, o + 21f), heath = Noise(dir, 1f / 60f, o + 40f);
+            if (d <= 12) { if (wood > 0.45f && rnd.NextDouble() < 0.35) Place(c, "park"); continue; }   // boomgroepen tussen de buitenste huizen
+            if (open > 0.64f) { if (heath > 0.5f) Place(c, "heide"); else if (rnd.NextDouble() < 0.06) Place(c, "park"); continue; }   // een open plek: heide of weide
+            if (G(c) > 2.5f && rnd.NextDouble() < 0.06) { Place(c, "rotsen"); continue; }
+            if (rnd.NextDouble() < 0.3f + 0.65f * f + (wood - 0.5f) * 0.5f) Place(c, "park");   // bos, naar buiten toe dichter
+        }
     }
 
     // de modules van de startstad (versie 3), per soort plek
@@ -166,7 +237,8 @@ public static partial class PlanetCity
     {
         if (face < 0 || M == null) return rnd.Next(6);
         var codes = MV2.Codes(M); var pts = new List<Vector2>();
-        foreach (string want in new[] { "deur", "stoep", "groen" })
+        foreach (var d in SoortVan(M).deuren) pts.Add(d.dir * MV2.INNER);   // de echte deuren (ook als ze niet aan de rand zitten)
+        if (pts.Count == 0) foreach (string want in new[] { "deur", "stoep", "groen" })
         {
             foreach (var kv in codes) if (kv.Value == want) { var p = kv.Key.Split(','); int q = int.Parse(p[0]), r = int.Parse(p[1]), sd = int.Parse(p[2]); pts.Add(MV2.CellXZ(q, r) + MV2.FN(sd) * MV2.INNER); }
             if (pts.Count > 0) break;

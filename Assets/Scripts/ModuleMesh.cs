@@ -234,7 +234,11 @@ public static class ModuleMesh
                 if (lifted) foreach (var kv in byMat) foreach (var v in kv.Value) for (int e = 0; e < 3; e++) if (edgeCnt.TryGetValue(E(v[e], v[(e + 1) % 3]), out int c1) && c1 == 1) Box("slab", v[e], v[(e + 1) % 3], y0 - MV2.FLOOR_T, y0 + 0.02f, 0.06f);
                 if (li == roofLi && (parts & ModuleMesh.WallsP) != 0) RoofTop(byMat, edgeCnt, li, y0, area);
                 if ((parts & ModuleMesh.WallsP) != 0) { Corners(L, y0); Walls(L, li, y0); }
-                if ((parts & ModuleMesh.Stairs) != 0) foreach (var S in L.s) Stair(S, li, y0);
+                if ((parts & ModuleMesh.Stairs) != 0) foreach (var S in L.s)
+                {
+                    if (li == roofLi - 1 && Covered(MV2.P(S.ai, S.aj, ts), area)) continue;   // de trap naar het dak: niet als daar een module op staat
+                    Stair(S, li, y0);
+                }
                 if ((parts & ModuleMesh.Roofs) != 0) Roofs(L, li, y0);
                 if ((parts & ModuleMesh.Objs) != 0) foreach (var O in L.o)
                 {
@@ -252,7 +256,7 @@ public static class ModuleMesh
         {
             var below = m.lv[li - 1]; var cnt = new Dictionary<string, int>(); string wm = "slab"; int best = 0;
             foreach (var w in below.w.Values) { if (w.m == "fence" || w.m == "hedge" || w.m == "glass" || w.m == "curtain") continue; cnt.TryGetValue(w.m, out int n0); cnt[w.m] = n0 + 1; if (n0 + 1 > best) { best = n0 + 1; wm = "w_" + w.m; } }
-            var stairs = new List<Vector2>(); foreach (var S in below.s) stairs.Add(MV2.P(S.ai, S.aj, ts));
+            var stairs = new List<(Vector2 p, bool spiral)>(); foreach (var S in below.s) stairs.Add((MV2.P(S.ai, S.aj, ts), S.k == "spiral"));
             Vector2Int Q(Vector2 p) => new Vector2Int(Mathf.RoundToInt(p.x * 64f), Mathf.RoundToInt(p.y * 64f));
             int tris = 0; Vector2 sum = Vector2.zero;
             foreach (var kv in byMat)
@@ -266,7 +270,10 @@ public static class ModuleMesh
                         Vector2 p = v[e], q = v[(e + 1) % 3]; var a2 = Q(p); var b2 = Q(q); var k2 = a2.x < b2.x || (a2.x == b2.x && a2.y <= b2.y) ? (a2, b2) : (b2, a2);
                         if (!edgeCnt.TryGetValue(k2, out int c1) || c1 != 1) continue;
                         Vector2 mid = (p + q) * 0.5f, nn = new Vector2(-(q - p).y, (q - p).x).normalized; bool skip = false;
-                        foreach (var st in stairs) if ((st - mid).magnitude < 4f) skip = true;
+                        // geen dakrand om een trapgat; bij een wenteltrap alleen de randen van het gat zelf (de buurdriehoek is weggehaald),
+                        // zodat de dakrand langs de gevel ook vlak bij de trap doorloopt
+                        Vector2 cen0 = MV2.Centroid(v), nbCen = cen0 + 2f * Vector2.Dot(mid - cen0, nn) * nn;
+                        foreach (var st in stairs) if (st.spiral ? (st.p - nbCen).magnitude < 2.2f : (st.p - mid).magnitude < 4f) skip = true;
                         if (Covered(mid + nn * 0.4f, area) || Covered(mid - nn * 0.4f, area)) skip = true;
                         if (skip) continue;
                         Vector2 cen = MV2.Centroid(v); float sd = Vector2.Dot(cen - mid, nn) > 0f ? -1f : 1f;   // naar buiten: weg van de driehoek

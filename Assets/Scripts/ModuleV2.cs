@@ -252,7 +252,7 @@ public static class MV2
 
     // ---------- meta: wat de stad (schoonheid, AI, drukte, stapelen) over een module wil weten ----------
     public class Meta { public int fl, k, n; public float h; public string top; public bool stack, bouw; public int deur, weg; }
-    static readonly HashSet<string> RoofGreen = new HashSet<string> { "tree", "bush", "planter", "solar" };
+    static readonly HashSet<string> RoofGreen = new HashSet<string> { "tree", "bush", "planter", "solar", "bench", "table", "lamp" };   // ook dakterras: bank, tafel, lamp
     public static bool RoofOnly(ModuleV2 m)
     {
         var L = m.lv; if (L.Count < 2) return false; var T = L[L.Count - 1];

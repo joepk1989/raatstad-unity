@@ -149,8 +149,31 @@ public static partial class PlanetCity
     public static Mesh PoleMesh(int c, int[] area, int lv, float baseG, out Vector3 origin, out string sig)
     {
         var up = Planet.Cells[c].dir; Vector3 floor = up * (Planet.R + baseG + lv * MV2.LV_H); origin = floor; sig = "";
-        if (lv <= 0 || area == null) return null;
+        if (area == null) return null;
         var mb = new MeshBuilder();
+        if (lv <= 0)
+        {
+            // Fundering: waar de grond onder de module wegloopt (een helling naar een verdiept pad, een talud) een keermuur langs de
+            // rand van het vak, van de vloer tot onder de laagste grond. Op vlakke grond komt er niets.
+            foreach (int i in area)
+            {
+                var cell = Planet.Cells[i]; int nc = cell.corners.Length; float low = baseG; var hs = new float[nc];
+                for (int k = 0; k < nc; k++)
+                {
+                    hs[k] = Mathf.Min(CornerH(i, k), TerrainAt(cell.corners[k])); low = Mathf.Min(low, hs[k]);
+                    low = Mathf.Min(low, TerrainAt((cell.corners[k] + cell.corners[(k + 1) % nc]).normalized));
+                }
+                if (low > baseG - 0.25f) continue;
+                sig += i + ":f" + Mathf.RoundToInt(low * 10f) + ",";
+                float rt = Planet.R + baseG + 0.03f, rb = Planet.R + low - 0.6f;
+                for (int k = 0; k < nc; k++)
+                {
+                    Vector3 ca = Vector3.Lerp(cell.corners[k], cell.dir, 0.02f).normalized, cb = Vector3.Lerp(cell.corners[(k + 1) % nc], cell.dir, 0.02f).normalized;
+                    mb.Quad(ca * rb - origin, cb * rb - origin, cb * rt - origin, ca * rt - origin, (ca + cb) * 0.5f - cell.dir);
+                }
+            }
+            return mb.v.Count > 0 ? mb.Build() : null;
+        }
         foreach (int i in area)
         {
             int below = 0; float bg = G(i);
@@ -279,5 +302,163 @@ public static partial class PlanetCity
         groundChunks.Clear(); lastBuilt.Clear(); groundCache.Clear(); Scorch.Clear(); Terr.Clear(); levelled.Clear(); CenterOfs.Clear(); stripCache.Clear();
         fieldCells.Clear(); nearCache.Clear(); chunks.Clear(); dirty.Clear(); gumSkip.Clear(); edgeMate.Clear(); Rot.Clear(); boreNear.Clear(); FillTowns.Clear();
         cutKeys.Clear(); cutSig = ""; bores.Clear(); modGos.Clear(); modRoot = null;
+    }
+
+    // ---------- wat staat er op een vak (één leesfunctie voor schoonheid, drukte, mensen, geluid en namen) ----------
+    // Voor modules uit de categorie (ModuleV2.cat) en MV2.MetaOf, voor de oude blokken uit de naam. Onthouden per module, niet per vak.
+    public enum Soort { Niets, Wonen, Werken, Winkel, Horeca, Openbaar, Plein, Groen, Water, Blikvanger, Weg, Pad }
+    public struct VakInhoud
+    {
+        public Soort soort; public int lagen;        // lagen: de bovenkant van wat er staat, in verdiepingen
+        public bool gebouw, blikvanger;              // blikvanger: kerk, toren, molen (een kerk blijft soort Openbaar)
+        public bool module, groot, midden;           // groot: module van 7 vakken; midden: het middelste vak (of een module van één vak)
+        public int middenVak;                        // het middelste vak van de module (anders het vak zelf)
+        public int deur;                             // het buurvak waar de deur aan dit vak naar wijst; -1: geen deur aan dit vak
+        public string id, naam;                      // module-id (of de naam van het oude blok) en de nette naam
+    }
+    class ModSoort { public int ver, fl; public Soort soort; public bool gebouw, blik; public List<(int idx, Vector2 dir)> deuren = new List<(int, Vector2)>(); }
+    static readonly Dictionary<ModuleV2, ModSoort> soortCache = new Dictionary<ModuleV2, ModSoort>();
+    static ModSoort SoortVan(ModuleV2 M)
+    {
+        if (soortCache.TryGetValue(M, out var s) && s.ver == M.ver) return s;
+        var meta = MV2.MetaOf(M); string id = M.id ?? "";
+        s = new ModSoort { ver = M.ver, fl = Mathf.Max(1, meta.fl), gebouw = meta.bouw };
+        switch (M.cat)
+        {
+            case "Wonen": s.soort = Soort.Wonen; break;
+            case "Werken": s.soort = Soort.Werken; break;
+            case "Winkels": case "Winkelcentrum": s.soort = Soort.Winkel; break;
+            case "Horeca": s.soort = Soort.Horeca; break;
+            case "Openbaar": case "Sport": case "Voorzieningen": case "Vervoer": s.soort = Soort.Openbaar; break;
+            case "Pleinen": s.soort = Soort.Plein; break;
+            case "Groen": s.soort = Soort.Groen; break;
+            default: s.soort = Soort.Niets; break;   // Bouwdelen, Verbindingen en eigen categorieën
+        }
+        if (id.StartsWith("toren-") || id.StartsWith("windmolen") || id.StartsWith("watertoren")) { s.soort = Soort.Blikvanger; s.blik = true; }
+        else if (id.StartsWith("kerk")) s.blik = true;
+        DeurenVan(M, s.deuren);
+        soortCache[M] = s; return s;
+    }
+    // De deuren van een module: elke muur op de begane grond met een deur of opening (een hekje in een heg telt alleen als het gebouw
+    // zelf geen deur heeft), met de richting naar buiten. Niet uit de randcodes: een deur hoeft niet aan de rand van het vak te zitten
+    // (laanhuis, restaurant met terras, villa met tuin).
+    static readonly HashSet<string> BuitenVloer = new HashSet<string> { "grass", "paver", "asphalt", "water", "gravel", "sand" };
+    static bool Binnen(ModLevel L, Vector2 p, float ts)
+    {
+        foreach (var kv in L.f)
+        {
+            var v = MV2.TriVerts(kv.Key.Item1, kv.Key.Item2, kv.Key.Item3, ts);
+            float d0 = MV2.SideOf(v[0], v[1], p), d1 = MV2.SideOf(v[1], v[2], p), d2 = MV2.SideOf(v[2], v[0], p);
+            if ((d0 >= 0f && d1 >= 0f && d2 >= 0f) || (d0 <= 0f && d1 <= 0f && d2 <= 0f)) return !BuitenVloer.Contains(kv.Value);
+        }
+        return false;
+    }
+    static void DeurenVan(ModuleV2 M, List<(int idx, Vector2 dir)> o)
+    {
+        if (M.lv.Count == 0) return; var L0 = M.lv[0]; float ts = MV2.Ts(M); var area = MV2.AreaCells(M.k);
+        Vector2 cen = Vector2.zero; int n = 0; var cand = new List<(Vector2 mid, Vector2 nr, bool hedge)>();
+        foreach (var kv in L0.w)
+        {
+            if (kv.Key.Item3 < 0 || kv.Key.Item3 > 5) continue; var (a, b) = MV2.WallSeg(kv.Key, ts); Vector2 mid = (a + b) * 0.5f;
+            bool hg = kv.Value.m == "hedge" || kv.Value.m == "fence"; if (!hg) { cen += mid; n++; }
+            if (kv.Value.o == "door" || kv.Value.o == "gate" || kv.Value.o == "open") cand.Add((mid, new Vector2(-(b - a).y, (b - a).x).normalized, hg));
+        }
+        if (n > 0) cen /= n; bool solid = cand.Exists(x => !x.hedge);
+        foreach (var d in cand)
+        {
+            if (solid && d.hedge) continue;
+            bool inA = Binnen(L0, d.mid + d.nr * 0.9f, ts), inB = Binnen(L0, d.mid - d.nr * 0.9f, ts);
+            float sg = inA && !inB ? -1f : inB && !inA ? 1f : Vector2.Dot(d.nr, d.mid - cen) < 0f ? -1f : 1f;
+            int idx = area.IndexOf(MV2.CellOf(d.mid.x, d.mid.y)); if (idx < 0) idx = 0;
+            o.Add((idx, d.nr * sg));
+        }
+    }
+    public static bool ModHasDoor(ModuleV2 M) => M != null && SoortVan(M).deuren.Count > 0;
+    // de buurvakken waar de deuren van module M (midden c, draaiing rot) op uitkomen. Een deur naar een hoekpunt (laanhuis: de punt
+    // van de voortuin) komt op beide buren aan die hoek uit.
+    public static List<(int vak, int buur)> ModDoorCells(ModuleV2 M, int c, int rot)
+    {
+        var o = new List<(int, int)>(); if (M == null) return o; var s = SoortVan(M); if (s.deuren.Count == 0) return o;
+        var area = ModArea(c, M.k, rot); if (area == null) return o; ModAxes(c, rot, out var A, out var B, out _);
+        foreach (var d in s.deuren)
+        {
+            if (d.idx >= area.Length) continue; int vak = area[d.idx]; var cell = Planet.Cells[vak]; Vector3 up = cell.dir, want = (A * d.dir.x + B * d.dir.y).normalized;
+            foreach (int j in cell.nb)
+            {
+                if (System.Array.IndexOf(area, j) >= 0) continue;   // een ander vak van dezelfde module (binnenhof)
+                Vector3 t = Planet.Cells[j].dir - up; t -= up * Vector3.Dot(t, up); if (Vector3.Dot(t.normalized, want) > 0.8f) o.Add((vak, j));
+            }
+        }
+        return o;
+    }
+    // het exemplaar dat telt op vak i: het laagste met een soort (de begane grond, daar komen mensen binnen); top: de bovenkant in lagen
+    static bool ModPick(int i, out ModInst pick, out ModSoort ps, out int top)
+    {
+        pick = default; ps = null; top = 0; var mods = ModulesAt(i); if (mods.Count == 0) return false;
+        pick = mods[0];
+        foreach (var I in mods)
+        {
+            var M = I.M; var s = M != null ? SoortVan(M) : null; top = Mathf.Max(top, I.lv + (s != null ? s.fl : 1));
+            if (s != null && (ps == null || (ps.soort == Soort.Niets && s.soort != Soort.Niets))) { pick = I; ps = s; }
+        }
+        return true;
+    }
+    // alle deuren van de module die vak i bedekt: op welk vak de deur zit en naar welk buurvak hij wijst (bij een deur naar een
+    // hoekpunt de buur met een weg of pad, anders de eerste)
+    public static List<(int vak, int buur)> ModDeuren(int i)
+    {
+        var o = new List<(int, int)>(); if (!ModPick(i, out var I, out var s, out _) || s == null || s.deuren.Count == 0) return o;
+        var all = ModDoorCells(I.M, I.c, I.rot); all.Sort((x, y) => (IsWalk(y.buur) ? 1 : 0).CompareTo(IsWalk(x.buur) ? 1 : 0));
+        var seen = new HashSet<int>();
+        foreach (var d in all)
+        {
+            bool dup = false; foreach (var e in o) if (e.Item1 == d.vak && (e.Item2 == d.buur || IsNeighbour(e.Item2, d.buur))) dup = true;   // dezelfde deur (twee buren aan één hoek)
+            if (!dup) o.Add(d);
+        }
+        return o;
+    }
+    public static VakInhoud Inhoud(int i)
+    {
+        var o = new VakInhoud { middenVak = i, deur = -1, midden = true };
+        if (!Cells.TryGetValue(i, out var l) || l.Count == 0) return o;
+        if (ModPick(i, out var I, out var s, out int top))
+        {
+            o.module = true; o.id = I.id; o.naam = I.id; o.middenVak = I.c; o.midden = I.c == i; o.lagen = top; o.gebouw = true;
+            if (s == null) return o;   // een module die niet (meer) in de bibliotheek staat
+            var M = I.M; o.soort = s.soort; o.gebouw = s.gebouw; o.blikvanger = s.blik; o.naam = string.IsNullOrEmpty(M.name) ? I.id : M.name; o.groot = M.k > 0;
+            foreach (var d in ModDeuren(i)) if (d.vak == i) { o.deur = d.buur; break; }
+            return o;
+        }
+        o.id = o.naam = l[0]; float h = 0f;
+        foreach (var t in l)
+        {
+            Soort k = Soort.Niets; bool bld = false;
+            switch (t)
+            {
+                case "woning": k = Soort.Wonen; bld = true; break;
+                case "kantoor": k = Soort.Werken; bld = true; break;
+                case "winkel": k = Soort.Winkel; bld = true; break;
+                case "toren": case "molen": k = Soort.Blikvanger; bld = true; o.blikvanger = true; break;
+                case "blok": case "dak": bld = true; break;
+                case "plein": k = Soort.Plein; break;
+                case "park": k = Soort.Groen; break;
+                case "water": case "meer": k = Soort.Water; break;
+                case "weg": case "wegdeel": k = Soort.Weg; break;
+                case "pad": k = Soort.Pad; break;
+            }
+            if (bld) { o.gebouw = true; h += Blocks.Height(t); }
+            // het eerste gebouw telt; een gebouw gaat voor de grond eronder (park, plein)
+            if (k != Soort.Niets && (o.soort == Soort.Niets || (bld && !IsBldSoort(o.soort)))) { o.soort = k; o.id = o.naam = t; }
+        }
+        o.lagen = o.gebouw ? Mathf.Max(1, Mathf.RoundToInt(h / MV2.LV_H)) : 0;
+        return o;
+    }
+    static bool IsBldSoort(Soort k) => k == Soort.Wonen || k == Soort.Werken || k == Soort.Winkel || k == Soort.Horeca || k == Soort.Openbaar || k == Soort.Blikvanger;
+    // de zichtbare hoogte boven de grond van het vak in meters (StackHeight kent alleen de oude blokken; het terrein leunt daarop)
+    public static float TopHeight(int i)
+    {
+        float h = StackHeight(i);
+        if (ModTop(i, out int top, out var I)) h = Mathf.Max(h, top * MV2.LV_H + G(I.c) - G(i));
+        return h;
     }
 }
