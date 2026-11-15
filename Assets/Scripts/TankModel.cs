@@ -170,6 +170,60 @@ public class TankRig : MonoBehaviour
     public void AddWheel(Transform t, bool left, float r) { wheels.Add((t, left, r)); }
     // rupsen van een ingeladen model: de textuur schuift mee (k: textuurlengte per meter)
     readonly Material[] trackMat = new Material[2]; float trackK; readonly float[] trackOfs = new float[2];
+    // terugslag: de rem van het kanon vangt het meeste op; de tank schuift een paar decimeter per seconde terug en wiegt even mee
+    // (eerder een stoot op de loopmond, hoog en ver van het zwaartepunt: een schot opzij gooide hem op zijn kant)
+    public static void Recoil(Rigidbody rb, Vector3 dir)
+    {
+        if (rb == null) return; Vector3 up = rb.rotation * Vector3.up, f = dir - up * Vector3.Dot(dir, up);
+        rb.AddForce(-dir * 0.3f, ForceMode.VelocityChange);
+        if (f.sqrMagnitude > 1e-4f) rb.AddTorque(Vector3.Cross(up, -f.normalized) * 0.1f, ForceMode.VelocityChange);
+    }
+    // de vering zichtbaar (ingeladen model): de loopwielen gaan op en neer met de veerpunten aan hun kant, en de onderkant van de
+    // rups buigt mee (de punten van de rupsmesh onder het hart van de loopwielen schuiven mee omhoog of omlaag; naar boven toe minder).
+    // Voor het voorste en achterste loopwiel loopt het uit naar het spanwiel en het aandrijfwiel, die blijven op hun plek.
+    readonly List<(Transform t, Vector3 basePos, bool left)> roads = new List<(Transform, Vector3, bool)>();
+    class TrackMesh { public Mesh mesh; public Vector3[] baseV, work; public float[] z, w; public bool left; public Vector3 up; }
+    readonly List<TrackMesh> trackMeshes = new List<TrackMesh>(); float[] sus;
+    public void AddRoad(Transform t, bool left) { roads.Add((t, t.localPosition, left)); }
+    public void AddTrackMesh(MeshFilter mf, bool left, float hubY)
+    {
+        var m = Instantiate(mf.sharedMesh); m.MarkDynamic(); mf.sharedMesh = m;
+        var v = m.vertices; var tm = new TrackMesh { mesh = m, baseV = v, work = (Vector3[])v.Clone(), z = new float[v.Length], w = new float[v.Length], left = left, up = mf.transform.InverseTransformVector(transform.up) };
+        for (int i = 0; i < v.Length; i++)
+        {
+            Vector3 q = transform.InverseTransformPoint(mf.transform.TransformPoint(v[i])); tm.z[i] = q.z;
+            tm.w[i] = q.y <= hubY ? 1f : Mathf.Clamp01(1f - (q.y - hubY) / 0.4f);
+        }
+        trackMeshes.Add(tm);
+    }
+    // comp: hoeveel elk veerpunt is ingeveerd (m); sag: hoeveel dat in rust is (daar tekent het model de wielen)
+    public void Suspend(float[] comp, float sag, float dt)
+    {
+        if (comp == null || PhysWheels == null || (roads.Count == 0 && trackMeshes.Count == 0)) return;
+        int n = Mathf.Min(comp.Length, PhysWheels.Length); if (sus == null || sus.Length != n) sus = new float[n];
+        float k = 1f - Mathf.Exp(-dt * 25f);
+        for (int i = 0; i < n; i++) sus[i] = Mathf.Lerp(sus[i], Mathf.Clamp(comp[i] - sag, -0.18f, 0.3f), k);
+        foreach (var r in roads) if (r.t != null) r.t.localPosition = r.basePos + Vector3.up * Travel(r.left, r.basePos.z);
+        foreach (var tm in trackMeshes)
+        {
+            for (int i = 0; i < tm.baseV.Length; i++) tm.work[i] = tm.w[i] > 0f ? tm.baseV[i] + tm.up * (Travel(tm.left, tm.z[i]) * tm.w[i]) : tm.baseV[i];
+            tm.mesh.vertices = tm.work;
+        }
+    }
+    // de uitslag van de vering op lengte z aan één kant: tussen de veerpunten lineair, voorbij het voorste en achterste punt naar 0
+    float Travel(bool left, float z)
+    {
+        float zf = -1e9f, zr = 1e9f, vf = 0f, vr = 0f, za = 1e9f, va = 0f, zb = -1e9f, vb = 0f;
+        for (int i = 0; i < sus.Length; i++)
+        {
+            if ((PhysWheels[i].x < 0f) != left) continue; float pz = PhysWheels[i].z;
+            if (pz > zf) { zf = pz; vf = sus[i]; } if (pz < zr) { zr = pz; vr = sus[i]; }
+            if (pz >= z && pz < za) { za = pz; va = sus[i]; } if (pz <= z && pz > zb) { zb = pz; vb = sus[i]; }
+        }
+        if (z > zf) return vf * Mathf.Clamp01(1f - (z - zf) / 0.9f);
+        if (z < zr) return vr * Mathf.Clamp01(1f - (zr - z) / 0.9f);
+        return za - zb > 1e-4f ? Mathf.Lerp(vb, va, (z - zb) / (za - zb)) : va;
+    }
     public void SetTrack(bool left, Material m, float k) { trackMat[left ? 0 : 1] = m; trackK = k; }
     public readonly List<Transform>[] cleats = { new List<Transform>(), new List<Transform>() };
     readonly List<Vector2> path = new List<Vector2>(); readonly List<float> acc = new List<float>(); float total; readonly float[] run = new float[2];

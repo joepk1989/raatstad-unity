@@ -1,8 +1,8 @@
 using UnityEngine;
 
 // Links de spelmodi, op een boog (de modi uit het plan). Elke modus heeft een submenu op een tweede boog ernaast.
-// Alleen de vrije modus werkt (verder bouwen, startstad, lege planeet, hele planeet vol, Totale chaos); de rest staat
-// erbij als wat er later komt, met een melding.
+// De vrije modus werkt (verder bouwen, startstad, lege planeet, hele planeet vol, Totale chaos) en de oorlogsmodus begint met
+// een tankgevecht (PlanetBuilder.Battle.cs); de rest staat erbij als wat er later komt, met een melding.
 public partial class PlanetBuilder
 {
     struct Mode { public string name, sub, icon; public bool live; }
@@ -10,7 +10,7 @@ public partial class PlanetBuilder
         new Mode { name = "Vrije modus", sub = "De vreedzame standaardmodus: bouw wat je wilt", icon = "huis", live = true },
         new Mode { name = "Multiplayer", sub = "Wie bouwt de mooiste stad op één planeet", icon = "mensen" },
         new Mode { name = "Duel tegen Claude", sub = "Jij tegen de AI, na de vrije modus", icon = "kompas" },
-        new Mode { name = "Oorlogsmodus", sub = "Een idee voor later", icon = "onweer" },
+        new Mode { name = "Oorlogsmodus", sub = "Begint met een tankgevecht tegen de AI", icon = "onweer", live = true },
     };
     struct Sub { public string name, sub; public System.Action act; public bool on; }   // act null: komt later
     Sub[] SubsOf(int k)
@@ -35,7 +35,8 @@ public partial class PlanetBuilder
             case 2: return new[] {
                 new Sub { name = "Jij tegen Claude", sub = "Komt na de vrije modus" } };
             default: return new[] {
-                new Sub { name = "Oorlogsmodus", sub = "Nog niet uitgewerkt" } };
+                new Sub { name = "Tankgevecht", sub = "Jij in een tank tegen een tank van de AI · T toeschouwer", act = () => { mode = 3; if (inSpace) { distGoal = LandDist; battleAfterLanding = true; } else StartBattle(); } },
+                new Sub { name = "Meer", sub = "Meer tanks, teams, een stad verdedigen: later" } };
         }
     }
     bool modesOpen; int mode, openMode = -1;

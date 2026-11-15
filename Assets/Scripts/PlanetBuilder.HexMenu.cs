@@ -5,7 +5,7 @@ using UnityEngine;
 // boog (het midden het verst naar links, de uiteinden buigen naar rechts), zonder lijnen of ringen. Bij openen schuiven de
 // tegels een voor een binnen; aanwijzen kleurt een tegel amber en schuift hem iets naar voren. Een klik op een groep laat
 // rechts ernaast de keuzes uitrollen, als kleine zeshoekjes op een tweede onzichtbare boog; aan/uit en keuzes tonen hun waarde.
-// Nieuwe planeten maken en spelmodi kiezen gebeurt op het startscherm, niet hier.
+// Nieuwe planeten maken en spelmodi kiezen gebeurt op het startscherm; alleen het tankgevecht (oorlogsmodus) staat ook hier.
 public partial class PlanetBuilder
 {
     class MItem { public string name, sub, icon, value; public System.Action act; public System.Func<List<MItem>> kids; public bool on, danger, head, note; public string[] opts; public int sel = -1; public System.Action<int> pick; }   // head: een kopje, note: alleen uitleg (niet aan te klikken); opts: keuzes naast elkaar, direct te kiezen (pick)
@@ -35,6 +35,8 @@ public partial class PlanetBuilder
             if (aiOn) g.Add(new MItem { name = "AI-bouwer stoppen", sub = PlanetAI.Moves + " zetten gedaan", danger = true, act = () => { menuOpen = false; AiStop(); } });
             else g.Add(new MItem { name = "Tempo AI-bouwer", value = AiTempoNames[aiTempo], act = () => aiTempo = (aiTempo + 1) % AiTempoNames.Length });
             return g; } });
+        l.Add(new MItem { name = "Oorlogsmodus", sub = "Tankgevecht tegen de AI", icon = "onweer", kids = () => new List<MItem> {
+            new MItem { name = "Tankgevecht", sub = "Jij in een tank tegen een tank van de AI · T toeschouwer", danger = true, act = () => { menuOpen = false; if (space) { distGoal = LandDist; battleAfterLanding = true; } else StartBattle(); } } } });   // PlanetBuilder.Battle.cs
         l.Add(new MItem { name = "Instellingen", sub = "Beeld, geluid, leven, planeet en meer", icon = "zon", kids = SettingsMenuItems });   // in secties (PlanetBuilder.Settings.cs)
         l.Add(new MItem { name = "Bediening", sub = "Alle toetsen op een rij (?)", icon = "menu", act = () => { menuOpen = false; helpOpen = true; } });
         return l;

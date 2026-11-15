@@ -11,7 +11,7 @@ using UnityEngine;
 public partial class PlanetLife
 {
     Car player; Rigidbody prb; float playerSlip, pThrottle, pSteer, pSteerDeg, pFlipT; bool pHand, playerInList; Vector3 pInPos, pInVel, pLastVel;
-    float[] pLen = new float[4], pShow = new float[4]; bool[] pOn = new bool[4];
+    float[] pLen = new float[4], pShow = new float[4], pComp; bool[] pOn = new bool[4];
     // de maten van het voertuig: een auto (de Cybertruck) of de tank (TankModel)
     class Rig { public float mass, rest, spring, dampIn, dampOut, antiRoll, mu, top, accel, back, maxW, maxH, comY; public Vector3[] wheels; public bool tank; }
     static readonly Rig CarRig = new Rig { mass = 2900f, rest = 0.78f, spring = 30000f, dampIn = 2600f, dampOut = 4200f, antiRoll = 9000f, mu = 1.15f, top = 50f, accel = 9f, back = 12f, maxW = 2.1f, maxH = 2.2f, comY = 0.62f,
@@ -19,6 +19,10 @@ public partial class PlanetLife
     static readonly Rig TankRigSpec = new Rig { mass = 26000f, rest = 0.7f, spring = 280000f, dampIn = 24000f, dampOut = 32000f, antiRoll = 90000f, mu = 1.8f, top = 19f, accel = 11f, back = 8f, maxW = 3.4f, maxH = 2.4f, comY = 0.85f,
         wheels = TankModel.Wheels, tank = true };   // 26 ton, tot 70 km/u, draait op de plaats; rupsen grijpen beter dan banden en trekken onderin hard: zo komt hij een kraterwand van zo'n 60° op
     Rig rig = CarRig;
+    // voor de tank van de tegenstander (EnemyTank): dezelfde maten en dezelfde botsvorm als de eigen tank
+    public static float TankMass => TankRigSpec.mass; public static float TankSpring => TankRigSpec.spring; public static float TankDampIn => TankRigSpec.dampIn; public static float TankDampOut => TankRigSpec.dampOut;
+    public static float TankAntiRoll => TankRigSpec.antiRoll; public static float TankMu => TankRigSpec.mu; public static float TankTop => TankRigSpec.top; public static float TankAccel => TankRigSpec.accel; public static float TankBack => TankRigSpec.back; public static float TankComY => TankRigSpec.comY;
+    public static void TankShape(Transform root, TankRig trg) { Shape(root, new Rig { tank = true, wheels = trg.PhysWheels }); }
     public bool PlayerTank => rig.tank && player != null;
     public TankRig PlayerTankRig { get; private set; }
     public Transform PlayerRoot => player != null ? player.root : null;
@@ -28,7 +32,7 @@ public partial class PlanetLife
     public float PlayerSteer => pSteerDeg;
     public float PlayerYaw; public int PlayerOn;   // voor een test: draaisnelheid (rad/s) en wielen op de grond
     public Vector3 PlayerVelocity => prb != null ? prb.linearVelocity : Vector3.zero;
-    public void PlayerKick(Vector3 impulse, Vector3 at) { if (prb != null) prb.AddForceAtPosition(impulse, at, ForceMode.Impulse); }   // terugslag van het kanon
+    public void PlayerRecoil(Vector3 dir) { TankRig.Recoil(prb, dir); }   // terugslag van het kanon
     public string PlayerWall = "";   // waar de auto het laatst hard tegenaan botste (voor een test)
     const float PMount = 1.0f;
     float pWheelR = 0.36f;
@@ -145,7 +149,7 @@ public partial class PlanetLife
     }
 
     // de grond onder een wiel: een straal langs de auto omlaag; in een tunnel de vloer van de koker als die niets raakt
-    bool WheelHit(Vector3 mount, Vector3 down, float len, out Vector3 point, out Vector3 normal, out float dist)
+    public static bool WheelHit(Vector3 mount, Vector3 down, float len, out Vector3 point, out Vector3 normal, out float dist)
     {
         if (UnityEngine.Physics.Raycast(mount, down, out RaycastHit hit, len, Layers.Grond, QueryTriggerInteraction.Ignore))
         { point = hit.point; normal = hit.normal; dist = hit.distance; return true; }
@@ -194,7 +198,7 @@ public partial class PlanetLife
             float ar = (comp[k] - comp[k + 1]) * rig.antiRoll;
             if (pOn[k]) load[k] = Mathf.Max(0f, load[k] + ar); if (pOn[k + 1]) load[k + 1] = Mathf.Max(0f, load[k + 1] - ar);
         }
-        c.air = on == 0;
+        c.air = on == 0; pComp = comp;
         float m4 = rig.mass / nw, slip = 0f;
         // de tank draait met zijn rupsen: een gewenste draaisnelheid om de eigen as (op de plaats het snelst); de rupsen houden hem
         // alleen dwars tegen, niet het draaien zelf
@@ -221,7 +225,9 @@ public partial class PlanetLife
             else fLong = idle ? -Mathf.Sign(vl) * m4 * 0.5f : 0f;   // uitrollen
             // wrijvingscirkel: samen nooit meer dan de grip
             float tot = Mathf.Sqrt(fLat * fLat + fLong * fLong); if (tot > grip && tot > 0f) { float s = grip / tot; fLat *= s; fLong *= s; }
-            prb.AddForceAtPosition(wf * fLong + wr * fLat, pt[k] + cu * 0.25f);   // iets boven het wegdek: hij helt in de bocht, maar slaat niet zomaar om
+            if (rig.tank)   // de tank: de rupsen zijn breed en hij ligt laag: dwars werkt op de hoogte van het zwaartepunt, dan kantelt hij in een bocht niet
+            { prb.AddForceAtPosition(wf * fLong, pt[k] + cu * 0.25f); prb.AddForceAtPosition(wr * fLat, pt[k] + cu * Vector3.Dot(prb.worldCenterOfMass - pt[k], cu)); }
+            else prb.AddForceAtPosition(wf * fLong + wr * fLat, pt[k] + cu * 0.25f);   // iets boven het wegdek: hij helt in de bocht, maar slaat niet zomaar om
             if (rear && !rig.tank) slip = Mathf.Max(slip, Mathf.Abs(vs));
         }
         playerSlip = slip;
@@ -235,7 +241,7 @@ public partial class PlanetLife
         if (slip > 4f && sp > 5f && on > 0) Sounds.Fx("squeal", pos, Mathf.Clamp01(slip / 10f), 12f);
 
         // over de kop of op zijn kant en (bijna) stil: na 3 s vanzelf weer rechtop
-        if (Vector3.Dot(cu, up) < 0.35f && sp < 2f) { pFlipT += dt; if (pFlipT > 3f) PlayerFlip(); } else pFlipT = 0f;
+        if (Vector3.Dot(cu, up) < 0.35f && sp < (rig.tank ? 6f : 2f)) { pFlipT += dt; if (pFlipT > (rig.tank ? 2f : 3f)) PlayerFlip(); } else pFlipT = 0f;   // de tank ook als hij op zijn kant nog schuift
         // vangnet: door de grond gezakt (buiten een tunnel): terug op het terrein
         float alt = pos.magnitude - Planet.R;
         if (!PlanetCity.InBore(pos, out _) && alt < PlanetCity.TerrainAt(up) - 4f && alt < PlanetCity.FloorH(Planet.Nearest(pos)) - 4f)
@@ -255,6 +261,7 @@ public partial class PlanetLife
             if (PlayerTankRig == null || prb == null) return;
             float v = PlayerSpeed, w = Vector3.Dot(prb.angularVelocity, player.root.up), half = PlayerTankRig.TrackHalf;
             PlayerTankRig.Move((v + w * half) * dt, (v - w * half) * dt);
+            if (pComp != null) PlayerTankRig.Suspend(pComp, rig.mass * 9.81f / rig.wheels.Length / rig.spring, dt);   // loopwielen en rups veren mee
             return;
         }
         if (player.wheels == null) return;
@@ -274,8 +281,10 @@ public class PlayerCar : MonoBehaviour
     Camera cam; Transform car; bool inside, wheelsShown = true; float dist = 9f, yawOff, pitchOff, lookT = -99f; Vector3 camFwd; bool hasCam;
     AudioSource motor, road; static AudioClip motorClip, roadClip;
     public bool Inside { get => inside; set => inside = value; }
+    public static bool Frozen;
+    public static Transform Watch;   // toeschouwer (tankgevecht): de camera volgt deze tank in plaats van de eigen   // tankgevecht: je tank is uitgeschakeld, rijden kan niet meer
     public static bool Auto; public static float AutoThrottle, AutoSteer; public static bool AutoHand;   // voor een test: rijden zonder toetsen
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)] static void ResetStatics() { Auto = AutoHand = false; AutoThrottle = AutoSteer = 0f; motorClip = roadClip = null; ModelCar.ResetStatics(); }   // Play zonder herladen van de scripts
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)] static void ResetStatics() { Auto = AutoHand = Frozen = false; Watch = null; AutoThrottle = AutoSteer = 0f; motorClip = roadClip = null; ModelCar.ResetStatics(); }   // Play zonder herladen van de scripts
     public float Kmh => PlanetLife.I != null ? Mathf.Abs(PlanetLife.I.PlayerSpeed) * 3.6f : 0f;
     public bool Reverse => PlanetLife.I != null && PlanetLife.I.PlayerSpeed < -0.5f;
     public float Throttle { get; private set; }
@@ -308,9 +317,10 @@ public class PlayerCar : MonoBehaviour
         float st = (Inp.Held(K.D) || Inp.Held(K.Right) ? 1f : 0f) - (Inp.Held(K.A) || Inp.Held(K.Left) ? 1f : 0f);
         Throttle = Mathf.MoveTowards(Throttle, Mathf.Max(0f, th), dt * 4f);
         if (Auto) { th = AutoThrottle; st = AutoSteer; Throttle = Mathf.MoveTowards(Throttle, Mathf.Max(0f, th), dt * 4f); }
+        if (Frozen) { th = st = 0f; Throttle = 0f; }   // de tank is uitgeschakeld (tankgevecht)
         L.SetPlayerInput(th, st, Auto ? AutoHand : Inp.Held(K.Space));
         L.SpinPlayerWheels(dt);
-        if (Inp.Down(K.R)) L.PlayerFlip();   // weer rechtop
+        if (Inp.Down(K.R) && !Frozen) L.PlayerFlip();   // weer rechtop
         if (Inp.Down(K.C)) inside = !inside;
         float sc = Inp.Scroll;   // het wiel: dichterbij, en helemaal dichtbij de bestuurder
         if (sc > 0f) { if (!inside && dist <= 4.6f) inside = true; else if (!inside) dist = Mathf.Max(4.5f, dist * 0.88f); }
@@ -332,13 +342,14 @@ public class PlayerCar : MonoBehaviour
 
     void LateUpdate()
     {
-        if (car == null || cam == null) return;
+        if (this.car == null || cam == null) return;
         float dt = Mathf.Min(Time.deltaTime, 0.05f);
+        Transform car = Watch != null ? Watch : this.car; bool inside = this.inside && Watch == null;
         Vector3 p = car.position, up = p.normalized, cf = car.forward - up * Vector3.Dot(car.forward, up);
         if (cf.sqrMagnitude < 1e-6f) cf = camFwd; cf.Normalize();
         if (!hasCam) { camFwd = cf; hasCam = true; }
         if (wheelsShown == inside) { wheelsShown = !inside; foreach (Transform ch in car) if (ch.name == "as") ch.gameObject.SetActive(!inside); }   // als bestuurder: geen wielen voor je neus (de auto heeft geen interieur)
-        var tr = PlanetLife.I != null ? PlanetLife.I.PlayerTankRig : null;
+        var tr = Watch != null ? Watch.GetComponent<TankRig>() : PlanetLife.I != null ? PlanetLife.I.PlayerTankRig : null;
         if (inside && tr != null)   // de tank: door het vizier, langs het kanon
         {
             cam.nearClipPlane = 0.05f; cam.fieldOfView = 55f;

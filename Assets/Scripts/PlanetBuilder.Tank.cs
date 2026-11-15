@@ -9,11 +9,11 @@ using UnityEngine;
 // verandert niet: geen undo-stap, niet opslaan, niets opnieuw tekenen (dat maakte elke inslag traag).
 public partial class PlanetBuilder
 {
-    class Shell { public Vector3 pos, vel; public float t; public Transform vis; }
+    class Shell { public Vector3 pos, vel; public float t; public Transform vis, owner; }
     class Puff { public Transform tr; public Vector3 vel; public float t, life, size; public bool grav, fire; }
     readonly List<Shell> shells = new List<Shell>(); readonly List<Puff> puffs = new List<Puff>();
     float reload; Vector3 aimPoint; bool hasAim; static AudioClip shotClip, boomClip; static Mesh puffMesh;
-    const float ShellSpeed = 120f, ShellLife = 3f, ReloadTime = 1.4f;   // de planeet is klein (baansnelheid zo'n 77 m/s): een granaat die niets raakt ontploft na 3 s (zo'n 360 m) in de lucht
+    public const float ShellSpeed = 120f; const float ShellLife = 3f, ReloadTime = 1.4f;   // de planeet is klein (baansnelheid zo'n 77 m/s): een granaat die niets raakt ontploft na 3 s (zo'n 360 m) in de lucht
     public int TankShots, TankHits, TankClickShots; public Vector3 TankLastHit; public float TankAimErr; public string TankAimInfo = "";   // voor een test
     public static bool AutoFire;   // voor een test: schieten zonder klik
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)] static void ResetTankStatics() { shotClip = boomClip = null; puffMesh = null; AutoFire = false; }
@@ -25,10 +25,14 @@ public partial class PlanetBuilder
         var L = PlanetLife.I;
         if (driving && L != null && L.PlayerTank && L.PlayerTankRig != null && Cam != null)
         {
-            Aim(L.PlayerTankRig, dt);
             reload -= dt;
-            bool click = Cursor.lockState == CursorLockMode.Locked && Inp.LeftDown && PlayerCar.Clicked != Time.frameCount && !helpOpen;
-            if ((click || AutoFire) && reload <= 0f) { if (click) TankClickShots++; AutoFire = false; Fire(L.PlayerTankRig); }
+            if (BattleTick(L, dt)) { }   // tankgevecht: uitgeschakeld, of de AI bestuurt je tank (toeschouwer)
+            else
+            {
+                Aim(L.PlayerTankRig, dt);
+                bool click = Cursor.lockState == CursorLockMode.Locked && Inp.LeftDown && PlayerCar.Clicked != Time.frameCount && !helpOpen;
+                if ((click || AutoFire) && reload <= 0f) { if (click) TankClickShots++; AutoFire = false; Fire(L.PlayerTankRig); }
+            }
         }
         SootTick(dt);
         for (int i = shells.Count - 1; i >= 0; i--) if (!FlyShell(shells[i], dt)) { if (shells[i].vis != null) Destroy(shells[i].vis.gameObject); shells.RemoveAt(i); }
@@ -49,7 +53,7 @@ public partial class PlanetBuilder
     void Aim(TankRig tr, float dt)
     {
         var c = Cam.transform; Vector3 o = c.position, f = c.forward;
-        hasAim = Physics.Raycast(o, f, out RaycastHit hit, 700f, Layers.Wijzen | Layers.Muren, QueryTriggerInteraction.Ignore);
+        hasAim = Ray(o, f, 700f, PlanetLife.I != null ? PlanetLife.I.PlayerRoot : null, out RaycastHit hit);   // ook op een tank, niet op je eigen
         aimPoint = hasAim ? hit.point : o + f * 500f;
         Vector3 hullUp = tr.turret.parent.up;
         Vector3 to = aimPoint - tr.turret.position; Vector3 flat = to - hullUp * Vector3.Dot(to, hullUp);
@@ -68,13 +72,35 @@ public partial class PlanetBuilder
         Vector3 at = tr.muzzle.position, dir = tr.gun.forward;
         { float gp = tr.gun.localEulerAngles.x; if (gp > 180f) gp -= 360f; TankAimInfo = $"doel {Vector3.Distance(at, aimPoint):0} m ({(hasAim ? "raak" : "lucht")}), kanon {gp:0.0}°, loopmond {tr.muzzle.localPosition}, loop vooruit·op {Vector3.Dot(dir, at.normalized):0.00}"; }
         TankAimErr = Vector3.Angle(Vector3.ProjectOnPlane(dir, at.normalized), Vector3.ProjectOnPlane(aimPoint - at, at.normalized));   // links-rechts: hoe ver de koepel nog van het vizier af staat
-        var L = PlanetLife.I; Vector3 carV = L != null ? L.PlayerVelocity : Vector3.zero;
+        var L = PlanetLife.I;
+        Shoot(tr, dir, L != null ? L.PlayerVelocity : Vector3.zero, L != null ? L.PlayerRoot : null);
+        if (L != null) L.PlayerRecoil(dir);   // terugslag
+    }
+    // een granaat uit de loop van een tank (ook die van de tegenstander); owner: de tank zelf, daar vliegt hij doorheen
+    void Shoot(TankRig tr, Vector3 dir, Vector3 carV, Transform owner)
+    {
+        Vector3 at = tr.muzzle.position;
         var vis = MakeShellVis(); vis.position = at; vis.rotation = Quaternion.LookRotation(dir, at.normalized);
-        shells.Add(new Shell { pos = at, vel = dir * ShellSpeed + carV, vis = vis });
-        if (L != null) L.PlayerKick(-dir * 26000f * 2.2f, at);   // terugslag
+        shells.Add(new Shell { pos = at, vel = dir * ShellSpeed + carV, vis = vis, owner = owner });
+        if (battle) { if (owner != null && owner.GetComponent<EnemyTank>() != null) BattleStats[2]++; else BattleStats[0]++; }
         // mondingsvuur en een wolkje
         Burst(at + dir * 0.6f, dir, 0.5f, 3, true);
         PlayAt(ShotClip(), at, 0.9f);
+    }
+    // een straal die ook tanks raakt (laag Mens), maar niet de tank skip
+    static readonly RaycastHit[] rayHits = new RaycastHit[16];
+    static bool Ray(Vector3 o, Vector3 d, float len, Transform skip, out RaycastHit best)
+    {
+        int n = Physics.RaycastNonAlloc(o, d, rayHits, len, Layers.Wijzen | Layers.Muren | (1 << Layers.Mens), QueryTriggerInteraction.Ignore);
+        best = default; float bd = float.MaxValue; bool any = false;
+        for (int k = 0; k < n; k++)
+        {
+            var h = rayHits[k]; if (h.distance >= bd) continue;
+            if (h.collider.gameObject.layer == Layers.Mens && (h.collider.attachedRigidbody == null || h.collider.GetComponentInParent<TankRig>() == null)) continue;   // mensen en dergelijke: erdoor
+            if (skip != null && h.collider.transform.IsChildOf(skip)) continue;
+            best = h; bd = h.distance; any = true;
+        }
+        return any;
     }
 
     bool FlyShell(Shell s, float dt)
@@ -82,8 +108,8 @@ public partial class PlanetBuilder
         s.t += dt; if (s.t > ShellLife) { AirBurst(s.pos); return false; }
         Vector3 up = s.pos.normalized, nv = s.vel - up * 9.81f * dt, np = s.pos + (s.vel + nv) * 0.5f * dt;
         Vector3 seg = np - s.pos; float len = seg.magnitude;
-        if (len > 1e-4f && Physics.Raycast(s.pos, seg / len, out RaycastHit hit, len, Layers.Wijzen | Layers.Muren, QueryTriggerInteraction.Ignore))
-        { Explode(hit.point, hit.normal, hit.collider.gameObject.layer); return false; }
+        if (len > 1e-4f && Ray(s.pos, seg / len, len, s.owner, out RaycastHit hit))
+        { shellOwner = s.owner; Explode(hit.point, hit.normal, hit.collider.gameObject.layer, hit.collider); shellOwner = null; return false; }
         // onder het terrein (een gat in de botsing): daar ontploffen
         float g = PlanetCity.TerrainAt(np.normalized); if (np.magnitude < Planet.R + g - 0.5f && !PlanetCity.InBore(np, out _)) { Explode(np.normalized * (Planet.R + g), np.normalized); return false; }
         s.pos = np; s.vel = nv;
@@ -99,9 +125,10 @@ public partial class PlanetBuilder
         PlayAt(BoomClip(), p, 0.8f);
     }
 
-    void Explode(Vector3 p, Vector3 n, int layer = Layers.Bodem)
+    void Explode(Vector3 p, Vector3 n, int layer = Layers.Bodem, Collider hitCol = null)
     {
         TankHits++; TankLastHit = p;
+        BattleDamage(p, hitCol);   // tankgevecht: schade aan tanks in de buurt
         Vector3 up = p.normalized;
         // effecten: flits, vuurbal, rook en brokstukken
         var lg = new GameObject("flits"); lg.transform.position = p + up * 1.5f; var li = lg.AddComponent<Light>(); li.type = LightType.Point; li.color = new Color(1f, 0.62f, 0.3f); li.range = 30f; li.intensity = 8f; Destroy(lg, 0.18f);
@@ -115,7 +142,7 @@ public partial class PlanetBuilder
         // maakte elke inslag traag). Op terrein een kuiltje met een zeshoekige wal van opgeworpen aarde en roet in het midden, op een
         // weg, gebouw of plantenbak alleen een roetvlek. Een tank haalt niets weg (huizen beschadigen komt later).
         float above = p.magnitude - Planet.R - PlanetCity.TerrainAt(up);
-        if (above > 25f) return;   // hoog in de lucht: geen spoor
+        if (above > 25f || layer == Layers.Mens) return;   // hoog in de lucht of op een tank: geen spoor
         bool terrain = layer != Layers.Weg && layer != Layers.Gebouw && layer != Layers.Water;
         Soot(p, n, layer == Layers.Gebouw ? 1.1f : layer == Layers.Weg ? 1.8f : 1.3f, terrain);
     }
@@ -256,6 +283,7 @@ public partial class PlanetBuilder
     void TankGui(float W, float H)
     {
         var L = PlanetLife.I; if (L == null || !L.PlayerTank || L.PlayerTankRig == null || Cam == null) return;
+        BattleGui(W, H); if (spectate || PlayerCar.Frozen) return;   // toeschouwer of uitgeschakeld: geen vizier
         Vector2 c = new Vector2(W * 0.5f, H * 0.5f); Color cy = new Color(0.25f, 0.95f, 1f, 0.9f);
         // het vizier: een zeshoek (zoals alles in de stad), met een klein zeshoekje in het midden
         var clear = new Color(0f, 0f, 0f, 0f);

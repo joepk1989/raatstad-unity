@@ -51,7 +51,7 @@ public static class ModelTank
             if (!kv.Key.StartsWith("Wheel_")) continue;
             var wb = B(kv.Key); var piv = Pivot(root, "as " + kv.Key, wb.center); kv.Value.SetParent(piv, true);
             rig.AddWheel(piv, wb.center.x < 0f, Mathf.Max(0.1f, wb.extents.y));
-            if (kv.Key.Contains("_Road_")) road.Add((wb.center, wb.extents.y));
+            if (kv.Key.Contains("_Road_")) { road.Add((wb.center, wb.extents.y)); rig.AddRoad(piv, wb.center.x < 0f); }
         }
         // de vering: zes punten (voor, midden, achter; links en rechts) onder de loopwielen; de straal tot de grond loopt door de rups
         road.Sort((a, b) => b.c.z.CompareTo(a.c.z));
@@ -70,6 +70,7 @@ public static class ModelTank
             if (!parts.TryGetValue(n, out var tt)) continue;
             var r = tt.GetComponent<MeshRenderer>(); var m = new Material(track); var ms = r.sharedMaterials; for (int k = 0; k < ms.Length; k++) ms[k] = m; r.sharedMaterials = ms;
             rig.SetTrack(B(n).center.x < 0f, m, -0.54f);
+            rig.AddTrackMesh(tt.GetComponent<MeshFilter>(), B(n).center.x < 0f, hubY);   // de onderkant buigt mee met de vering
         }
         foreach (var t in root.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = root.gameObject.layer;
         return rig;
@@ -84,6 +85,7 @@ public static class ModelTank
         g.position = (frame ?? parent).TransformPoint(at); g.rotation = (frame ?? parent).rotation; return g;
     }
 
+    public static Material Body { get { Mats(); return body; } }   // de romp (de tegenstander krijgt een eigen tint)
     static void Mats()
     {
         if (body != null && track != null && glass != null) return;

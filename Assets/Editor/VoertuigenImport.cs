@@ -20,5 +20,6 @@ class VoertuigenImport : AssetPostprocessor
         var mi = (ModelImporter)assetImporter;
         mi.globalScale = 1f; mi.useFileScale = false; mi.addCollider = false; mi.importCameras = false; mi.importLights = false;
         mi.animationType = ModelImporterAnimationType.None; mi.importAnimation = false;
+        mi.isReadable = true;   // de rupsen buigen mee met de vering (TankRig.Suspend past de punten aan)
     }
 }

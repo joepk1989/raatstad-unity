@@ -23,10 +23,12 @@ Wat hier niet staat, is nog niet besloten: vraag het na in plaats van het zelf i
 - Eerst tegen een AI-tegenstander (Claude), daarna twee spelers.
 
 ## Oorlogsmodus
-- Staat op de lijst als een van de modi. Er is nog niets over besloten.
+- Begint met een **tankgevecht** (15 november 2026): in het raatmenu (M) onder Oorlogsmodus, op het startscherm onder Spelmodus → Oorlogsmodus, of J en dan 3. Jij in een tank tegen een tank van de AI; drie voltreffers is uit. Met T word je toeschouwer: de AI bestuurt dan je tank, zodat je de AI ook tegen zichzelf ziet vechten.
+- Het duel blijft over bouwen (mooiste stad); het tankgevecht hoort bij de oorlogsmodus.
+- Verder (meer tanks, teams, een stad verdedigen) is nog niets besloten.
 
 ## Nog open
 - Multiplayer tegelijk of om beurten.
 - Per modus: het doel, wanneer je wint of verliest, en hoe de schoonheidsscore meetelt.
 - Hoe je een modus kiest en ertussen wisselt.
-- Alles over de oorlogsmodus.
+- De rest van de oorlogsmodus, na het tankgevecht.

@@ -1,23 +1,25 @@
 using UnityEngine;
 
-// Zelf rijden (J): eerst kiezen (1 de Cybertruck, 2 de tank), dan instappen op de weg die het dichtst bij de muis (of het midden van
+// Zelf rijden (J): eerst kiezen (1 de Cybertruck, 2 de tank, 3 een tankgevecht: PlanetBuilder.Battle.cs), dan instappen op de weg die het dichtst bij de muis (of het midden van
 // het beeld) ligt, en weer uitstappen met J of Esc. De tank (richten en schieten) zit in PlanetBuilder.Tank.cs. Het rijden zelf, de camera en het geluid zitten in PlayerCar.cs; hier de toetsen, het in- en uitstappen en de
 // snelheidsmeter rechtsonder.
 public partial class PlanetBuilder
 {
-    bool driving; PlayerCar playerCar; float driveT; bool vehicleAsk; Vector3 askAt; bool askHover; int askCell;
+    bool driving, battleAfterLanding; PlayerCar playerCar; float driveT; bool vehicleAsk; Vector3 askAt; bool askHover; int askCell;
     public bool Driving => driving;
 
     // true zolang er gereden wordt (dan doet de bouwmodus niets)
     bool DriveUpdate()
     {
         TankTick();
+        if (battleAfterLanding && !home) { if (inSpace) distGoal = LandDist; else { battleAfterLanding = false; StartBattle(); } }   // gekozen op het startscherm of in de ruimte: na het landen
         if (!driving)
         {
             if (vehicleAsk)   // de keuze: 1 auto, 2 tank; J of Esc annuleert
             {
                 if (Inp.Down(K.D1)) { vehicleAsk = false; useAsk = true; StartDrive(false); }
                 else if (Inp.Down(K.D2)) { vehicleAsk = false; useAsk = true; StartDrive(true); }
+                else if (Inp.Down(K.D3)) { vehicleAsk = false; useAsk = true; StartBattle(); }
                 else if (Inp.Down(K.J) || Inp.Down(K.Esc) || inSpace) vehicleAsk = false;
                 return true;
             }
@@ -79,6 +81,7 @@ public partial class PlanetBuilder
             Transform car = L.PlayerRoot; Vector3 up = car.position.normalized;
             focus = up; Vector3 f = car.forward - up * Vector3.Dot(car.forward, up); if (f.sqrMagnitude > 1e-6f) fwd = f.normalized;
         }
+        EndBattle();
         if (playerCar != null) playerCar.Exit();
         if (L != null) L.RemovePlayer();
         driving = false; Sounds.Fx("whoosh"); PlanetCity.ShowGrid(PlanetCity.GridOn);
@@ -90,10 +93,11 @@ public partial class PlanetBuilder
     void VehicleAskGui(float W, float H)
     {
         if (!vehicleAsk) return;
-        float bw = 210f, bh = 46f, gap = 12f, w = bw * 2f + gap + 28f; var r = new Rect((W - w) * 0.5f, H - G - bh - 70f, w, bh + 52f);
+        float bw = 190f, bh = 46f, gap = 12f, w = bw * 3f + gap * 2f + 28f; var r = new Rect((W - w) * 0.5f, H - G - bh - 70f, w, bh + 52f);
         Ui.Panel(r, false, 14f); Ui.Label(new Rect(r.x, r.y + 6f, r.width, 22f), "Instappen in…", Ui.T.Dim, Ui.InkDim, TextAnchor.MiddleCenter);
         if (Ui.Button(new Rect(r.x + 14f, r.y + 36f, bw, bh), "1  Cybertruck")) { vehicleAsk = false; useAsk = true; StartDrive(false); }
         if (Ui.Button(new Rect(r.x + 14f + bw + gap, r.y + 36f, bw, bh), "2  Tank")) { vehicleAsk = false; useAsk = true; StartDrive(true); }
+        if (Ui.Button(new Rect(r.x + 14f + (bw + gap) * 2f, r.y + 36f, bw, bh), "3  Tankgevecht")) { vehicleAsk = false; useAsk = true; StartBattle(); }
     }
 
     void DriveGui(float W, float H)
@@ -115,7 +119,8 @@ public partial class PlanetBuilder
         float a = Mathf.Clamp01(1f - (Time.time - driveT - 7f)); if (a > 0f)
         {
             bool tk = PlanetLife.I != null && PlanetLife.I.PlayerTank;
-            string t = tk ? "W S rijden · A D draaien · muis richten · klik schieten · Spatie rem · R rechtop · C vizier · J of Esc uitstappen"
+            string t = tk && battle ? "W S rijden · A D draaien · muis richten · klik schieten · T toeschouwer (de AI rijdt) · Tab andere tank volgen · J of Esc stoppen"
+                     : tk ? "W S rijden · A D draaien · muis richten · klik schieten · Spatie rem · R rechtop · C vizier · J of Esc uitstappen"
                           : "W S gas en rem · A D sturen · Spatie handrem · R rechtop · C of wiel: camera · muis rondkijken · J of Esc uitstappen"; float tw = Ui.Width(t, Ui.T.Dim) + 40f;
             var hr = new Rect((W - tw) * 0.5f, H - G - 40f, tw, 40f);
             var old = GUI.color; GUI.color = new Color(1f, 1f, 1f, a); Ui.Panel(hr, false, 20f); Ui.Label(hr, t, Ui.T.Dim, null, TextAnchor.MiddleCenter); GUI.color = old;
