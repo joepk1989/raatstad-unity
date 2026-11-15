@@ -253,17 +253,18 @@ public partial class PlanetBuilder
     {
         var L = PlanetLife.I; if (L == null || !L.PlayerTank || L.PlayerTankRig == null || Cam == null) return;
         Vector2 c = new Vector2(W * 0.5f, H * 0.5f); Color cy = new Color(0.25f, 0.95f, 1f, 0.9f);
-        void Px(float x, float y, float w, float h, Color col) { var o = GUI.color; GUI.color = col; GUI.DrawTexture(new Rect(x, y, w, h), Texture2D.whiteTexture); GUI.color = o; }
-        if (playerCar == null || !playerCar.Inside)
+        // het vizier: een zeshoek (zoals alles in de stad), met een klein zeshoekje in het midden
+        var clear = new Color(0f, 0f, 0f, 0f);
+        float hr = playerCar != null && playerCar.Inside ? 14f : 18f;
+        Ui.Tex(new Rect(c.x - hr, c.y - hr * 1.1f, hr * 2f, hr * 2.2f), Ui.Hex(clear, cy, 3.5f, true));
+        Ui.Tex(new Rect(c.x - 3f, c.y - 3.3f, 6f, 6.6f), Ui.Hex(cy, cy, 1f, true));
+        Color or = new Color(1f, 0.55f, 0.2f, 0.95f);
+        // herladen: zes zeshoekjes onder het vizier die een voor een oplichten
+        float k2 = Mathf.Clamp01(1f - reload / ReloadTime); int lit = Mathf.FloorToInt(k2 * 6f + 1e-4f);
+        for (int k = 0; k < 6; k++)
         {
-            float r = 16f; for (int k = 0; k < 6; k++) { float a = (k * 60f + 30f) * Mathf.Deg2Rad; Px(c.x + Mathf.Cos(a) * r - 2f, c.y + Mathf.Sin(a) * r - 2f, 4f, 4f, cy); }
+            bool on = k < lit; Color col = k2 >= 1f ? cy : on ? or : new Color(1f, 1f, 1f, 0.12f);
+            Ui.Tex(new Rect(c.x - 6f * 9f * 0.5f + k * 9f, c.y + hr * 1.1f + 8f, 7.5f, 8.25f), Ui.Hex(col, col, 1f, true));
         }
-        Px(c.x - 1f, c.y - 7f, 2f, 14f, cy); Px(c.x - 7f, c.y - 1f, 14f, 2f, cy);
-        // waar het kanon nu op wijst (draait de koepel nog bij, dan staat het stipje ernaast)
-        var tr = L.PlayerTankRig; float d = Vector3.Distance(tr.muzzle.position, aimPoint);
-        Vector3 sp = Cam.WorldToScreenPoint(tr.muzzle.position + tr.gun.forward * d);
-        if (sp.z > 0f) { float x = sp.x, y = H - sp.y; Px(x - 3f, y - 3f, 6f, 6f, new Color(1f, 0.55f, 0.2f, 0.95f)); }
-        float k2 = Mathf.Clamp01(1f - reload / ReloadTime);
-        Px(c.x - 30f, c.y + 26f, 60f, 4f, new Color(0f, 0f, 0f, 0.35f)); Px(c.x - 30f, c.y + 26f, 60f * k2, 4f, k2 >= 1f ? cy : new Color(1f, 0.55f, 0.2f, 0.9f));
     }
 }

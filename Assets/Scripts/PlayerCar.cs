@@ -16,8 +16,8 @@ public partial class PlanetLife
     class Rig { public float mass, rest, spring, dampIn, dampOut, antiRoll, mu, top, accel, back, maxW, maxH, comY; public Vector3[] wheels; public bool tank; }
     static readonly Rig CarRig = new Rig { mass = 2900f, rest = 0.78f, spring = 30000f, dampIn = 2600f, dampOut = 4200f, antiRoll = 9000f, mu = 1.15f, top = 50f, accel = 9f, back = 12f, maxW = 2.1f, maxH = 2.2f, comY = 0.62f,
         wheels = new[] { new Vector3(-0.84f, 0f, 1.95f), new Vector3(0.84f, 0f, 1.95f), new Vector3(-0.84f, 0f, -1.73f), new Vector3(0.84f, 0f, -1.73f) } };   // zacht: ~1 Hz, 24 cm inveren bij stilstand, ruim 60 cm slag
-    static readonly Rig TankRigSpec = new Rig { mass = 26000f, rest = 0.7f, spring = 280000f, dampIn = 24000f, dampOut = 32000f, antiRoll = 90000f, mu = 1.3f, top = 19f, accel = 4.5f, back = 8f, maxW = 3.4f, maxH = 2.4f, comY = 0.85f,
-        wheels = TankModel.Wheels, tank = true };   // 26 ton, tot 70 km/u, draait op de plaats
+    static readonly Rig TankRigSpec = new Rig { mass = 26000f, rest = 0.7f, spring = 280000f, dampIn = 24000f, dampOut = 32000f, antiRoll = 90000f, mu = 1.8f, top = 19f, accel = 11f, back = 8f, maxW = 3.4f, maxH = 2.4f, comY = 0.85f,
+        wheels = TankModel.Wheels, tank = true };   // 26 ton, tot 70 km/u, draait op de plaats; rupsen grijpen beter dan banden en trekken onderin hard: zo komt hij een kraterwand van zo'n 60° op
     Rig rig = CarRig;
     public bool PlayerTank => rig.tank && player != null;
     public TankRig PlayerTankRig { get; private set; }
@@ -112,7 +112,11 @@ public partial class PlanetLife
         {
             if (pMat == null) MakePMat();
             var trg = root.GetComponent<TankRig>();
-            var h0 = root.gameObject.AddComponent<BoxCollider>(); h0.center = trg.HullBox.center; h0.size = trg.HullBox.size; h0.sharedMaterial = pMat;
+            // laag alleen tussen de voorste en achterste loopwielen; voor en achter begint de romp hoger (daar loopt de rups schuin
+            // omhoog), anders stoot de neus tegen een helling voordat de rups erop kan
+            float tzf = rig.wheels[0].z + 0.3f, tzr = rig.wheels[rig.wheels.Length - 1].z - 0.3f, ttop = trg.HullBox.max.y, hi = 1.0f;
+            var h0 = root.gameObject.AddComponent<BoxCollider>(); h0.center = new Vector3(0f, (0.55f + ttop) * 0.5f, (tzf + tzr) * 0.5f); h0.size = new Vector3(trg.HullBox.size.x, ttop - 0.55f, tzf - tzr); h0.sharedMaterial = pMat;
+            var h2 = root.gameObject.AddComponent<BoxCollider>(); h2.center = new Vector3(0f, (hi + ttop) * 0.5f, trg.HullBox.center.z); h2.size = new Vector3(trg.HullBox.size.x, Mathf.Max(0.2f, ttop - hi), trg.HullBox.size.z); h2.sharedMaterial = pMat;
             var h1 = root.gameObject.AddComponent<BoxCollider>(); h1.center = trg.TopBox.center; h1.size = trg.TopBox.size; h1.sharedMaterial = pMat;
             return;
         }
