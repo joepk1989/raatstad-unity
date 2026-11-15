@@ -347,6 +347,7 @@ public partial class PlanetBuilder : MonoBehaviour
                 if (ok > 0 && level) PlanetCity.SetLevel(linePlan ?? new List<int> { lineStart }, lv, t);
                 if (ok > 0 && level && lv == 0 && linePlan != null && !PlanetCity.Ground2) PlanetCity.DipUnder(linePlan);   // ongelijkvloers op het maaiveld: alleen bij de kruising omlaag
                 if (ok > 0 && level && lv == 0 && linePlan != null && !PlanetCity.Ground2) PlanetCity.BoreLine(linePlan);   // door een berg: een tunnel (PlanetTunnels.cs)
+                if (ok > 0 && t == "pad" && lv == 0 && linePlan != null && !PlanetCity.DragBike && PlanetCity.Ground2) { int st = PlanetCity.MarkStairs(linePlan); if (st > 0) PlanetCity.LastNote = st == 1 ? "Voetpad met een trap" : "Voetpad met " + st + " trappen"; }   // te steil voor een helling: een trap, de weg en het pad aan de einden blijven op hun hoogte
                 if (ok > 0 && level && lv == 0) PlanetCity.ProfileNewLine = linePlan;   // Terrein v2: het profiel zoekt de tunnels en bruggen op deze lijn (Changed)
                 if (ok > 0) Changed(); else if (err != null) { Say(err); Sounds.Fx("deny"); }
                 if (linePlan != null && ok > 0) Say(PlanetCity.LastNote ?? ok + " vakken " + Cur.name.ToLower());   // een melding over de lijn gaat voor
@@ -943,7 +944,7 @@ public partial class PlanetBuilder : MonoBehaviour
         fpsN++; if (Time.time - fpsT > 0.5f) { fps = fpsN / (Time.time - fpsT); fpsN = 0; fpsT = Time.time; }
         if (flying) { if (!photoFrame) FlyGui(W, H); ReportGui(W, H); Ui.End(); return; }   // cameramodus: geen interface
         if (driving) { DriveGui(W, H); ReportGui(W, H); Ui.End(); return; }   // rijden: alleen de snelheidsmeter
-        VehicleAskGui(W, H);   // J: auto of tank
+        if (vehicleAsk) { VehicleAskGui(W, H); ReportGui(W, H); Ui.End(); return; }   // J: welk voertuig (alleen de keuze, het bouwmenu en de rest even weg)
 
         if (!inSpace) CentreArrow(W, H);   // in de ruimte staat je stad als marker op de bol
         if (!walking) { TopLeft(); Incidents(); } TopRight(W);   // lopen: zo min mogelijk in beeld, de stad zelf is het beeld

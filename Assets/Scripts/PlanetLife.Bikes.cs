@@ -17,7 +17,7 @@ public partial class PlanetLife
 
     static int NextBike(int a, int prev)
     {
-        var opts = new List<int>(6); foreach (int j in PlanetCity.Partners(a)) if (j != prev && PlanetCity.IsBike(j)) opts.Add(j);
+        var opts = new List<int>(6); foreach (int j in PlanetCity.Partners(a)) if (j != prev && PlanetCity.IsBike(j) && !PlanetCity.IsStair(a, j)) opts.Add(j);   // (geen fietsers over een trap)
         if (opts.Count == 0) return prev >= 0 && PlanetCity.IsBike(prev) ? prev : a;   // doodlopend: keren
         return opts[Random.Range(0, opts.Count)];
     }

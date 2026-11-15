@@ -11,7 +11,7 @@ using UnityEngine;
 // brug door gaat (UnderMesh tekent het stuk onder de brug).
 public static partial class PlanetCity
 {
-    const float PadY = 0.105f, FietsY = 0.125f;
+    const float PadY = 0.105f, FietsY = 0.125f, StairHW = 1.8f;   // StairHW: halve breedte van een trap
     static float PadHW(byte st) => st == 1 ? 3.2f : 1.1f;      // halve breedte van het zand
     static float FietsHW(byte st) => st == 1 ? 1.6f : 0f;      // halve breedte van het rode fietsdeel
     static byte PStyle(int i) => Bike.Contains(i) ? (byte)1 : (byte)0;
@@ -27,6 +27,7 @@ public static partial class PlanetCity
     // stijl van de arm van padknoop n naar buur j (zoals ArmStyle bij wegen)
     static byte PArmStyle(int n, int j)
     {
+        if (IsStair(n, j)) return 0;   // een trap is een voetpad, ook tussen een weg en een fietspad
         if (!IsPath(j)) return PStyle(n);
         if (!IsPathNode(j)) return PStyle(j);
         bool dn = PathNb(n).Count == 2, dj = PathNb(j).Count == 2;
@@ -51,21 +52,34 @@ public static partial class PlanetCity
                 x = Mathf.Max(x, xk);
             }
             // ook de twee hoeken van het eind (een breed fietspad is 6,4 m): verder tot die allebei buiten de stroken liggen
-            float cap = CellDist(n, j) * 0.6f, hw = PadHW((byte)(IsBike(j) ? 1 : 0)); Vector3 v = Vector3.Cross(c, u).normalized;
+            float cap = CellDist(n, j) * 0.6f, hw = IsStair(n, j) ? StairHW : PadHW((byte)(IsBike(j) ? 1 : 0)); Vector3 v = Vector3.Cross(c, u).normalized;
             System.Func<Vector3, bool> inside = q => { for (int k = 0; k < ad.Count; k++) { float along = Vector3.Dot(q, ad[k]); if (along > 0f ? Vector3.Cross(q, ad[k]).magnitude < al[k] : q.magnitude < al[k]) return true; } return false; };
             while (x < cap && (inside(u * x + v * hw) || inside(u * x - v * hw))) x += 0.25f;
             return Mathf.Min(x, cap);
         }
+        if (IsStair(n, j) && PathNb(n).Count > 1) { float wm = 0f; foreach (int k in PathNb(n)) if (k != j) wm = Mathf.Max(wm, PadHW(PArmStyle(n, k))); return Mathf.Min(wm + 0.8f, CellDist(n, j) * 0.48f); }   // een trap begint vlak buiten de knoop: zo veel mogelijk lengte voor de treden
         return PathNb(n).Count == 1 ? Mathf.Min(1f, CellDist(n, j) * 0.3f) : Mathf.Min(7.5f, CellDist(n, j) * 0.48f);
     }
     static float PathH(int i, int from) => IsRoad(i) ? LevelFor(i, from) : G(i);
     // Hoogte langs een pad: een padknoop is vlak tot de rand van de knoop, daarna helt het pad tot het volgende vakmidden (of tot de
     // rand van de volgende knoop). Dezelfde regel voor de tekening, het terrein (GroundField) en wie erover loopt (SurfaceH).
-    static float PathPlateau(int i, int j) => IsPath(i) && IsPathNode(i) ? PTrim(i, j) : 0f;
+    static float PathPlateau(int i, int j) => IsPath(i) && IsPathNode(i) ? PTrim(i, j) : IsRoad(i) && IsStair(i, j) ? PTrim(i, j) : 0f;   // (een trap aan een weg begint pas buiten de stoep; een helling loopt vanaf het hart)
     static float AxisH(int i, int j, float s, float hi, float hj)
     {
         float D = CellDist(i, j), Ti = PathPlateau(i, j), Tj = PathPlateau(j, i);
         return Mathf.Lerp(hi, hj, Mathf.Clamp01((s - Ti) / Mathf.Max(0.5f, D - Ti - Tj)));
+    }
+    // Het stuk van een trap dat in wegvak i ligt (van de stoeprand tot de vakgrens): de hoogte van de trap op wereldpunt w, of NaN als w
+    // niet op een trap ligt. Zo loopt iemand de trap af in plaats van op weghoogte te zweven tot de vakgrens.
+    static float StairH(int i, Vector3 w)
+    {
+        foreach (int j in Partners(i))
+        {
+            if (!IsPath(j) || !IsStair(i, j)) continue; Vector3 cj = Planet.Cells[j].dir, ax = Tan(Planet.Cells[i].dir - cj, cj), v = w - cj * Planet.R; v -= cj * Vector3.Dot(v, cj);
+            float s = Vector3.Dot(v, ax); if ((v - ax * s).magnitude > StairHW + 0.6f) continue;
+            float h = AxisH(j, i, Mathf.Max(0f, s), G(j), LevelFor(i, j)); if (h < G(i) - 0.005f) return h;
+        }
+        return float.NaN;
     }
     // de hoogte van het pad in vak i op wereldpunt w: langs de arm waar het punt het meest in ligt
     static float PathSurfaceH(int i, Vector3 w)
@@ -190,6 +204,8 @@ public static partial class PlanetCity
     {
         System.Func<string, MeshBuilder> M = k => { if (!mb.TryGetValue(k, out var x)) { x = new MeshBuilder(); mb[k] = x; } return x; };
         byte st = closed || (ch.Count > 2 && IsPath(ch[1])) ? PStyle(ch[closed ? 0 : 1]) : IsRoad(ch[0]) ? PStyle(ch[1]) : IsRoad(ch[ch.Count - 1]) ? PStyle(ch[0]) : PArmStyle(ch[0], ch[1]);
+        bool stairs = false; if (Stairs.Count > 0) for (int k = 0; k + 1 < ch.Count; k++) if (IsStair(ch[k], ch[k + 1])) stairs = true; if (stairs && closed && IsStair(ch[ch.Count - 1], ch[0])) stairs = true;
+        if (stairs && ch.Count == 2) st = 0;   // een trap tussen twee knopen of een weg en een knoop: een voetpad
         float w = PadHW(st), rw = FietsHW(st);
         var hs = new float[ch.Count]; for (int k = 0; k < ch.Count; k++) hs[k] = PathH(ch[k], ch[k > 0 ? k - 1 : Mathf.Min(1, ch.Count - 1)]);
         var line = SmoothLine(ch, closed, hs);
@@ -197,6 +213,21 @@ public static partial class PlanetCity
         float t0 = e0 ? PTrim(ch[0], ch[1]) : 0f, t1 = e1 ? PTrim(ch[ch.Count - 1], ch[ch.Count - 2]) : 0f;
         var pts = TrimLine(line, t0, t1); int N = pts.Count; if (N < 2) return;
         for (int k = 0; k < N; k++) if (IsPath(pts[k].cell)) { var q = pts[k]; q.h = PathSurfaceH(q.cell, q.p); pts[k] = q; }   // vlak op een knoop, dan de helling
+        if (stairs) for (int k = 0; k < N; k++) if (IsRoad(pts[k].cell))   // het deel van een trap in het wegvak: dezelfde hoogte als het terrein eronder (vlak tot buiten de stoep, AxisH)
+        {
+            var q = pts[k]; int ix = ch.IndexOf(q.cell), j = ix == 0 ? ch[1] : ch[ix - 1]; if (!IsPath(j) || !IsStair(q.cell, j)) continue;
+            Vector3 cj = Planet.Cells[j].dir, ax = Tan(Planet.Cells[q.cell].dir - cj, cj); q.h = AxisH(j, q.cell, Mathf.Max(0f, Vector3.Dot(q.p - cj * Planet.R, ax)), G(j), LevelFor(q.cell, j)); pts[k] = q;
+        }
+        // Trap: waar de lijn over een trapverbinding loopt geen helling maar treden (17 cm hoog), elke trede op de hoogte van zijn hoge kant
+        // (zo steekt de grond eronder, die de helling volgt, nergens door een trede)
+        var stair = new bool[N];
+        if (stairs) for (int k = 0; k + 1 < N; k++)
+        {
+            int ca = pts[k].cell, cb = pts[k + 1].cell; if (ca != cb) { stair[k] = IsStair(ca, cb); continue; }
+            Vector3 cdir = Planet.Cells[ca].dir, mid = (pts[k].p + pts[k + 1].p) * 0.5f - cdir * Planet.R; int ix = ch.IndexOf(ca), best = -1; float bd = 0f;
+            foreach (int o in new[] { ix - 1, ix + 1 }) { int j = closed ? ch[(o + ch.Count) % ch.Count] : o >= 0 && o < ch.Count ? ch[o] : -1; if (j < 0 || j == ca) continue; float dd = Vector3.Dot(Tan(Planet.Cells[j].dir - cdir, cdir), mid); if (dd > bd) { bd = dd; best = j; } }
+            stair[k] = best >= 0 && IsStair(ca, best) && Mathf.Abs(pts[k + 1].h - pts[k].h) > 1e-3f;
+        }
         var up = new Vector3[N]; var side = new Vector3[N]; var low = new float[N];
         for (int k = 0; k < N; k++)
         {
@@ -207,6 +238,23 @@ public static partial class PlanetCity
         System.Func<int, float, float, Vector3> W = (k, off, y) => (pts[k].p + side[k] * off).normalized * (Planet.R + pts[k].h + y);
         for (int k = 0; k + 1 < N; k++)
         {
+            if (stair[k])   // een aaneengesloten stuk trap van punt k tot punt e
+            {
+                float ws = Mathf.Max(w, StairHW); int e = k; float len = 0f; var S = new List<float> { 0f }; while (e + 1 < N && stair[e]) { len += Vector3.Distance(pts[e].p, pts[e + 1].p); S.Add(len); e++; }
+                float h0 = pts[k].h, h1 = pts[e].h; int ns = Mathf.Max(1, Mathf.RoundToInt(Mathf.Abs(h1 - h0) / 0.17f)); bool rise = h1 > h0;
+                System.Func<float, float, float, Vector3> At = (sv, off, hy) => { int a = 0; while (a + 2 < S.Count && S[a + 1] < sv) a++; float f = Mathf.Clamp01((sv - S[a]) / Mathf.Max(1e-4f, S[a + 1] - S[a])); Vector3 pp = Vector3.Lerp(pts[k + a].p, pts[k + a + 1].p, f), sd = Vector3.Lerp(side[k + a], side[k + a + 1], f).normalized; return (pp + sd * off).normalized * (Planet.R + hy); };
+                float lowS = Mathf.Min(h0, h1) + Mathf.Min(low[k], low[e]);
+                for (int q = 0; q < ns; q++)
+                {
+                    float s0 = len * q / ns, s1 = len * (q + 1) / ns, ht = Mathf.Lerp(h0, h1, (rise ? q + 1f : q) / ns) + PadY, hp = q == 0 ? h0 + PadY : Mathf.Lerp(h0, h1, (rise ? q : q - 1f) / ns) + PadY;
+                    Vector3 uq = At((s0 + s1) * 0.5f, 0f, 0f).normalized, fwd = (At(s1, 0f, ht) - At(s0, 0f, ht)).normalized;
+                    M("pad").Quad(At(s0, -ws, ht), At(s0, ws, ht), At(s1, ws, ht), At(s1, -ws, ht), uq);   // de trede
+                    if (Mathf.Abs(ht - hp) > 1e-3f) M("pad").Quad(At(s0, -ws, Mathf.Min(ht, hp)), At(s0, ws, Mathf.Min(ht, hp)), At(s0, ws, Mathf.Max(ht, hp)), At(s0, -ws, Mathf.Max(ht, hp)), ht > hp ? -fwd : fwd);   // de stootkant
+                    for (int sg = -1; sg <= 1; sg += 2) M("pad").Quad(At(s0, sg * ws, lowS), At(s1, sg * ws, lowS), At(s1, sg * ws, ht), At(s0, sg * ws, ht), Vector3.Cross(uq, fwd) * sg);   // de wang
+                }
+                { float hl = Mathf.Lerp(h0, h1, (rise ? ns : ns - 1f) / ns) + PadY, he = h1 + PadY; Vector3 fwd = (At(len, 0f, he) - At(len - 0.1f, 0f, he)).normalized; if (Mathf.Abs(hl - he) > 1e-3f) M("pad").Quad(At(len, -ws, Mathf.Min(hl, he)), At(len, ws, Mathf.Min(hl, he)), At(len, ws, Mathf.Max(hl, he)), At(len, -ws, Mathf.Max(hl, he)), he > hl ? -fwd : fwd); }   // de laatste stootkant
+                k = e - 1; continue;
+            }
             int m = k + 1; Vector3 u = up[k];
             M("pad").Quad(W(k, -w, PadY), W(k, w, PadY), W(m, w, PadY), W(m, -w, PadY), u);
             if (rw > 0f) M("fietspad").Quad(W(k, -rw, FietsY), W(k, rw, FietsY), W(m, rw, FietsY), W(m, -rw, FietsY), u);
@@ -229,7 +277,7 @@ public static partial class PlanetCity
         for (int a = 0; a < na; a++)
         {
             int j = arms[a]; Vector3 d3 = (Planet.Cells[j].dir - Planet.Cells[n].dir) * Planet.R; Vector2 q = new Vector2(Vector3.Dot(d3, fr.e), Vector3.Dot(d3, fr.n));
-            ends.Add(q.normalized * PTrim(n, j)); dirs.Add(-q.normalized); byte st = PArmStyle(n, j); w[a] = PadHW(st); rw[a] = FietsHW(st);
+            ends.Add(q.normalized * PTrim(n, j)); dirs.Add(-q.normalized); byte st = PArmStyle(n, j); w[a] = IsStair(n, j) ? Mathf.Max(PadHW(st), StairHW) : PadHW(st); rw[a] = FietsHW(st);
         }
         var order = new List<int>(); for (int a = 0; a < na; a++) order.Add(a);
         System.Func<int, float> angOf = a => Mathf.Atan2(-dirs[a].y, -dirs[a].x);

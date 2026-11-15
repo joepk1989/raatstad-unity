@@ -150,8 +150,36 @@ public static partial class PlanetCity
         var ls = new List<List<int>>(); if (line != null && line.Count >= 4) ls.Add(line);
         ProfileAll(ls); LastProfileOnlyMs = sw.ElapsedMilliseconds; UpdateCuts(); LastProfileMs = sw.ElapsedMilliseconds;
     }
+    // Een net gesleept voetpad (line): waar het met de bestaande wegen en paden op hun hoogte niet binnen MaxGrade past, wordt de verbinding
+    // een trap. De nieuwe vakken van de lijn schuiven eerst nog naar een helling (zoals het profiel dat doet); wat dan nog te steil is
+    // (hooguit StairGrade) krijgt treden. Aanroepen na PlaceLine en voor Reprofile: RoadH is dan nog het profiel van voor de lijn.
+    public const float StairGrade = 1.2f;
+    public static int MarkStairs(List<int> line)
+    {
+        if (line == null || line.Count < 2) return 0; int n = line.Count; var h = new float[n]; var fix = new bool[n]; var d = new float[n];
+        for (int k = 0; k < n; k++) { fix[k] = RoadH.TryGetValue(line[k], out float v); h[k] = fix[k] ? v : Terrain(line[k]); if (k + 1 < n) d[k] = CellDist(line[k], line[k + 1]); }
+        for (int it = 0; it < 400; it++)
+        {
+            bool any = false;
+            for (int k = 0; k + 1 < n; k++)
+            {
+                float e = h[k + 1] - h[k], lim = MaxGrade * d[k]; if (Mathf.Abs(e) <= lim + 1e-4f || (fix[k] && fix[k + 1])) continue; any = true;
+                float over = (Mathf.Abs(e) - lim) * Mathf.Sign(e);
+                if (fix[k]) h[k + 1] -= over; else if (fix[k + 1]) h[k] += over; else { h[k] += over * 0.5f; h[k + 1] -= over * 0.5f; }
+            }
+            if (!any) break;
+        }
+        int made = 0;
+        for (int k = 0; k + 1 < n; k++)
+        {
+            int a = line[k], b = line[k + 1]; if (!Linked(a, b) || Underpass(a) || Underpass(b)) continue; float g = Mathf.Abs(h[k + 1] - h[k]) / Mathf.Max(1f, d[k]);
+            if (g > MaxGrade + 0.02f && g <= StairGrade && Stairs.Add(Key(a, b))) made++;
+        }
+        return made;
+    }
     public static string ProfileAll(List<List<int>> lines)
     {
+        if (Stairs.Count > 0) Stairs.RemoveWhere(k => !Links.Contains(k));   // een trap verdwijnt met zijn verbinding
         var idx = new Dictionary<int, int>(); var cells = new List<int>();
         foreach (var kv in Cells) if (IsWalk(kv.Key)) cells.Add(kv.Key);
         cells.Sort(); for (int k = 0; k < cells.Count; k++) idx[cells[k]] = k;   // vaste volgorde: het rechttrekken hangt van de volgorde af, en na laden lag Cells anders (vier vakken bij een dalbrug kwamen tot 0,3 m anders uit)
@@ -164,6 +192,7 @@ public static partial class PlanetCity
         foreach (int c in cells) foreach (int p in Partners(c))
         {
             if (!idx.ContainsKey(p) || !seen.Add(Key(Mathf.Min(c, p), Mathf.Max(c, p)))) continue;
+            if (IsStair(c, p)) continue;   // een trap mag steil zijn: de einden blijven waar ze zijn
             links.Add((idx[c], idx[p], Vector3.Angle(Planet.Cells[c].dir, Planet.Cells[p].dir) * Mathf.Deg2Rad * Planet.R));
         }
         links.Sort((x, y) => { int ax = Mathf.Min(x.a, x.b), ay = Mathf.Min(y.a, y.b); if (ax != ay) return ax.CompareTo(ay); int bx = Mathf.Max(x.a, x.b), by = Mathf.Max(y.a, y.b); if (bx != by) return bx.CompareTo(by); return x.a.CompareTo(y.a); });
@@ -217,7 +246,7 @@ public static partial class PlanetCity
             int a = kv.Key; if (!IsWalk(a)) continue;
             foreach (int b in Partners(a))
             {
-                if (!seen.Add(Key(Mathf.Min(a, b), Mathf.Max(a, b)))) continue; total++;
+                if (!seen.Add(Key(Mathf.Min(a, b), Mathf.Max(a, b))) || IsStair(a, b)) continue; total++;   // (een trap telt niet als helling)
                 float dist = Vector3.Angle(Planet.Cells[a].dir, Planet.Cells[b].dir) * Mathf.Deg2Rad * Planet.R; if (dist < 1f) continue;
                 float g = Mathf.Abs(G(a) - G(b)) / dist; if (g > max) max = g;
                 if (g > MaxGrade + 0.005f) { over++; detail?.Append("  steil ").Append(a).Append('-').Append(b).Append(' ').Append((g * 100f).ToString("0")).Append("% ").Append(IsBore(a, b) ? (SpanLinks.Contains(Key(a, b)) ? "dalbrug" : "tunnel") : IsNeighbour(a, b) ? "recht" : "schuin").Append(" G ").Append(G(a).ToString("0.0")).Append('/').Append(G(b).ToString("0.0")).Append(" niveau ").Append(levelled.Contains(a) || levelled.Contains(b)).Append(" partners ").Append(Partners(a).Count).Append('/').Append(Partners(b).Count).AppendLine(); }

@@ -205,7 +205,7 @@ public static partial class PlanetCity
     public static float FloorH(int i) { float m = Mathf.Min(G(i), MinCorner(i)); return Low.TryGetValue(i, out var lo) ? Mathf.Min(m, lo) : m; }   // het laagste punt in vak i
     public static float MinCorner(int i) { float m = G(i); for (int k = 0; k < Planet.Cells[i].corners.Length; k++) m = Mathf.Min(m, CornerH(i, k)); return m; }
     // hoogte van het oppervlak van vak i (maaiveld, of de weg die er helt) onder een wereldpunt
-    public static float SurfaceH(int i, Vector3 world) { if (IsPath(i)) return PathSurfaceH(i, world); var fr = new Frame(i); Vector3 d = world - fr.o; return G(i) + fr.H(Vector3.Dot(d, fr.e), Vector3.Dot(d, fr.n)); }
+    public static float SurfaceH(int i, Vector3 world) { if (IsPath(i)) return PathSurfaceH(i, world); if (Stairs.Count > 0 && IsRoad(i)) { float hs = StairH(i, world); if (!float.IsNaN(hs)) return hs; } var fr = new Frame(i); Vector3 d = world - fr.o; return G(i) + fr.H(Vector3.Dot(d, fr.e), Vector3.Dot(d, fr.n)); }
     // idem voor iemand die van vak 'from' komt of erheen gaat: op het pad onder een brug is dat de hoogte van het pad
     public static float SurfaceH(int i, int from, Vector3 world)
     {

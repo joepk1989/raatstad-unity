@@ -22,7 +22,7 @@ public static partial class PlanetCity
             if (under && Low.TryGetValue(i, out var lo)) { g = cg = lo; o = c.dir * (Planet.R + g); }   // het pad onder de brug
             foreach (int j in Partners(i))
             {
-                if (!IsWalk(j) || UnderLink(i, j) != under) continue;   // de weg op de brug en het pad eronder hellen elk naar hun eigen buren
+                if (!IsWalk(j) || UnderLink(i, j) != under || (IsRoad(i) && IsStair(i, j))) continue;   // de weg op de brug en het pad eronder hellen elk naar hun eigen buren
                 Vector3 w = (Planet.Cells[j].dir - c.dir) * Planet.R; float gj = LevelFor(j, i);
                 q.Add(new Vector2(Vector3.Dot(w, e), Vector3.Dot(w, n)) * 0.5f); d.Add((gj - g) * 0.5f); if (Mathf.Abs(gj - g) > 0.002f) any = true;
             }
