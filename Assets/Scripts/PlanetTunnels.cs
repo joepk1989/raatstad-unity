@@ -42,7 +42,32 @@ public static partial class PlanetCity
     // (ground) en ergens BoreNeed, dan links en rechts daarvan opnieuw. plain: kan een portaal zijn; step: de lijn gaat recht naar de
     // buur; inner: mag de berg in; road: de hoogte van de weg in een portaalvak. Geeft de paren (portaal, portaal) als index in de lijn.
     // span: een dalbrug zoeken in plaats van een tunnel (het terrein ertussen ligt ónder de rechte weg, SpanClear en SpanNeed)
-    static List<(int i, int j)> BoreSearch(List<int> line, System.Func<int, bool> plain, System.Func<int, bool> step, System.Func<int, bool> inner, System.Func<int, float> road, System.Func<int, float> ground, bool span = false)
+    // Van hoog naar laag (Terrein v2): loopt een lijn van hoog terrein naar laag terrein en is het verschil te groot voor een helling van
+    // MaxGrade, dan blijft de weg boven op het maaiveld en daalt hij als brug af tot hij beneden de grond raakt (in plaats van boven
+    // een diepe insnijding en beneden een hoge dijk). Het profiel hiervoor ligt nergens onder het terrein: elk vrij vak op het
+    // terrein of hoger, hooguit MaxGrade dalend vanaf het hoogste punt. Een brug komt waar dat profiel meer dan DropNeed boven de
+    // grond komt, de weg erachter nog minstens drie vakken op de grond ligt (een hoogvlakte, geen top: door een berg gaat een tunnel)
+    // en hij binnen SpanMax weer beneden is. free: een vak dat alleen bij deze lijn hoort. Geeft de paren als index in de lijn, h: het profiel.
+    const float DropNeed = LevelH;
+    static List<(int i, int j)> DropSearch(List<int> line, System.Func<int, bool> plain, System.Func<int, bool> step, System.Func<int, bool> inner, System.Func<int, bool> free, out float[] h)
+    {
+        int n = line.Count; var hh = new float[n]; var d = new float[n]; var fr = new bool[n]; h = hh;
+        for (int k = 0; k < n; k++) { int c = line[k]; fr[k] = free(k); hh[k] = fr[k] ? Terrain(c) : G(c); if (k + 1 < n) d[k] = CellDist(c, line[k + 1]); }
+        for (int k = 0; k + 1 < n; k++) if (fr[k + 1]) hh[k + 1] = Mathf.Max(hh[k + 1], hh[k] - MaxGrade * d[k]);
+        for (int k = n - 1; k > 0; k--) if (fr[k - 1]) hh[k - 1] = Mathf.Max(hh[k - 1], hh[k] - MaxGrade * d[k - 1]);
+        var at = new Dictionary<int, float>(); for (int k = 0; k < n; k++) at[line[k]] = hh[k];
+        bool Ok(int i, int j)
+        {
+            int hi = hh[i] >= hh[j] ? i : j, lo = hi == i ? j : i, back = hi < lo ? -1 : 1; float drop = hh[hi] - hh[lo];
+            if (drop < DropNeed || drop > (MaxGrade + 0.01f) * CellDist(line[i], line[j])) return false;
+            if (fr[hi] && hh[hi] - Terrain(line[hi]) > 0.5f) return false;   // boven begint de brug op de grond
+            if (fr[lo] && hh[lo] - Terrain(line[lo]) > 2.5f) return false;   // en beneden komt hij op de grond uit (hooguit een lage oprit)
+            for (int m = 1; m <= 3; m++) { int k = hi + back * m; if (k < 0 || k >= n || !fr[k]) break; if (hh[k] - Terrain(line[k]) > 0.5f) return false; }   // erachter: de weg op de grond (het eind van de lijn of een bestaande weg telt ook)
+            return true;
+        }
+        return BoreSearch(line, plain, step, inner, c => at.TryGetValue(c, out var v) ? v : G(c), c => Terrain(c), true, Ok, DropNeed);
+    }
+    static List<(int i, int j)> BoreSearch(List<int> line, System.Func<int, bool> plain, System.Func<int, bool> step, System.Func<int, bool> inner, System.Func<int, float> road, System.Func<int, float> ground, bool span = false, System.Func<int, int, bool> extra = null, float need = -1f)
     {
         var done = new List<(int i, int j)>();
         void Search(int lo, int hi)
@@ -57,9 +82,10 @@ public static partial class PlanetCity
                     if (j - i < 3 || !plain(line[j])) continue;   // minstens twee vakken berg (één vak is een gewone brug)
                     float ga = road(line[i]), gb = road(line[j]), dist = (Planet.Cells[line[i]].dir - Planet.Cells[line[j]].dir).magnitude * Planet.R;
                     if (Mathf.Abs(gb - ga) > BoreGrade * dist || (span && dist > SpanMax)) continue;
+                    if (extra != null && !extra(i, j)) continue;
                     float mn = float.MaxValue, mx = float.MinValue;
                     for (int k = i + 1; k < j; k++) { float cv = ground(line[k]) - Mathf.Lerp(ga, gb, (k - i) / (float)(j - i)); if (span) cv = -cv; mn = Mathf.Min(mn, cv); mx = Mathf.Max(mx, cv); }
-                    if (span ? (mn < SpanClear || mx < SpanNeed) : (mn < BoreCover || mx < BoreNeed)) continue;
+                    if (span ? (mn < SpanClear || mx < (need > 0f ? need : SpanNeed)) : (mn < BoreCover || mx < BoreNeed)) continue;
                     if (j - i > bj - bi || (j - i == bj - bi && mn > best)) { bi = i; bj = j; best = mn; }
                 }
             }
@@ -114,11 +140,16 @@ public static partial class PlanetCity
         System.Func<int, bool> Step = k => LineStep(line[k], line[k + 1]);
         var taken = new HashSet<int>();   // al in een tunnel: geen dal meer
         System.Func<int, bool> Inner = k => !IsWalk(line[k]) && Plain(line[k]) && Straight(line[k - 1], line[k], line[k + 1]) && !taken.Contains(k);
-        void Add(int i, int j, bool span)
+        void Add(int i, int j, bool span, float[] hs = null)
         {
-            int a = line[i], b = line[j]; float ha = Road(a), hb = Road(b);
+            int a = line[i], b = line[j]; float ha = hs != null ? hs[i] : Road(a), hb = hs != null ? hs[j] : Road(b);
             if (a > b) { (a, b) = (b, a); (ha, hb) = (hb, ha); }   // zoals de tunnel straks getekend wordt: vanaf het kleinste vak
             o.Add((a, b, ha, hb, span)); for (int k = i + 1; k < j; k++) taken.Add(k);
+        }
+        if (Ground2)   // van hoog naar laag: de afdalende brug (DropSearch, zoals ProfileAll na het leggen)
+        {
+            System.Func<int, bool> Free = k => { int c = line[k]; if (!IsWalk(c)) return true; if (Underpass(c)) return false; foreach (int p in Partners(c)) if (!line.Contains(p)) return false; return true; };
+            foreach (var (i, j) in DropSearch(line, Plain, Step, Inner, Free, out var hs)) Add(i, j, true, hs);
         }
         foreach (var (i, j) in BoreSearch(line, Plain, Step, Inner, Road, G)) Add(i, j, false);
         foreach (var (i, j) in BoreSearch(line, Plain, Step, Inner, Road, G, true)) Add(i, j, true);
