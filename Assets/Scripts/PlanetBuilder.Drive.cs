@@ -93,8 +93,10 @@ public partial class PlanetBuilder
     void VehicleAskGui(float W, float H)
     {
         if (!vehicleAsk) return;
-        float bw = 190f, bh = 46f, gap = 12f, w = bw * 3f + gap * 2f + 28f; var r = new Rect((W - w) * 0.5f, H - G - bh - 70f, w, bh + 52f);
+        Ui.DimBack(0.25f);   // midden in beeld, de rest van de interface is zolang weg
+        float bw = 190f, bh = 46f, gap = 12f, w = bw * 3f + gap * 2f + 28f; var r = new Rect((W - w) * 0.5f, (H - bh - 76f) * 0.5f, w, bh + 76f);
         Ui.Panel(r, false, 14f); Ui.Label(new Rect(r.x, r.y + 6f, r.width, 22f), "Instappen in…", Ui.T.Dim, Ui.InkDim, TextAnchor.MiddleCenter);
+        Ui.Label(new Rect(r.x, r.y + 36f + bh + 4f, r.width, 20f), "1, 2 of 3 · J of Esc: terug", Ui.T.Tiny, Ui.InkDim, TextAnchor.MiddleCenter, 10);
         if (Ui.Button(new Rect(r.x + 14f, r.y + 36f, bw, bh), "1  Cybertruck")) { vehicleAsk = false; useAsk = true; StartDrive(false); }
         if (Ui.Button(new Rect(r.x + 14f + bw + gap, r.y + 36f, bw, bh), "2  Tank")) { vehicleAsk = false; useAsk = true; StartDrive(true); }
         if (Ui.Button(new Rect(r.x + 14f + (bw + gap) * 2f, r.y + 36f, bw, bh), "3  Tankgevecht " + BattleName)) { vehicleAsk = false; useAsk = true; StartBattle(); }
