@@ -180,24 +180,32 @@ public static partial class PlanetCity
     public static string ProfileAll(List<List<int>> lines)
     {
         if (Stairs.Count > 0) Stairs.RemoveWhere(k => !Links.Contains(k));   // een trap verdwijnt met zijn verbinding
-        // van hoog naar laag: de afdalende brug (DropSearch), voor het profiel: de lange verbinding telt daarin mee
-        int drop = 0;
+        // recht door de berg (StraightSearch) en van hoog naar laag: de afdalende brug (DropSearch), voor het profiel: de lange verbinding telt daarin mee
+        int drop = 0, recht = 0;
         foreach (var line in lines)
         {
             if (line == null || line.Count < 4) continue;
             System.Func<int, bool> Step = k => LineStep(line[k], line[k + 1]) && Linked(line[k], line[k + 1]);
             System.Func<int, bool> Inner = k => { int c = line[k], p = line[k - 1], q = line[k + 1]; var ps = Partners(c); return Plain(c) && ps.Count == 2 && ps.Contains(p) && ps.Contains(q) && Straight(p, c, q); };
             System.Func<int, bool> Free = k => { int c = line[k]; if (!Plain(c)) return false; foreach (int j in Planet.Cells[c].nb) if (Underpass(j)) return false; foreach (int p in Partners(c)) if (!line.Contains(p)) return false; return true; };
+            foreach (var (i, j) in StraightSearch(line, Plain, Step, Inner, Free, out var hs))
+            {
+                for (int k = i; k >= 0 && Free(k) && (k == i || hs[k] < Terrain(line[k]) - 0.05f); k--) RoadBase[line[k]] = hs[k];   // de insnijding voor het portaal: tot waar de rechte lijn het terrein raakt
+                for (int k = j; k < line.Count && Free(k) && (k == j || hs[k] < Terrain(line[k]) - 0.05f); k++) RoadBase[line[k]] = hs[k];
+                Span(line, i, j); SpanLinks.Remove(Key(line[i], line[j])); recht++;
+            }
             foreach (var (i, j) in DropSearch(line, Plain, Step, Inner, Free, out _)) { Span(line, i, j); SpanLinks.Add(Key(line[i], line[j])); drop++; }
         }
         if (drop > 0) LastNote = drop == 1 ? "Een brug van hoog naar laag" : drop + " bruggen van hoog naar laag";
+        if (recht > 0) LastNote = recht == 1 ? "Een tunnel recht door de berg" : recht + " tunnels recht door de berg";
+        if (RoadBase.Count > 0) foreach (int c in new List<int>(RoadBase.Keys)) if (!IsWalk(c)) RoadBase.Remove(c);
         var idx = new Dictionary<int, int>(); var cells = new List<int>();
         foreach (var kv in Cells) if (IsWalk(kv.Key)) cells.Add(kv.Key);
         cells.Sort(); for (int k = 0; k < cells.Count; k++) idx[cells[k]] = k;   // vaste volgorde: het rechttrekken hangt van de volgorde af, en na laden lag Cells anders (vier vakken bij een dalbrug kwamen tot 0,3 m anders uit)
         int n = cells.Count; if (n == 0) return "geen wegen"; var h = new float[n]; var fix = new bool[n];
         // vast: onder of naast een brug (de hoogte komt uit de brug), en een kruispunt (dat blijft op het terrein: anders komt het in de
         // berg te liggen en eindigen drie tunnels met hun portalen op elkaar; de armen krijgen de tunnels en bruggen)
-        for (int k = 0; k < n; k++) { int c = cells[k]; h[k] = Terrain(c); if (Underpass(c)) fix[k] = true; foreach (int j in Planet.Cells[c].nb) if (Underpass(j)) fix[k] = true; }
+        for (int k = 0; k < n; k++) { int c = cells[k]; h[k] = RoadBase.TryGetValue(c, out float rb) ? rb : Terrain(c); if (Underpass(c)) fix[k] = true; foreach (int j in Planet.Cells[c].nb) if (Underpass(j)) fix[k] = true; }
         var junction = new bool[n]; for (int k = 0; k < n; k++) junction[k] = Partners(cells[k]).Count >= 3;
         var links = new List<(int a, int b, float d)>(); var seen = new HashSet<long>();
         foreach (int c in cells) foreach (int p in Partners(c))
@@ -245,7 +253,7 @@ public static partial class PlanetCity
         foreach (var kv in RoadH) if (!oldH.TryGetValue(kv.Key, out var o) || Mathf.Abs(o - kv.Value) > 1e-3f) TouchAround(kv.Key);
         foreach (var kv in oldH) if (!RoadH.ContainsKey(kv.Key)) TouchAround(kv.Key);
         int stapel = 0, onder = 0; foreach (var kv in RoadH) { int np = 0; foreach (int j in Partners(kv.Key)) if (IsBore(kv.Key, j)) np++; if (np >= 3) stapel++; if (np >= 2 && Terrain(kv.Key) > kv.Value + 9f) onder++; }
-        return RoadH.Count + " wegvakken op hooguit " + Mathf.RoundToInt(MaxGrade * 100f) + "%, " + tun + " tunnels, " + (brug + drop) + " bruggen, " + stapel + " kruispunten met drie portalen, " + onder + " vakken met twee portalen diep in de berg";
+        return RoadH.Count + " wegvakken op hooguit " + Mathf.RoundToInt(MaxGrade * 100f) + "%, " + (tun + recht) + " tunnels, " + (brug + drop) + " bruggen, " + stapel + " kruispunten met drie portalen, " + onder + " vakken met twee portalen diep in de berg";
     }
     // voor de test: de steilste helling tussen twee verbonden wegvakken (als fractie), en hoeveel verbindingen steiler zijn dan MaxGrade
     public static (float max, int over, int total) GradeStats() => GradeStats(null);

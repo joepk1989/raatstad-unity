@@ -42,6 +42,49 @@ public static partial class PlanetCity
     // (ground) en ergens BoreNeed, dan links en rechts daarvan opnieuw. plain: kan een portaal zijn; step: de lijn gaat recht naar de
     // buur; inner: mag de berg in; road: de hoogte van de weg in een portaalvak. Geeft de paren (portaal, portaal) als index in de lijn.
     // span: een dalbrug zoeken in plaats van een tunnel (het terrein ertussen ligt ónder de rechte weg, SpanClear en SpanNeed)
+    // Recht door de berg (Terrein v2): de weg blijft op de rechte lijn tussen de voet van de berg aan beide kanten en klimt niet eerst
+    // de flank op. Per berg zoekt dit de langste rechte koorde van voet tot voet die nergens boven het terrein ligt (hooguit BoreGrade
+    // steil, alleen over vakken die bij deze lijn horen). Een voet is een plek waar het terrein buiten de berg gewoon doorloopt: komt
+    // het daar binnen drie vakken meer dan 4,5 m boven of onder het verlengde van de koorde (een dal ervoor, of een uitgang hoog op de
+    // flank), dan is het geen voet en blijft het bij de gewone opbouw. Het moet echt een berg zijn: het terrein komt minstens BoreNeed
+    // boven beide voeten (een hoogvlakte is geen berg: daar komt de afdalende brug) en ligt over minstens drie vakken diep genoeg
+    // voor de koker. De tunnel komt waar het terrein ver genoeg boven de koorde ligt; ervoor ligt de weg in een insnijding tot de voet.
+    // Geeft de paren als index in de lijn, h: het profiel.
+    static List<(int i, int j)> StraightSearch(List<int> line, System.Func<int, bool> plain, System.Func<int, bool> step, System.Func<int, bool> inner, System.Func<int, bool> free, out float[] h)
+    {
+        int n = line.Count; var hh = new float[n]; var s = new float[n]; var y = new float[n]; var fr = new bool[n]; h = hh;
+        for (int k = 0; k < n; k++) { int c = line[k]; fr[k] = free(k); y[k] = fr[k] ? Mathf.Max(Terrain(c), DryRoad) : G(c); hh[k] = y[k]; if (k > 0) s[k] = s[k - 1] + CellDist(line[k - 1], c); }
+        var own = new int[n]; for (int k = 0; k < n; k++) own[k] = -1;   // in welke koorde ligt vak k
+        int nc = 0;
+        bool Foot(int e, int dir, float y0, float slope)   // loopt het terrein buiten eind e gewoon door (dir: naar buiten)?
+        {
+            for (int m = 1; m <= 3; m++) { int k = e + dir * m; if (k < 0 || k >= n || !fr[k]) break; if (Mathf.Abs(y[k] - (y0 + slope * (s[k] - s[e]))) > 4.5f) return false; }
+            return true;
+        }
+        void Find(int lo, int hi)
+        {
+            int bf = -1, bg = -1;
+            for (int f = lo; f < hi; f++)
+                for (int g = f + 1; g <= hi; g++)
+                {
+                    if (!step(g - 1) || (g - 1 > f && !fr[g - 1])) break;
+                    if (g - f < 5 || g - f <= bg - bf) continue;
+                    float len = s[g] - s[f], slope = (y[g] - y[f]) / len; if (Mathf.Abs(slope) > BoreGrade) continue;
+                    float top = float.MinValue; bool ok = true; int run = 0, best = 0;
+                    for (int k = f + 1; k < g && ok; k++) { float cv = y[k] - (y[f] + slope * (s[k] - s[f])); if (cv < -0.05f) ok = false; top = Mathf.Max(top, y[k]); run = cv >= BoreCover ? run + 1 : 0; best = Mathf.Max(best, run); }
+                    if (!ok || best < 3 || top - Mathf.Max(y[f], y[g]) < BoreNeed) continue;
+                    if (!Foot(f, -1, y[f], slope) || !Foot(g, 1, y[g], slope)) continue;
+                    bf = f; bg = g;
+                }
+            if (bf < 0) return;
+            for (int k = bf; k <= bg; k++) { hh[k] = Mathf.Lerp(y[bf], y[bg], (s[k] - s[bf]) / (s[bg] - s[bf])); own[k] = nc; }
+            nc++; Find(lo, bf); Find(bg, hi);
+        }
+        Find(0, n - 1);
+        if (nc == 0) return new List<(int i, int j)>();
+        var at = new Dictionary<int, float>(); for (int k = 0; k < n; k++) at[line[k]] = hh[k];
+        return BoreSearch(line, plain, step, inner, c => at.TryGetValue(c, out var v) ? v : G(c), c => Terrain(c), false, (i, j) => own[i] >= 0 && own[i] == own[j]);
+    }
     // Van hoog naar laag (Terrein v2): loopt een lijn van hoog terrein naar laag terrein en is het verschil te groot voor een helling van
     // MaxGrade, dan blijft de weg boven op het maaiveld en daalt hij als brug af tot hij beneden de grond raakt (in plaats van boven
     // een diepe insnijding en beneden een hoge dijk). Het profiel hiervoor ligt nergens onder het terrein: elk vrij vak op het
@@ -146,9 +189,10 @@ public static partial class PlanetCity
             if (a > b) { (a, b) = (b, a); (ha, hb) = (hb, ha); }   // zoals de tunnel straks getekend wordt: vanaf het kleinste vak
             o.Add((a, b, ha, hb, span)); for (int k = i + 1; k < j; k++) taken.Add(k);
         }
-        if (Ground2)   // van hoog naar laag: de afdalende brug (DropSearch, zoals ProfileAll na het leggen)
+        if (Ground2)   // recht door de berg en van hoog naar laag (StraightSearch en DropSearch, zoals ProfileAll na het leggen)
         {
             System.Func<int, bool> Free = k => { int c = line[k]; if (!IsWalk(c)) return true; if (Underpass(c)) return false; foreach (int p in Partners(c)) if (!line.Contains(p)) return false; return true; };
+            foreach (var (i, j) in StraightSearch(line, Plain, Step, Inner, Free, out var hr)) Add(i, j, false, hr);
             foreach (var (i, j) in DropSearch(line, Plain, Step, Inner, Free, out var hs)) Add(i, j, true, hs);
         }
         foreach (var (i, j) in BoreSearch(line, Plain, Step, Inner, Road, G)) Add(i, j, false);

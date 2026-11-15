@@ -14,7 +14,10 @@ public static partial class PlanetCity
     // laat zo'n verbinding met rust (de weg en het pad aan de einden blijven op hun hoogte) en het pad wordt er met treden getekend.
     public static readonly HashSet<long> Stairs = new HashSet<long>();
     public static bool IsStair(int a, int b) => Stairs.Count > 0 && Stairs.Contains(Key(a, b)); public static void SetStair(int a, int b) { if (Linked(a, b)) Stairs.Add(Key(a, b)); }   // (voor de test)
-    public static void ClearLinks() { Stairs.Clear(); Links.Clear(); partners.Clear(); Style.Clear(); Bike.Clear(); Rot.Clear(); Under.Clear(); Low.Clear(); OneWay.Clear(); TunnelLinks.Clear(); SpanLinks.Clear(); LowerLinks.Clear(); preCarve.Clear(); preLevel.Clear(); }
+    // Weghoogtes bij een tunnel recht door een berg (StraightSearch in PlanetTunnels.cs): het wegprofiel begint voor deze vakken op deze
+    // hoogte in plaats van op het terrein, zodat de weg niet eerst de flank op klimt. Verdwijnt met het wegvak (ProfileAll).
+    public static readonly Dictionary<int, float> RoadBase = new Dictionary<int, float>();
+    public static void ClearLinks() { RoadBase.Clear(); Stairs.Clear(); Links.Clear(); partners.Clear(); Style.Clear(); Bike.Clear(); Rot.Clear(); Under.Clear(); Low.Clear(); OneWay.Clear(); TunnelLinks.Clear(); SpanLinks.Clear(); LowerLinks.Clear(); preCarve.Clear(); preLevel.Clear(); }
     public static bool Linked(int i, int j) => Links.Contains(Key(i, j));
     // Per wegvak: stijl (1 = brede weg, 2 = laan; ontbreekt = gewone weg), brug (wat eronder ligt: meer, water of kuil) en
     // eenrichtingsverkeer per verbinding (alleen van i naar j)
