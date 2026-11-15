@@ -66,6 +66,8 @@ public static class TankModel
         // ---- schakels: blokjes die over de omtrek van de rups lopen (de onderkant en voor- en achterkant zijn zichtbaar onder de schort)
         var rig = root.gameObject.AddComponent<TankRig>();
         rig.turret = turret; rig.gun = gun; rig.muzzle = muzzle;
+        rig.PhysWheels = Wheels; rig.WheelR = WheelR; rig.TrackHalf = (TrackX0 + TrackX1) * 0.5f;
+        rig.HullBox = new Bounds(new Vector3(0f, 1.05f, 0f), new Vector3(Width * 0.97f, 1.0f, Length * 0.96f)); rig.TopBox = new Bounds(new Vector3(0f, 2.0f, -0.4f), new Vector3(2.4f, 0.8f, 3.2f));
         var path = new List<Vector2>(prof); rig.SetPath(path);
         var tm = Mats.Get("tank_schakel", Tread);
         var cleat = new MeshBuilder(); Box(cleat, Vector3.zero, new Vector3(TrackX1 - TrackX0 + 0.06f, 0.07f, 0.16f)); var cm = cleat.Build();
@@ -160,6 +162,15 @@ public class TankRig : MonoBehaviour
 {
     public const int Cleats = 30;
     public Transform turret, gun, muzzle;
+    // voor de fysica (PlayerCar): de veerpunten (paren links, rechts), het hart van een wiel boven de grond, de halve spoorbreedte
+    // en de botsvormen van romp en koepel
+    public Vector3[] PhysWheels; public float WheelR = 0.45f, TrackHalf = 1.4f; public Bounds HullBox, TopBox;
+    // wielen van een ingeladen model (ModelTank): draaien om hun as met de rups van hun kant mee
+    readonly List<(Transform t, bool left, float r)> wheels = new List<(Transform, bool, float)>();
+    public void AddWheel(Transform t, bool left, float r) { wheels.Add((t, left, r)); }
+    // rupsen van een ingeladen model: de textuur schuift mee (k: textuurlengte per meter)
+    readonly Material[] trackMat = new Material[2]; float trackK; readonly float[] trackOfs = new float[2];
+    public void SetTrack(bool left, Material m, float k) { trackMat[left ? 0 : 1] = m; trackK = k; }
     public readonly List<Transform>[] cleats = { new List<Transform>(), new List<Transform>() };
     readonly List<Vector2> path = new List<Vector2>(); readonly List<float> acc = new List<float>(); float total; readonly float[] run = new float[2];
     public void SetPath(List<Vector2> p)
@@ -173,6 +184,14 @@ public class TankRig : MonoBehaviour
     // left en right: afgelegde weg van elke rups (m) sinds de vorige keer
     public void Move(float left, float right)
     {
+        foreach (var w in wheels) w.t.Rotate(Vector3.right, (w.left ? left : right) / w.r * Mathf.Rad2Deg, Space.Self);
+        for (int k = 0; k < 2; k++)
+        {
+            if (trackMat[k] == null) continue;
+            trackOfs[k] = Mathf.Repeat(trackOfs[k] + (k == 0 ? left : right) * trackK, 1f);
+            trackMat[k].SetTextureOffset("_BaseMap", new Vector2(trackOfs[k], 0f));
+        }
+        if (total <= 0f) return;
         run[0] = Mathf.Repeat(run[0] + left, total); run[1] = Mathf.Repeat(run[1] + right, total);
         for (int side = 0; side < 2; side++)
         {

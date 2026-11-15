@@ -2,9 +2,11 @@ using System.Collections.Generic;
 using UnityEngine;
 
 // De tank (J, dan 2): de koepel en het kanon draaien naar waar de camera naartoe kijkt (het vizier in het midden van het beeld), met
-// voorhouden voor de zwaartekracht; een klik schiet een granaat (150 m/s, valt naar het middelpunt van de planeet). Bij de inslag
+// voorhouden voor de zwaartekracht; een klik schiet een granaat (120 m/s, valt naar het middelpunt van de planeet; raakt hij na 3 s
+// niets, dan ontploft hij in de lucht). Bij de inslag
 // een flits, vuurbal, rook en brokstukken; er verdwijnt niets (geen wegen, geen huizen: huizen beschadigen komt later), kaal
-// terrein krijgt een kuiltje en het vak en zijn buren worden zwartgeblakerd (PlanetCity.Scorch). Mensen en auto's in de buurt vliegen weg
+// terrein krijgt een kuiltje en het vak en zijn buren worden zwartgeblakerd (PlanetCity.Scorch); op een weg of gebouw komt een
+// roetvlek op het oppervlak (Soot). Mensen en auto's in de buurt vliegen weg
 // (PlanetLife.Blast). Elk schot is één stap in de undo (Ctrl+Z na het uitstappen zet het terug).
 public partial class PlanetBuilder
 {
@@ -12,8 +14,8 @@ public partial class PlanetBuilder
     class Puff { public Transform tr; public Vector3 vel; public float t, life, size; public bool grav, fire; }
     readonly List<Shell> shells = new List<Shell>(); readonly List<Puff> puffs = new List<Puff>();
     float reload; Vector3 aimPoint; bool hasAim; static AudioClip shotClip, boomClip; static Mesh puffMesh;
-    const float ShellSpeed = 150f, ReloadTime = 1.4f;
-    public int TankShots, TankHits, TankClickShots; public Vector3 TankLastHit; public float TankAimErr;   // voor een test
+    const float ShellSpeed = 120f, ShellLife = 3f, ReloadTime = 1.4f;   // de planeet is klein (baansnelheid zo'n 77 m/s): een granaat die niets raakt ontploft na 3 s (zo'n 360 m) in de lucht
+    public int TankShots, TankHits, TankClickShots; public Vector3 TankLastHit; public float TankAimErr; public string TankAimInfo = "";   // voor een test
     public static bool AutoFire;   // voor een test: schieten zonder klik
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)] static void ResetTankStatics() { shotClip = boomClip = null; puffMesh = null; AutoFire = false; }
 
@@ -29,6 +31,7 @@ public partial class PlanetBuilder
             bool click = Cursor.lockState == CursorLockMode.Locked && Inp.LeftDown && PlayerCar.Clicked != Time.frameCount && !helpOpen;
             if ((click || AutoFire) && reload <= 0f) { if (click) TankClickShots++; AutoFire = false; Fire(L.PlayerTankRig); }
         }
+        SootTick(dt);
         for (int i = shells.Count - 1; i >= 0; i--) if (!FlyShell(shells[i], dt)) { if (shells[i].vis != null) Destroy(shells[i].vis.gameObject); shells.RemoveAt(i); }
         for (int i = puffs.Count - 1; i >= 0; i--)
         {
@@ -64,6 +67,7 @@ public partial class PlanetBuilder
     {
         reload = ReloadTime; TankShots++;
         Vector3 at = tr.muzzle.position, dir = tr.gun.forward;
+        { float gp = tr.gun.localEulerAngles.x; if (gp > 180f) gp -= 360f; TankAimInfo = $"doel {Vector3.Distance(at, aimPoint):0} m ({(hasAim ? "raak" : "lucht")}), kanon {gp:0.0}°, loopmond {tr.muzzle.localPosition}, loop vooruit·op {Vector3.Dot(dir, at.normalized):0.00}"; }
         TankAimErr = Vector3.Angle(Vector3.ProjectOnPlane(dir, at.normalized), Vector3.ProjectOnPlane(aimPoint - at, at.normalized));   // links-rechts: hoe ver de koepel nog van het vizier af staat
         var L = PlanetLife.I; Vector3 carV = L != null ? L.PlayerVelocity : Vector3.zero;
         var vis = MakeShellVis(); vis.position = at; vis.rotation = Quaternion.LookRotation(dir, at.normalized);
@@ -76,11 +80,11 @@ public partial class PlanetBuilder
 
     bool FlyShell(Shell s, float dt)
     {
-        s.t += dt; if (s.t > 7f) return false;
+        s.t += dt; if (s.t > ShellLife) { AirBurst(s.pos); return false; }
         Vector3 up = s.pos.normalized, nv = s.vel - up * 9.81f * dt, np = s.pos + (s.vel + nv) * 0.5f * dt;
         Vector3 seg = np - s.pos; float len = seg.magnitude;
         if (len > 1e-4f && Physics.Raycast(s.pos, seg / len, out RaycastHit hit, len, Layers.Wijzen | Layers.Muren, QueryTriggerInteraction.Ignore))
-        { Explode(hit.point, hit.normal); return false; }
+        { Explode(hit.point, hit.normal, hit.collider.gameObject.layer); return false; }
         // onder het terrein (een gat in de botsing): daar ontploffen
         float g = PlanetCity.TerrainAt(np.normalized); if (np.magnitude < Planet.R + g - 0.5f && !PlanetCity.InBore(np, out _)) { Explode(np.normalized * (Planet.R + g), np.normalized); return false; }
         s.pos = np; s.vel = nv;
@@ -88,7 +92,15 @@ public partial class PlanetBuilder
         return true;
     }
 
-    void Explode(Vector3 p, Vector3 n)
+    // een ontploffing in de lucht: alleen het effect
+    void AirBurst(Vector3 p)
+    {
+        Vector3 up = p.normalized; Burst(p, up, 1.1f, 5, true);
+        for (int k = 0; k < 5; k++) Smoke(p + Random.insideUnitSphere * 1.0f, Random.insideUnitSphere * 2f, Random.Range(1.4f, 2.2f), Random.Range(1.8f, 2.8f));
+        PlayAt(BoomClip(), p, 0.8f);
+    }
+
+    void Explode(Vector3 p, Vector3 n, int layer = Layers.Bodem)
     {
         TankHits++; TankLastHit = p;
         Vector3 up = p.normalized;
@@ -111,12 +123,47 @@ public partial class PlanetBuilder
         foreach (int j in Planet.Cells[c].nb) if (PlanetCity.Cells.ContainsKey(j)) bare = false;
         if (bare) PlanetCity.SetTerr(c, PlanetCity.G(c) - 0.6f);
         Blacken(c, 70); foreach (int j in Planet.Cells[c].nb) Blacken(j, 25);
+        // op een weg, stoep of gebouw: een roetvlek op het oppervlak zelf (de schroeiplekken in Scorch kleuren alleen het terrein)
+        if (layer == Layers.Weg || layer == Layers.Gebouw) Soot(p, n, layer == Layers.Gebouw ? 1.1f : 1.8f);
         Changed(); Sounds.Hush();
     }
     static void Blacken(int c, byte v)
     {
         if (!PlanetCity.Scorch.TryGetValue(c, out byte old) || (old < v && old < PlanetCity.ScorchRim)) PlanetCity.Scorch[c] = v;
         PlanetCity.Touch(c);
+    }
+
+    // ---- roetvlekken op wegen en gebouwen: een platte, rafelige vlek net boven het oppervlak. Ze horen bij de undo-stap van het
+    // schot (Ctrl+Z haalt ze weg) en verdwijnen als er niets meer onder zit (het gebouw is weg); ze worden niet bewaard.
+    class SootMark { public GameObject g; public int undoN, miss; public Vector3 at; }
+    readonly List<SootMark> soot = new List<SootMark>(); Transform sootRoot; float sootCheckT;
+    void Soot(Vector3 p, Vector3 n, float r)
+    {
+        if (sootRoot == null) sootRoot = new GameObject("Roetvlekken").transform;
+        Vector3 t = Vector3.Cross(n, Mathf.Abs(Vector3.Dot(n, Vector3.up)) > 0.9f ? Vector3.right : Vector3.up).normalized, b = Vector3.Cross(n, t);
+        var mb = new MeshBuilder(); Vector3 c = p + n * 0.025f; const int N = 14;
+        var outer = new Vector3[N]; var inner = new Vector3[N];
+        for (int k = 0; k < N; k++)
+        {
+            float a = k * Mathf.PI * 2f / N, ro = r * Random.Range(0.75f, 1.25f), ri = ro * Random.Range(0.45f, 0.65f);
+            Vector3 d = t * Mathf.Cos(a) + b * Mathf.Sin(a); outer[k] = c + d * ro; inner[k] = c + d * ri + n * 0.004f;
+        }
+        var core = new MeshBuilder();
+        for (int k = 0; k < N; k++) { int k2 = (k + 1) % N; core.Tri(c + n * 0.004f, inner[k], inner[k2], n); mb.Quad(inner[k], outer[k], outer[k2], inner[k2], n); }
+        var g = new GameObject("roet"); g.transform.SetParent(sootRoot, true);
+        var a1 = new GameObject("rand"); a1.transform.SetParent(g.transform, true); a1.AddComponent<MeshFilter>().sharedMesh = mb.Build(); a1.AddComponent<MeshRenderer>().sharedMaterial = Mats.Get("tank_roetgrijs", new Color(0.2f, 0.19f, 0.18f));
+        var a2 = new GameObject("kern"); a2.transform.SetParent(g.transform, true); a2.AddComponent<MeshFilter>().sharedMesh = core.Build(); a2.AddComponent<MeshRenderer>().sharedMaterial = Mats.Get("tank_roet", new Color(0.07f, 0.065f, 0.06f));
+        soot.Add(new SootMark { g = g, undoN = undo.Count, at = p });
+    }
+    void SootTick(float dt)
+    {
+        for (int i = soot.Count - 1; i >= 0; i--) if (soot[i].g == null || undo.Count < soot[i].undoN) { if (soot[i].g != null) Destroy(soot[i].g); soot.RemoveAt(i); }   // ongedaan gemaakt
+        sootCheckT -= dt; if (sootCheckT > 0f) return; sootCheckT = 1f;
+        for (int i = soot.Count - 1; i >= 0; i--)   // er zit niets meer onder (twee keer achter elkaar: tijdens het opnieuw tekenen ontbreekt een botsvorm even)
+        {
+            if (Physics.CheckSphere(soot[i].at, 0.35f, Layers.Grond, QueryTriggerInteraction.Ignore)) { soot[i].miss = 0; continue; }
+            if (++soot[i].miss >= 3) { Destroy(soot[i].g); soot.RemoveAt(i); }
+        }
     }
 
     // ---- effecten (eenvoudige blokjes en bollen, geen deeltjessysteem)

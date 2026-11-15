@@ -62,7 +62,12 @@ public partial class PlanetLife
         var c = new Car { free = true, persona = 0, b = Planet.Nearest(pos), hp = 1e9f };
         c.a = c.c = c.n = c.b;
         var root = new GameObject(tank ? "Eigen tank" : "Eigen auto").transform; root.SetParent(transform, false); root.gameObject.layer = Layers.Mens; c.root = root;
-        if (tank) { PlayerTankRig = TankModel.Build(root); c.type = "tank"; pWheelR = TankModel.WheelR; }
+        if (tank)   // de K3 (ModelTank), anders de eigen tank (TankModel); de vering naar de maten van het model
+        {
+            PlayerTankRig = ModelTank.Build(root) ?? TankModel.Build(root); c.type = "tank"; pWheelR = PlayerTankRig.WheelR;
+            var s = TankRigSpec; rig = new Rig { mass = s.mass, spring = s.spring, dampIn = s.dampIn, dampOut = s.dampOut, antiRoll = s.antiRoll, mu = s.mu, top = s.top, accel = s.accel, back = s.back, maxW = s.maxW, maxH = s.maxH, comY = s.comY, tank = true,
+                wheels = PlayerTankRig.PhysWheels, rest = PMount - pWheelR + s.mass * 9.81f / PlayerTankRig.PhysWheels.Length / s.spring };   // in rust staat het wiel waar het model het tekent
+        }
         else if (ModelCar.Build(root, "cybertruck")) { c.type = "cybertruck"; pWheelR = ModelCar.WheelRadius("cybertruck"); }
         else { c.type = LowPolyCar.Build(root); pWheelR = 0.36f; }
         c.wheels = root.GetComponent<CarWheels>();
@@ -106,9 +111,9 @@ public partial class PlanetLife
         if (rig.tank)   // de tank: de romp boven de rupsen (de vering doet de grond) en de koepel
         {
             if (pMat == null) MakePMat();
-            float tl = TankModel.Length * 0.96f;
-            var h0 = root.gameObject.AddComponent<BoxCollider>(); h0.center = new Vector3(0f, 1.05f, 0f); h0.size = new Vector3(TankModel.Width * 0.97f, 1.0f, tl); h0.sharedMaterial = pMat;
-            var h1 = root.gameObject.AddComponent<BoxCollider>(); h1.center = new Vector3(0f, 2.0f, -0.4f); h1.size = new Vector3(2.4f, 0.8f, 3.2f); h1.sharedMaterial = pMat;
+            var trg = root.GetComponent<TankRig>();
+            var h0 = root.gameObject.AddComponent<BoxCollider>(); h0.center = trg.HullBox.center; h0.size = trg.HullBox.size; h0.sharedMaterial = pMat;
+            var h1 = root.gameObject.AddComponent<BoxCollider>(); h1.center = trg.TopBox.center; h1.size = trg.TopBox.size; h1.sharedMaterial = pMat;
             return;
         }
         // de wereldbegrenzing van een gedraaide mesh is ruim: iets kleiner nemen
@@ -244,7 +249,7 @@ public partial class PlanetLife
         if (rig.tank)   // de rupsen: links en rechts lopen met hun eigen snelheid (vooruit plus of min het draaien)
         {
             if (PlayerTankRig == null || prb == null) return;
-            float v = PlayerSpeed, w = Vector3.Dot(prb.angularVelocity, player.root.up), half = (TankModel.TrackX0 + TankModel.TrackX1) * 0.5f;
+            float v = PlayerSpeed, w = Vector3.Dot(prb.angularVelocity, player.root.up), half = PlayerTankRig.TrackHalf;
             PlayerTankRig.Move((v + w * half) * dt, (v - w * half) * dt);
             return;
         }
