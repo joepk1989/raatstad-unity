@@ -460,14 +460,26 @@ public static class ModuleMesh
                     Prism("step", new[] { Pt(t0, Ac), Pt(t0, Ap), Pt(t1, Ap), Pt(t1, Ac) }, top - TH, top, "w_wood");
                 }
                 Cyl("metal", a, Ac / 0.866f, Ac / 0.866f, y0, rise + 1.05f, 6);
+                // De leuning langs de treden (handregel en een tussenregel) loopt schuin omhoog tot onder de vloer erboven: hoger staat de
+                // balustrade van de verdieping al op dezelfde lijn, en twee leuningen door elkaar is rommelig.
+                float topY = y0 + rise, cap = li + 1 < m.lv.Count ? topY - MV2.FLOOR_T - 0.03f : 1e9f;
                 for (int kk = 1; kk <= NS - 1; kk++)
                 {
-                    var A = Pt(Th(kk), Ap); float yk = y0 + kk * hs; Post("metal", A, yk - TH, yk + 0.95f);
-                    if (kk < NS - 1) Bar("metal", A3(A, yk + 0.95f), A3(Pt(Th(kk + 1), Ap), yk + hs + 0.95f), 0.05f);
+                    var A = Pt(Th(kk), Ap); float yk = y0 + kk * hs; if (yk + 0.4f > cap) break;
+                    Post("metal", A, yk - TH, Mathf.Min(yk + 0.95f, cap), 0.035f);
+                    if (kk < NS - 1 && yk + hs + 0.95f <= cap)
+                    {
+                        var B = Pt(Th(kk + 1), Ap);
+                        Bar("metal", A3(A, yk + 0.95f), A3(B, yk + hs + 0.95f), 0.07f, 0.05f); Bar("metal", A3(A, yk + 0.5f), A3(B, yk + hs + 0.5f), 0.03f);
+                    }
                 }
-                float topY = y0 + rise;
-                for (int kk = 0; kk <= NS - 3; kk++) { var A = Pt(Th(kk), Ap); var B = Pt(Th(kk + 1), Ap); Post("metal", A, topY, topY + 0.95f); Bar("metal", A3(A, topY + 0.95f), A3(B, topY + 0.95f), 0.05f); }
-                for (int kk = NS - 2; kk <= NS - 1; kk++) Post("metal", Pt(Th(kk), Ap), topY, topY + 0.95f);
+                // de balustrade op de verdieping: rondom het trapgat, behalve bij de uitstap (de laatste twee treden)
+                for (int kk = 0; kk <= NS - 3; kk++)
+                {
+                    var A = Pt(Th(kk), Ap); var B = Pt(Th(kk + 1), Ap); Post("metal", A, topY, topY + 0.95f, 0.035f);
+                    Bar("metal", A3(A, topY + 0.95f), A3(B, topY + 0.95f), 0.07f, 0.05f); Bar("metal", A3(A, topY + 0.5f), A3(B, topY + 0.5f), 0.03f); Bar("metal", A3(A, topY + 0.12f), A3(B, topY + 0.12f), 0.03f);
+                }
+                Post("metal", Pt(Th(NS - 2), Ap), topY, topY + 0.95f, 0.045f);   // de eindpaal bij de uitstap
                 return;
             }
             if (S.k == "hexramp")
