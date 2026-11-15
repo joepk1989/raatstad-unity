@@ -53,6 +53,9 @@ public static partial class PlanetCity
     // één boom van soort kind (0 loofboom, 1 den, 2 berk, 3 struik) op (x, z), stam vanaf hoogte th
     static void TreeAt(System.Func<string, MeshBuilder> M, Frame fr, int kind, float x, float z, float th, float sc, float rot, System.Random rnd)
     {
+        // sloopbaar (PlanetCity.Wreck.cs): een omgereden boom blijft weg; de toevalsgetallen lopen gelijk door
+        if (!PropBegin(kind == 0 ? PropBoom : kind == 1 ? PropDen : kind == 2 ? PropBerk : PropStruik, fr.P(x, th, z), fr.u, (kind == 3 ? 1.1f : kind == 2 ? 0.25f : 0.35f) * sc, (kind == 0 ? 8.8f : kind == 1 ? 13.2f : kind == 2 ? 11f : 1.6f) * sc,
+            (kind == 0 ? 2.6f : kind == 1 ? 2.6f : kind == 2 ? 1.6f : 0f) * sc, (kind == 0 ? 2.8f : kind == 1 ? 1.8f : kind == 2 ? 4.4f : 0f) * sc)) { if (kind == 0) rnd.Next(3); return; }
         switch (kind)
         {
             case 0:   // loofboom: rechte stam, een zeshoekige kroon (smal onder, breed in het midden, afgeplat boven)
@@ -77,6 +80,7 @@ public static partial class PlanetCity
                 Prism(M("struik"), fr, x, z, rot, 1.4f * sc, 0.5f * sc, th + 0.7f * sc, th + 1.6f * sc, true, false);
                 break;
         }
+        PropEnd();
     }
 
     // zeshoekig prisma of afgeknotte kegel om (cx, cz), gedraaid over rot; r1 = 0 is een punt; deksels boven en/of onder

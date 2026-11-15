@@ -216,7 +216,7 @@ public static partial class PlanetCity
             float phi = na == 1 ? 7f : Mathf.Repeat(angOf(b) - angOf(a), Mathf.PI * 2f);
             if (phi > bestPhi) { bestPhi = phi; var lc = corner(c, 3); lampAt = lc[lc.Length / 2]; }
         }
-        if (na != 2) { Cone(M("paal"), fr, lampAt.x, lampAt.y, 0.08f, SY, 5.2f, 0.06f); Cone(M("lamp"), fr, lampAt.x, lampAt.y, 0.28f, 4.9f, 5.35f, 0.2f); }   // lantaarn op de breedste hoek (kruising of kop)
+        if (na != 2 && PropBegin(PropPaal, fr.P(lampAt.x, SY, lampAt.y), fr.u, 0.14f, 5.35f)) { Cone(M("paal"), fr, lampAt.x, lampAt.y, 0.08f, SY, 5.2f, 0.06f); Cone(M("lamp"), fr, lampAt.x, lampAt.y, 0.28f, 4.9f, 5.35f, 0.2f); PropEnd(); }   // lantaarn op de breedste hoek (kruising of kop)
         // per arm: markering, pijlen, middenberm, zebrapaden, verkeerslichten en brugleuningen
         for (int c = 0; c < na; c++)
         {
@@ -231,7 +231,7 @@ public static partial class PlanetCity
             bool medEnd = na == 2 && stA[order[(c + 1) % na]] != 2;   // een laan die in de knoop overgaat in een smallere weg: de berm houdt daar op
             if (st == 2 && (na == 1 || na >= 3 || medEnd)) Median(M, fr, e, e + d * Mathf.Max(0.2f, na >= 3 ? Mathf.Min(L - 1f, 1.2f) : L - 1f));   // op een kruising houdt de berm op bij de monding: daar slaat het verkeer af
             // zebrapaden, stopstrepen en haaientanden staan op de arm buiten de knoop (ChainMesh: daar is de weg recht, ook bij scherpe hoeken)
-            if (signals && CanDrive(ids[a], i)) { Vector2 pp = PoleAt(e, d); Cone(M("paal"), fr, pp.x, pp.y, 0.08f, SY, 3.9f, 0.06f); Cone(M("paal"), fr, pp.x, pp.y, 0.24f, 3.3f, 3.95f, 0.24f); }
+            if (signals && CanDrive(ids[a], i)) { Vector2 pp = PoleAt(e, d); if (PropBegin(PropPaal, fr.P(pp.x, SY, pp.y), fr.u, 0.14f, 3.95f)) { Cone(M("paal"), fr, pp.x, pp.y, 0.08f, SY, 3.9f, 0.06f); Cone(M("paal"), fr, pp.x, pp.y, 0.24f, 3.3f, 3.95f, 0.24f); PropEnd(); } }
             if (bridgeNow) { Parapet(M, fr, P(a, -hwS, 0f), P(a, -hwS, sB[cp]), -r); Parapet(M, fr, P(a, hwS, 0f), P(a, hwS, sA[c]), r); }
         }
     }

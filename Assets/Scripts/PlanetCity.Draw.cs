@@ -218,10 +218,12 @@ public static partial class PlanetCity
                         for (int j = 0; j < 3; j++)
                         {
                             float a = a0 + j * Mathf.PI * 2f / 3f, rr = fr.rad * 0.6f, bx = Mathf.Cos(a) * rr, bz = Mathf.Sin(a) * rr, tang = a + Mathf.PI / 2f;
+                            if (PropBegin(PropBank, fr.P(bx, h1, bz), fr.u, 0.6f, 0.95f)) {   // sloopbaar (PlanetCity.Wreck.cs)
                             Box(M("hout"), fr, bx, bz, tang, 0.9f, 0.24f, h1 + 0.42f, h1 + 0.5f);
                             Box(M("hout"), fr, bx + Mathf.Cos(a) * 0.24f, bz + Mathf.Sin(a) * 0.24f, tang, 0.9f, 0.04f, h1 + 0.5f, h1 + 0.95f);
                             for (int s2 = -1; s2 <= 1; s2 += 2) Box(M("paal"), fr, bx + Mathf.Cos(tang) * 0.75f * s2, bz + Mathf.Sin(tang) * 0.75f * s2, tang, 0.05f, 0.2f, h1, h1 + 0.42f);
-                            if (j < 2) { float la = a + Mathf.PI / 3f, lx = Mathf.Cos(la) * fr.rad * 0.78f, lz = Mathf.Sin(la) * fr.rad * 0.78f; Cone(M("paal"), fr, lx, lz, 0.08f, h1, h1 + 4.2f, 0.06f); Cone(M("lamp"), fr, lx, lz, 0.28f, h1 + 3.9f, h1 + 4.45f, 0f); }
+                            PropEnd(); }
+                            if (j < 2) { float la = a + Mathf.PI / 3f, lx = Mathf.Cos(la) * fr.rad * 0.78f, lz = Mathf.Sin(la) * fr.rad * 0.78f; if (PropBegin(PropPaal, fr.P(lx, h1, lz), fr.u, 0.14f, 4.45f)) { Cone(M("paal"), fr, lx, lz, 0.08f, h1, h1 + 4.2f, 0.06f); Cone(M("lamp"), fr, lx, lz, 0.28f, h1 + 3.9f, h1 + 4.45f, 0f); PropEnd(); } }
                         } }
                         break;
                     case "toren":   // kerktoren: stenen voet, bakstenen schacht met klok en galmgaten, leien spits met een gouden knop
@@ -246,23 +248,28 @@ public static partial class PlanetCity
     static void BuildChunk(int ch)
     {
         BuildGround(ch);
-        if (chunks.TryGetValue(ch, out var old) && old != null) UnityEngine.Object.Destroy(old.gameObject);
+        if (chunks.TryGetValue(ch, out var old) && old != null) { PropsForget(old.gameObject); UnityEngine.Object.Destroy(old.gameObject); }
         chunks.Remove(ch);
         var mb = new Dictionary<string, MeshBuilder>();
         System.Func<string, MeshBuilder> M = k => { if (!mb.TryGetValue(k, out var x)) { x = new MeshBuilder(); mb[k] = x; } return x; };
         int i0 = ch * ChunkN, i1 = Mathf.Min(Planet.Cells.Length, i0 + ChunkN);
         var mills = new List<(Vector3 pos, Quaternion rot, int hash)>();   // molenwieken: losse objecten die draaien
+        PropsStart(mb);   // sloopbaar: onthouden welke stukken mesh bij een boom, paal of gebouw horen (PlanetCity.Wreck.cs)
         try
         {
             for (int i = i0; i < i1; i++) if (Cells.TryGetValue(i, out var list) && list.Count > 0)
             {
                 if ((bores.Count > 0 || spans.Count > 0) && IsWalk(i)) { UseAll(); BoreMesh(mb, i); }   // een tunnel door een berg (koker, portalen en betonblok) of een brug over een dal (PlanetTunnels.cs)
                 if (fieldCells.Contains(i)) UseNear(i); else UseAll();   // alleen de wegen in de buurt (een brug meet het terrein op zo'n honderd punten)
+                propCell = i; bool bld = HasBuilding(i) && !IsModItem(list[0]);
+                if (bld) PropBegin(PropGebouw, Planet.Cells[i].dir * (Planet.R + G(i)), Planet.Cells[i].dir, Planet.Cells[i].radius * 0.84f, StackHeight(i));
                 BuildCell(mb, i, list, mills, 0);
+                if (bld) PropEnd();
             }
         }
+        catch { PropsCommit(null); throw; }
         finally { UseAll(); }
-        if (mb.Count == 0) return;
+        if (mb.Count == 0) { PropsCommit(null); return; }
         var go = new GameObject("Deel " + ch); go.transform.SetParent(root, false); chunks[ch] = go.transform;
         foreach (var kv in mb)
         {
@@ -275,5 +282,6 @@ public static partial class PlanetCity
             if (wet || kv.Key != "lijn" && kv.Key != "lamp" && kv.Key != "riet" && kv.Key != "doek" && !kv.Key.StartsWith("luifel")) child.AddComponent<MeshCollider>().sharedMesh = mesh;
         }
         foreach (var ml in mills) MakeWieken(go.transform, ml.pos, ml.rot, ml.hash);
+        PropsCommit(go);
     }
 }

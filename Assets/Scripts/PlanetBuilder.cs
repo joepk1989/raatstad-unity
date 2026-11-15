@@ -240,6 +240,7 @@ public partial class PlanetBuilder : MonoBehaviour
         if (HomeUpdate()) return;   // het startscherm of een venster van het opslaan (StartScreen.cs); ook vanzelf opslaan
         if (ReportUpdate()) return;   // F8: een melding voor Claude, het spel staat dan stil (Meldingen.cs)
         if (rebuilding) RebuildTick(25f);
+        WreckTick();   // slopen door ertegenaan te rijden (PlanetBuilder.Wreck.cs)
         AiTick();   // de AI-bouwer doet zijn zetten (PlanetBuilder.AI.cs)
         // overal, ook tijdens het lopen en in de cameramodus: P zet de tijd stil, O ander weer (Shift+O het vorige)
         if (Inp.Down(K.P)) { DayNight.ToggleFreeze(); Say(DayNight.Speed > 0f ? "De tijd loopt weer (P)" : "Pauze: de tijd staat stil (P)"); }

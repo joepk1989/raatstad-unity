@@ -102,7 +102,7 @@ public static partial class PlanetCity
         // een zebrapad op elke arm, net buiten de ring: daar steken de voetgangers over die om de rotonde heen lopen
         foreach (int k in ord) { Vector2 ax = At(openA[k], 1f); Zebra(M, fr, ax * (RotRo + 1.6f), ax, openW[k], 2.4f); }
         // een lantaarn op de stoep tussen twee armen
-        { float an = m > 0 ? openA[ord[0]] + 0.6f : 0.4f; Vector2 lp = At(an, rS - 0.6f); Cone(M("paal"), fr, lp.x, lp.y, 0.08f, SY, 5.2f, 0.06f); Cone(M("lamp"), fr, lp.x, lp.y, 0.28f, 4.9f, 5.35f, 0.2f); }
+        { float an = m > 0 ? openA[ord[0]] + 0.6f : 0.4f; Vector2 lp = At(an, rS - 0.6f); if (PropBegin(PropPaal, fr.P(lp.x, SY, lp.y), fr.u, 0.14f, 5.35f)) { Cone(M("paal"), fr, lp.x, lp.y, 0.08f, SY, 5.2f, 0.06f); Cone(M("lamp"), fr, lp.x, lp.y, 0.28f, 4.9f, 5.35f, 0.2f); PropEnd(); } }
     }
 
     // ---------- voor de auto's ----------

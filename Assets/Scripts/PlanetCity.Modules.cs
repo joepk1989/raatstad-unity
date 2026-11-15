@@ -187,7 +187,7 @@ public static partial class PlanetCity
     // ---------- tekenen: één object per exemplaar, met de gedeelde mesh van ModuleMesh ----------
     static Transform modRoot;
     class ModGo { public GameObject go, poles; public Mesh mesh; public string sig; }
-    static void Drop(ModGo g) { if (g == null) return; if (g.go != null) Object.Destroy(g.go); if (g.poles != null) Object.Destroy(g.poles); if (g.mesh != null) Object.Destroy(g.mesh); }
+    static void Drop(ModGo g) { if (g == null) return; if (g.go != null) { PropsForget(g.go); Object.Destroy(g.go); } if (g.poles != null) Object.Destroy(g.poles); if (g.mesh != null) Object.Destroy(g.mesh); }
 
     // ---------- vervormen naar de echte vakken ----------
     // Elk punt van de module ligt boven een plek in een van zijn vakken, in een van de zes driehoekjes tussen het midden en twee
@@ -258,6 +258,7 @@ public static partial class PlanetCity
             var wm = WarpMesh(b.mesh, I.c, area, M.k, I.rot, Planet.R + G(I.c) + I.lv * MV2.LV_H, out var org); go.transform.position = org;
             go.AddComponent<MeshFilter>().sharedMesh = wm; go.AddComponent<MeshRenderer>().sharedMaterials = b.mats;
             go.AddComponent<MeshCollider>().sharedMesh = wm;
+            ModuleProps(go, b, I.c);   // bomen, bankjes en lantaarns in de module los sloopbaar (PlanetCity.Wreck.cs)
             GameObject pg = null;
             if (poles != null) { pg = new GameObject("Palen " + M.name); pg.layer = Layers.Gebouw; pg.transform.SetParent(modRoot, false); pg.transform.position = porg; pg.AddComponent<MeshFilter>().sharedMesh = poles; pg.AddComponent<MeshRenderer>().sharedMaterial = ModuleMesh.Mat("slab"); pg.AddComponent<MeshCollider>().sharedMesh = poles; }
             modGos[I.Key] = new ModGo { go = go, poles = pg, mesh = wm, sig = sig };

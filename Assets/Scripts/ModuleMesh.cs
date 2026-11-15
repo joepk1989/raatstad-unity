@@ -10,7 +10,9 @@ using UnityEngine;
 public static class ModuleMesh
 {
     // ---------- cache ----------
-    public class Built { public Mesh mesh; public Material[] mats; public string id; public int ver; }
+    public class Built { public Mesh mesh; public Material[] mats; public string id; public int ver; public List<ObjRec> objs = new List<ObjRec>(); }
+    // een voorwerp in de mesh (boom, bank, lantaarn …): welke hoekpunten erbij horen, per submesh; om het los te kunnen slopen (PlanetCity.Wreck.cs)
+    public class ObjRec { public string t; public readonly List<(int sub, int v0, int v1)> r = new List<(int, int, int)>(); }
     static readonly Dictionary<string, Built> cache = new Dictionary<string, Built>();
     // stacked: de module staat op een andere (begane grond krijgt een plafond eronder); cover: bit per vak (MV2.AreaCells) waar op het dak iets staat
     public static Built Get(ModuleV2 m, bool stacked, int cover)
@@ -71,6 +73,7 @@ public static class ModuleMesh
         readonly Dictionary<string, MeshBuilder> mb = new Dictionary<string, MeshBuilder>(); readonly List<string> order = new List<string>();
         const float LH = MV2.LV_H, T = MV2.WALL_T;
         public Bld(ModuleV2 m, bool stacked, int cover) { this.m = m; this.stacked = stacked; this.cover = cover; ts = MV2.Ts(m); }
+        readonly List<(string t, List<(string key, int v0, int v1)> r)> objRecs = new List<(string, List<(string, int, int)>)>();
         MeshBuilder M(string k) { if (!mb.TryGetValue(k, out var b)) { b = new MeshBuilder(); mb[k] = b; order.Add(k); } return b; }
         static Vector3 U(float x, float y, float z) => new Vector3(x, y, -z);   // webversie → Unity
         static Vector3 U(Vector2 p, float y) => new Vector3(p.x, y, -p.y);
@@ -83,7 +86,8 @@ public static class ModuleMesh
             // doorzichtig als laatste (glas, water): dan tekent de rest eerst
             keys.Sort((a, b) => (Clear.Contains(a) ? 1 : 0).CompareTo(Clear.Contains(b) ? 1 : 0));
             var subs = new List<int[]>();
-            foreach (var k in keys) { var b = mb[k]; int o = v.Count; v.AddRange(b.v); n.AddRange(b.n); var t = new int[b.t.Count]; for (int i = 0; i < t.Length; i++) t[i] = b.t[i] + o; subs.Add(t); }
+            var offs = new Dictionary<string, (int sub, int o)>();
+            foreach (var k in keys) { var b = mb[k]; int o = v.Count; offs[k] = (subs.Count, o); v.AddRange(b.v); n.AddRange(b.n); var t = new int[b.t.Count]; for (int i = 0; i < t.Length; i++) t[i] = b.t[i] + o; subs.Add(t); }
             // texturecoördinaten in meters: vlakke vlakken van boven (x, z), de rest langs het vlak (horizontaal, dan omhoog of langs
             // de helling), zodat een baksteen- of klinkerpatroon doorloopt over muren, verdiepingen en buurvlakken (ModuleTex.cs)
             var uv = new List<Vector2>(v.Count);
@@ -95,7 +99,9 @@ public static class ModuleMesh
             }
             mesh.SetVertices(v); mesh.SetNormals(n); mesh.SetUVs(0, uv); mesh.subMeshCount = subs.Count; for (int i = 0; i < subs.Count; i++) mesh.SetTriangles(subs[i], i, false); mesh.RecalculateBounds();
             var mats = new Material[keys.Count]; for (int i = 0; i < keys.Count; i++) mats[i] = Mat(keys[i]);
-            return new Built { mesh = mesh, mats = mats };
+            var built = new Built { mesh = mesh, mats = mats };
+            foreach (var (t, r) in objRecs) { var rec = new ObjRec { t = t }; foreach (var (key, v0, v1) in r) if (offs.TryGetValue(key, out var so)) rec.r.Add((so.sub, so.o + v0, so.o + v1)); if (rec.r.Count > 0) built.objs.Add(rec); }
+            return built;
         }
 
         // ---- vormen (alles in webcoördinaten: (x, z) in het vlak, y omhoog) ----
@@ -233,7 +239,10 @@ public static class ModuleMesh
                 if ((parts & ModuleMesh.Objs) != 0) foreach (var O in L.o)
                 {
                     if (li == roofLi && Covered(new Vector2(O.x, O.z), area)) continue;
+                    var snap = new Dictionary<string, int>(); foreach (var kv in mb) snap[kv.Key] = kv.Value.v.Count;
                     Obj(O, y0);
+                    var rec = new List<(string, int, int)>(); foreach (var kv in mb) { snap.TryGetValue(kv.Key, out int n0); if (kv.Value.v.Count > n0) rec.Add((kv.Key, n0, kv.Value.v.Count)); }
+                    if (rec.Count > 0) objRecs.Add((O.t, rec));
                 }
             }
         }
