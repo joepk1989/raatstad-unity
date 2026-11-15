@@ -63,12 +63,13 @@ public static class ModelTank
         var hb = parts.ContainsKey("Hull") ? B("Hull") : tb;
         rig.HullBox = new Bounds(new Vector3(0f, (0.55f + hb.max.y) * 0.5f, hb.center.z), new Vector3(hb.size.x, hb.max.y - 0.55f, hb.size.z * 0.97f));
         rig.TopBox = new Bounds(new Vector3(tb.center.x, (tb.min.y + tb.max.y) * 0.5f + 0.05f, tb.center.z), new Vector3(tb.size.x * 0.9f, tb.size.y * 0.8f, tb.size.z * 0.9f));
-        // de rupsen: elk een eigen materiaal waarvan de textuur meeschuift (u loopt langs de rups, zo'n 0,84 per meter)
+        // de rupsen: elk een eigen materiaal waarvan de textuur meeschuift (u loopt langs de rups: onderaan neemt u af naar voren, 0,54 per
+        // meter; daarom schuift de textuur tegengesteld, zodat de onderkant bij vooruit rijden naar achter loopt)
         foreach (string n in new[] { "Track_L", "Track_R" })
         {
             if (!parts.TryGetValue(n, out var tt)) continue;
             var r = tt.GetComponent<MeshRenderer>(); var m = new Material(track); var ms = r.sharedMaterials; for (int k = 0; k < ms.Length; k++) ms[k] = m; r.sharedMaterials = ms;
-            rig.SetTrack(B(n).center.x < 0f, m, 0.84f);
+            rig.SetTrack(B(n).center.x < 0f, m, -0.54f);
         }
         foreach (var t in root.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = root.gameObject.layer;
         return rig;
