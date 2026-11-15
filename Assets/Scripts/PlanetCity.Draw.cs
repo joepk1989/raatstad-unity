@@ -176,7 +176,7 @@ public static partial class PlanetCity
                     case "dak":
                         Cone(M("dak"), fr, 0, 0, fr.rad * 0.95f, h, h1, fr.rad * 0.5f); Top(M("dak"), fr, 0.5f, h1);
                         break;
-                    case "ijs": case "woestijn": case "heide": case "palmen": case "rotsen":
+                    case "ijs": case "woestijn": case "heide": case "droogheide": case "palmen": case "rotsen":
                         Wild(M, fr, i, hash, t);   // landschappen van de natuurplaneet (PlanetWild.cs)
                         break;
                     case "park":

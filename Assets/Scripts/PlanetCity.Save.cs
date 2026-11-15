@@ -5,7 +5,7 @@ using UnityEngine;
 
 // Opslaan en laden: drie slots (planeet1/2/3.json in persistentDataPath), Snapshot en Restore ook voor undo.
 [Serializable] public class PCellSave { public int i; public string[] items; }
-[Serializable] public class PSaveData { public int m; public float r; public List<PCellSave> cells = new List<PCellSave>(); public List<int> links = new List<int>(); public List<int> style = new List<int>(), under = new List<int>(), oneway = new List<int>(), terr = new List<int>(), low = new List<int>(), tunnel = new List<int>(), span = new List<int>(), lower = new List<int>(), precarve = new List<int>(), prelevel = new List<int>(), corner = new List<int>(), center = new List<int>(), bike = new List<int>(), rot = new List<int>(), scorch = new List<int>(); public int startVer, startCell = -1; }   // startVer: de versie van de startstad als de stad nog de ongewijzigde startstad is (anders 0)   // corner: per hoekpunt drie vakken en de verschuiving in cm   // paren: vak/stijl, vak/onder (1 meer, 2 water, 3 kuil, 4 pad, 5 weg), van/naar, vak/terreinhoogte in cm
+[Serializable] public class PSaveData { public int m; public float r; public List<PCellSave> cells = new List<PCellSave>(); public List<int> links = new List<int>(); public List<int> style = new List<int>(), under = new List<int>(), oneway = new List<int>(), terr = new List<int>(), low = new List<int>(), tunnel = new List<int>(), span = new List<int>(), lower = new List<int>(), precarve = new List<int>(), prelevel = new List<int>(), corner = new List<int>(), center = new List<int>(), bike = new List<int>(), rot = new List<int>(), scorch = new List<int>(); public int startVer, startCell = -1, heath; }   // startVer: de versie van de startstad als de stad nog de ongewijzigde startstad is (anders 0)   // corner: per hoekpunt drie vakken en de verschuiving in cm   // paren: vak/stijl, vak/onder (1 meer, 2 water, 3 kuil, 4 pad, 5 weg), van/naar, vak/terreinhoogte in cm
 public static partial class PlanetCity
 {
     static string FilePath => Path.Combine(Application.persistentDataPath, "planeet" + Slot + Planet.Suffix + ".json");
@@ -39,7 +39,7 @@ public static partial class PlanetCity
             foreach (var kv in CenterOfs) { sd.center.Add(kv.Key); sd.center.Add(Mathf.RoundToInt(kv.Value * 100f)); }
             foreach (int b in Bike) if (Cells.ContainsKey(b)) sd.bike.Add(b);
             foreach (int c in Rot) if (IsRoad(c)) sd.rot.Add(c);
-            sd.startVer = StartVer; sd.startCell = StartCell;
+            sd.startVer = StartVer; sd.startCell = StartCell; sd.heath = HeathVer;
             return JsonUtility.ToJson(sd);
         }
     }
@@ -51,6 +51,7 @@ public static partial class PlanetCity
             if (!File.Exists(FilePath)) return false;
             if (!Restore(File.ReadAllText(FilePath))) return false;
             if (StartVer > 0 && StartVer < StartTownVersion) { int s = StartCell >= 0 && StartCell < Planet.Cells.Length ? StartCell : Planet.North; ClearAll(); StartTown(s); Save(); }   // de nieuwe startstad
+            else if (UpgradeHeath()) Save();   // heidevelden erbij, alleen op lege vakken (PlanetHeath.cs)
             return true;
         }
         catch (Exception e) { Debug.LogWarning("Laden mislukt: " + e.Message); return false; }
@@ -60,7 +61,7 @@ public static partial class PlanetCity
         try
         {
             var sd = JsonUtility.FromJson<PSaveData>(json); if (sd == null || sd.m != Planet.M) return false;
-            StartVer = sd.startVer; StartCell = sd.startCell; startFresh = false;
+            StartVer = sd.startVer; StartCell = sd.startCell; startFresh = false; HeathVer = sd.heath;
             Cells = new Dictionary<int, List<string>>();
             foreach (var c in sd.cells) if (c.items != null && c.items.Length > 0 && c.i >= 0 && c.i < Planet.Cells.Length) Cells[c.i] = new List<string>(c.items);
             ClearLinks();

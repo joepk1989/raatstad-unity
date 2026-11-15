@@ -9,12 +9,12 @@ using UnityEngine;
 // "rotsen"; ijs, woestijn en heide kleuren de grond van het vak (WildTag). Bouw je er iets op, dan wijkt de natuur. Vast bepaald door de seed.
 public static partial class PlanetCity
 {
-    public static bool IsWild(string t) => t == "ijs" || t == "woestijn" || t == "heide" || t == "palmen" || t == "rotsen";
+    public static bool IsWild(string t) => t == "ijs" || t == "woestijn" || t == "heide" || t == "droogheide" || t == "palmen" || t == "rotsen";
     public static int WildRivers;
 
     public static System.Collections.IEnumerator WildSteps(System.Action<float, string> prog, int seed = 7)
     {
-        ClearAll(); FillTowns.Clear(); var rnd = new System.Random(seed); int n = Planet.Cells.Length; float o = seed * 17.3f % 500f;
+        ClearAll(); FillTowns.Clear(); HeathVer = HeathVersion; var rnd = new System.Random(seed); int n = Planet.Cells.Length; float o = seed * 17.3f % 500f;
         var hh = new float[n];
         prog?.Invoke(0f, "Continenten en oceanen"); yield return null;
         for (int c = 0; c < n; c++)
@@ -92,7 +92,7 @@ public static partial class PlanetCity
     static string WildTag(int i)
     {
         if (!Cells.TryGetValue(i, out var l) || l.Count != 1) return null;
-        switch (l[0]) { case "ijs": return "ijs"; case "woestijn": return "woestijn"; case "heide": return "heide"; default: return null; }
+        switch (l[0]) { case "ijs": return "ijs"; case "woestijn": return "woestijn"; case "heide": return "heide"; case "droogheide": return "droogheide"; default: return null; }
     }
 
     // wat er op een landschapsvak staat; alles op de grond onder zijn eigen voet, niet onder water
@@ -134,6 +134,19 @@ public static partial class PlanetCity
                 for (int s = 0, cnt = 10 + rnd.Next(6); s < cnt; s++)
                     if (Spot(out float x, out float z, out float th, out _)) { float sz = 0.45f + Rnd() * 0.4f; Prism(M("heideplant"), fr, x, z, Rnd(), sz, sz * 0.45f, th, th + 0.35f + Rnd() * 0.3f, true, false); }
                 if (Rnd() < 0.3f && Spot(out float bx, out float bz, out float bth, out float bsl) && bsl < 0.7f) TreeAt(M, fr, Rnd() < 0.6f ? 2 : 1, bx, bz, bth, 0.7f + Rnd() * 0.3f, Rnd(), rnd);
+                break;
+            case "droogheide":   // droge heide: zandige grond, plukken geelbruin gras, een paar verdorde heidestruikjes, soms een den
+                for (int s = 0, cnt = 9 + rnd.Next(6); s < cnt; s++)
+                    if (Spot(out float x, out float z, out float th, out _)) { float sz = 0.35f + Rnd() * 0.35f; Prism(M("droog"), fr, x, z, Rnd(), sz, sz * 0.25f, th, th + 0.4f + Rnd() * 0.35f, true, false); }
+                for (int s = 0, cnt = 2 + rnd.Next(4); s < cnt; s++)
+                    if (Spot(out float x, out float z, out float th, out _)) { float sz = 0.35f + Rnd() * 0.3f; Prism(M("heidedor"), fr, x, z, Rnd(), sz, sz * 0.45f, th, th + 0.3f + Rnd() * 0.2f, true, false); }
+                for (int s = 0, cnt = rnd.Next(4); s < cnt; s++)   // losse donkere struiken (jeneverbes, jonge eik) en hier en daar een eik of den
+                {
+                    if (!Spot(out float dx, out float dz, out float dth, out float dsl) || dsl > 0.7f) continue; float r = Rnd();
+                    if (r < 0.55f) { float sz = 0.9f + Rnd() * 0.9f; Prism(M("struikdonker"), fr, dx, dz, Rnd(), sz * 0.7f, sz, dth - 0.1f, dth + sz * 0.9f, false, false); Prism(M("struikdonker"), fr, dx, dz, Rnd(), sz, sz * 0.5f, dth + sz * 0.9f, dth + sz * 1.9f, true, false); }
+                    else TreeAt(M, fr, r < 0.8f ? 0 : 1, dx, dz, dth, 0.5f + Rnd() * 0.35f, Rnd(), rnd);
+                }
+                if (Rnd() < 0.12f && Spot(out float qx, out float qz, out float qth, out _)) Boulder(M, fr, qx, qz, qth, 0.4f + Rnd() * 0.4f, Rnd());
                 break;
             case "palmen":   // kokospalmen die naar het water overhellen
                 for (int s = 0, cnt = 2 + rnd.Next(3); s < cnt; s++) if (Spot(out float x, out float z, out float th, out _)) Palm(M, fr, x, z, th, 0.85f + Rnd() * 0.35f, rnd);

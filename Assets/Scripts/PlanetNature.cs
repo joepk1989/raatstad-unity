@@ -234,6 +234,9 @@ public static partial class PlanetCity
             case "woestijn": c = new Color(0.86f, 0.71f, 0.47f); return true;
             case "heide": c = new Color(0.47f, 0.39f, 0.40f); return true;
             case "heideplant": c = new Color(0.60f, 0.36f, 0.58f); return true;
+            case "droogheide": c = new Color(0.70f, 0.63f, 0.46f); return true;   // vlakke kleur zonder bodemshader
+            case "struikdonker": c = new Color(0.17f, 0.30f, 0.17f); return true;
+            case "heidedor": c = new Color(0.50f, 0.36f, 0.42f); return true;
             case "ijsblok": c = new Color(0.78f, 0.89f, 0.98f); return true;
             case "cactus": c = new Color(0.30f, 0.50f, 0.30f); return true;
             case "droog": c = new Color(0.63f, 0.57f, 0.36f); return true;

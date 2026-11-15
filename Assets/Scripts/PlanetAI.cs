@@ -119,7 +119,7 @@ public static partial class PlanetAI
     public static void Reset() { Start = -1; Owned.Clear(); Origin.Clear(); PlanLog.Clear(); Moves = Rejected = 0; dist.Clear(); core = -1; coreRetry = 0; coreRoad = plein = -1; rings.Clear(); reserved.Clear(); queue.Clear(); banned.Clear(); rotCache.Clear(); hubs.Clear(); ringAt.Clear(); roomFor.Clear(); cands = null; think = 0; }
 
     // ---------- hulp ----------
-    static bool Empty(int c) => !PlanetCity.Cells.ContainsKey(c);
+    static bool Empty(int c) => !PlanetCity.Cells.TryGetValue(c, out var l) || l.Count == 0 || (l.Count == 1 && (l[0] == "heide" || l[0] == "droogheide"));   // heide wijkt voor alles (PlanetHeath.cs)
     static bool OwnPark(int c) => Owned.Contains(c) && PlanetCity.Cells.TryGetValue(c, out var l) && l.Count == 1 && l[0] == "park";
     // wild bos: een parkvak dat niet van de AI is en nergens aan bebouwing of een weg van de speler grenst (dus natuur, geen stadspark)
     static bool Wild(int c)

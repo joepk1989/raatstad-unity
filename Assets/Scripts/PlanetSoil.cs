@@ -42,7 +42,7 @@ public static partial class PlanetCity
         if (t == null) return true;
         switch (t)
         {
-            case "aarde": case "rots": case "sneeuw": case "ijs": case "woestijn": case "heide": case "zand": case "zeebodem": return true;
+            case "aarde": case "rots": case "sneeuw": case "ijs": case "woestijn": case "heide": case "droogheide": case "zand": case "zeebodem": return true;
             case "roet": case "roetgrijs": case "kraterbodem": case "uitwerp": return true;   // een verse krater: de shader verdeelt roet en puin zelf
             default: return t.Length > 1 && t[0] == 't' && char.IsDigit(t[1]);
         }
@@ -54,7 +54,7 @@ public static partial class PlanetCity
     static Soil CellSoil(int i)
     {
         string w = WildTag(i);
-        var s = new Soil { c = new Color(w == "ijs" ? 1f : 0f, w == "woestijn" ? 1f : 0f, w == "heide" ? 1f : 0f, Wet(i) ? 1f : 0f) };
+        var s = new Soil { c = new Color(w == "ijs" ? 1f : 0f, w == "woestijn" ? 1f : w == "droogheide" ? 0.85f : 0f, w == "heide" ? 1f : w == "droogheide" ? 0.3f : 0f, Wet(i) ? 1f : 0f) };   // droge heide: heidegrond met zandplekken
         if (Scorch.Count > 0 && Scorch.TryGetValue(i, out byte sc) && !Planet.IsPole(i))
             s.x = sc >= ScorchFloor ? new Vector4(1f, 1f, 0f, 0f) : sc >= ScorchRim ? new Vector4(1f, 0f, 1f, 0f) : new Vector4(sc / 99f, 0f, 0f, 0f);
         float g = G(i), sl = 0f; foreach (int j in Planet.Cells[i].nb) sl = Mathf.Max(sl, Mathf.Abs(G(j) - g));

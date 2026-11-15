@@ -115,6 +115,7 @@ public partial class PlanetBuilder
                 int s = PlanetCity.StartCell >= 0 && PlanetCity.StartCell < Planet.Cells.Length ? PlanetCity.StartCell : Planet.North;
                 PlanetCity.Restore(empty); PlanetCity.StartTown(s);
             }
+            else if (ok) PlanetCity.UpgradeHeath();   // heidevelden erbij op lege grond (PlanetHeath.cs)
             if (!ok) PlanetCity.Restore(empty);
             loadFrac = 0.4f;
         }

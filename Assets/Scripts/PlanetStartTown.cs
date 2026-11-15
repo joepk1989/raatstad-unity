@@ -20,7 +20,7 @@ public static partial class PlanetCity
 {
     // Na het bouwen meteen het wegprofiel (Terrein v2): het startscherm, een nieuwe stad en een nieuwe versie roepen StartTown aan zonder
     // PlanetBuilder.Changed, en zonder profiel (RoadH leeg) tekent Terrein v2 de velden op de oude manier: 116 s in plaats van 6 s
-    public static void StartTown(int s) { StartTown0(s); Reprofile(); }
+    public static void StartTown(int s) { StartTown0(s); AddHeath(); Reprofile(); }   // met heidevelden buiten de groene rand (PlanetHeath.cs)
     static void StartTown0(int s)
     {
         StartVer = StartTownVersion; StartCell = s; startFresh = true;   // nog de ongewijzigde startstad: wordt bij een nieuwe versie opnieuw gebouwd
