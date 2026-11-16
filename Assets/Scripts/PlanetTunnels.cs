@@ -42,26 +42,52 @@ public static partial class PlanetCity
     // (ground) en ergens BoreNeed, dan links en rechts daarvan opnieuw. plain: kan een portaal zijn; step: de lijn gaat recht naar de
     // buur; inner: mag de berg in; road: de hoogte van de weg in een portaalvak. Geeft de paren (portaal, portaal) als index in de lijn.
     // span: een dalbrug zoeken in plaats van een tunnel (het terrein ertussen ligt ónder de rechte weg, SpanClear en SpanNeed)
-    // Over het water (Terrein v2): loopt een lijn over de zee, een meer of een rivier (terrein onder het zeeniveau), dan wordt dat stuk
-    // een brug van oever tot oever in plaats van een dam: recht, hooguit SpanMax lang, alleen over vakken die bij deze lijn horen.
-    // De weg ligt op de oevers minstens WaterDeck boven het water, zodat het dek (1,3 m dik) er vrij van blijft. Is het water maar een
-    // vak breed, dan gaat de brug een vak verder door (een lange verbinding moet twee vakken overslaan). wet: ligt vak k van de lijn in
-    // het water; land: de hoogte van de grond daar. Geeft de paren als index in de lijn, h: de hoogte van de weg op de twee oevers.
+    // Over het water (Terrein v2): loopt een lijn over de zee, een meer of een rivier (terrein op of onder het zeeniveau), dan wordt dat
+    // stuk een brug van oever tot oever in plaats van een dam: recht, hooguit SpanMax lang, alleen over vakken die bij deze lijn horen.
+    // De weg ligt op de oevers minstens WaterDeck boven het water, zodat het dek (1,3 m dik) er vrij van blijft. Een lange
+    // verbinding moet twee vakken overslaan: is het water smaller, dan gaat de brug een vak verder door. line: de lijn met aan elk
+    // eind het vak van de bestaande weg waar hij recht op aansluit erbij (WaterLine), zodat ook een korte sleep tussen twee wegeinden
+    // tegenover elkaar een brug wordt. can: mag vak k in het water liggen; land: de hoogte van de grond in een vak.
+    // Liggen bij een schuine stap alleen de halve vakken in het water en beide vakken droog, dan wordt die ene stap een korte brug.
+    // Geeft de paren als index in de lijn, h: de hoogte van de weg op de twee oevers.
     const float WaterDeck = 2f;
-    static List<(int i, int j)> WaterSearch(List<int> line, System.Func<int, bool> plain, System.Func<int, bool> step, System.Func<int, bool> inner, System.Func<int, bool> wet, System.Func<int, float> land, out float[] h)
+    static List<(int i, int j)> WaterSearch(List<int> line, System.Func<int, bool> plain, System.Func<int, bool> step, System.Func<int, bool> inner, System.Func<int, bool> can, System.Func<int, float> land, out float[] h)
     {
-        int n = line.Count; h = new float[n]; var o = new List<(int i, int j)>();
+        int n = line.Count; h = new float[n]; var o = new List<(int i, int j)>(); var wet = new bool[n];
+        for (int k = 0; k < n; k++) wet[k] = can(k) && land(line[k]) < SeaLevel + 0.05f; var skew = new List<int>();
+        for (int k = 0; k + 1 < n; k++)
+        {
+            if (IsNeighbour(line[k], line[k + 1])) continue; bool w = false;
+            foreach (int x in Between(line[k], line[k + 1])) if (land(x) < SeaLevel - 0.05f) w = true;
+            if (!w) continue;
+            if (!wet[k] && !wet[k + 1] && plain(line[k]) && plain(line[k + 1]) && step(k)) skew.Add(k);   // beide oevers droog: die ene schuine stap wordt zelf een korte brug   // (is een van de twee zelf nat, dan loopt de brug van het droge vak af al over deze stap)
+        }
         for (int k = 1; k < n - 1; k++)
         {
-            if (!wet(k)) continue; int a = k; while (k + 1 < n && wet(k + 1)) k++;
-            int i = a - 1, j = k + 1; if (j >= n) break; if (wet(i)) continue;
-            if (j - i < 3) { if (j + 1 < n && !wet(j + 1)) j++; else if (i > 0 && !wet(i - 1)) i--; else continue; }
+            if (!wet[k]) continue; int a = k; while (k + 1 < n && wet[k + 1]) k++;
+            int i = a - 1, j = k + 1; if (j >= n) break; if (wet[i]) continue;
+            if (j - i < 3) { if (j + 1 < n && !wet[j + 1]) j++; else if (i > 0 && !wet[i - 1]) i--; else continue; }
             if (!plain(line[i]) || !plain(line[j]) || CellDist(line[i], line[j]) > SpanMax) continue;
             bool ok = true; for (int m = i; m < j && ok; m++) ok = step(m) && (m == i || inner(m));
             if (!ok) continue;
-            h[i] = Mathf.Max(land(i), SeaLevel + WaterDeck); h[j] = Mathf.Max(land(j), SeaLevel + WaterDeck); o.Add((i, j)); k = j - 1;
+            h[i] = Mathf.Max(land(line[i]), SeaLevel + WaterDeck); h[j] = Mathf.Max(land(line[j]), SeaLevel + WaterDeck); o.Add((i, j)); k = j - 1;
         }
+        foreach (int k in skew) { bool free = true; foreach (var (i, j) in o) if (k >= i && k < j) free = false; if (!free) continue; h[k] = Mathf.Max(land(line[k]), SeaLevel + WaterDeck); h[k + 1] = Mathf.Max(land(line[k + 1]), SeaLevel + WaterDeck); o.Add((k, k + 1)); }
         return o;
+    }
+    // de lijn met aan elk eind het vak van de bestaande weg waar hij recht op aansluit (een wegeind dat doorgetrokken wordt); pre: 1 als er vooraan een vak bij kwam
+    static List<int> WaterLine(List<int> line, out int pre)
+    {
+        var e = new List<int>(line); pre = 0; if (line.Count < 2) return e;
+        int Behind(int c0, int c1)
+        {
+            if (!IsWalk(c0) || Underpass(c0)) return -1; int p = -1, cnt = 0;
+            foreach (int q in Partners(c0)) if (q != c1 && !line.Contains(q)) { p = q; cnt++; }
+            return cnt == 1 && IsWalk(p) && !Underpass(p) && !IsBore(c0, p) && LineStep(p, c0) && Straight(p, c0, c1) ? p : -1;
+        }
+        int t = Behind(line[line.Count - 1], line[line.Count - 2]); if (t >= 0) e.Add(t);
+        int hd = Behind(line[0], line[1]); if (hd >= 0) { e.Insert(0, hd); pre = 1; }
+        return e;
     }
     // Recht door de berg (Terrein v2): de weg blijft op de rechte lijn tussen de voet van de berg aan beide kanten en klimt niet eerst
     // de flank op. Per berg zoekt dit de langste rechte koorde van voet tot voet die nergens boven het terrein ligt (hooguit BoreGrade
@@ -213,7 +239,16 @@ public static partial class PlanetCity
         if (Ground2)   // recht door de berg en van hoog naar laag (StraightSearch en DropSearch, zoals ProfileAll na het leggen)
         {
             System.Func<int, bool> Free = k => { int c = line[k]; if (!IsWalk(c)) return true; if (Underpass(c)) return false; foreach (int p in Partners(c)) if (!line.Contains(p)) return false; return true; };
-            foreach (var (i, j) in WaterSearch(line, Plain, Step, Inner, k => !IsWalk(line[k]) && Terrain(line[k]) < SeaLevel - 0.05f, k => Road(line[k]), out var hw)) Add(i, j, true, hw);   // over het water: een brug
+            {   // over het water: een brug (met het bestaande wegeind erbij, zoals ProfileAll)
+                var ext = WaterLine(line, out int pre);
+                System.Func<int, bool> StepW = k => LineStep(ext[k], ext[k + 1]);
+                System.Func<int, bool> InnerW = k => Plain(ext[k]) && Straight(ext[k - 1], ext[k], ext[k + 1]) && (!IsWalk(ext[k]) || Partners(ext[k]).Count == 1);   // nieuw, of een wegeind dat doorgetrokken wordt
+                foreach (var (i, j) in WaterSearch(ext, Plain, StepW, InnerW, k => !IsWalk(ext[k]) || Partners(ext[k]).Count == 1, c => IsWalk(c) ? G(c) : Terrain(c), out var hw))
+                {
+                    int a = ext[i], b = ext[j]; float ha = hw[i], hb = hw[j]; if (a > b) { (a, b) = (b, a); (ha, hb) = (hb, ha); }
+                    o.Add((a, b, ha, hb, true)); for (int k = i + 1; k < j; k++) taken.Add(k - pre);
+                }
+            }
             foreach (var (i, j) in StraightSearch(line, Plain, Step, Inner, Free, out var hr)) Add(i, j, false, hr);
             foreach (var (i, j) in DropSearch(line, Plain, Step, Inner, Free, out var hs)) Add(i, j, true, hs);
         }

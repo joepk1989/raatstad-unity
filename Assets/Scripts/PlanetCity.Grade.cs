@@ -177,6 +177,20 @@ public static partial class PlanetCity
         }
         return made;
     }
+    // voor de test: per vak van een net gelegde lijn wat de zoekers ervan vinden
+    public static string LineDebug(List<int> line)
+    {
+        var sb = new System.Text.StringBuilder();
+        for (int k = 0; k < line.Count; k++)
+        {
+            int c = line[k]; sb.Append("   ").Append(c).Append(IsWalk(c) ? " weg" : " GEEN WEG").Append(Underpass(c) ? " onderdoorgang" : "").Append(IsRot(c) ? " rotonde" : "").Append(preCarve.ContainsKey(c) ? " preCarve" : "").Append(preLevel.TryGetValue(c, out var pl) ? " preLevel " + pl.ToString("0.0") : "").Append(levelled.Contains(c) ? " niveau" : "").Append(" terrein ").Append(Terrain(c).ToString("0.0")).Append(" partners");
+            foreach (int p in Partners(c)) sb.Append(' ').Append(p);
+            if (k + 1 < line.Count) sb.Append(LineStep(c, line[k + 1]) ? "" : " GEEN STAP").Append(Linked(c, line[k + 1]) ? "" : " NIET VERBONDEN");
+            if (k > 0 && k + 1 < line.Count) sb.Append(Straight(line[k - 1], c, line[k + 1]) ? "" : " niet recht");
+            sb.AppendLine();
+        }
+        return sb.ToString();
+    }
     public static string ProfileAll(List<List<int>> lines)
     {
         if (Stairs.Count > 0) Stairs.RemoveWhere(k => !Links.Contains(k));   // een trap verdwijnt met zijn verbinding
@@ -189,8 +203,11 @@ public static partial class PlanetCity
             System.Func<int, bool> Inner = k => { int c = line[k], p = line[k - 1], q = line[k + 1]; var ps = Partners(c); return Plain(c) && ps.Count == 2 && ps.Contains(p) && ps.Contains(q) && Straight(p, c, q); };
             System.Func<int, bool> Free = k => { int c = line[k]; if (!Plain(c)) return false; foreach (int j in Planet.Cells[c].nb) if (Underpass(j)) return false; foreach (int p in Partners(c)) if (!line.Contains(p)) return false; return true; };
             float Land(int c) => preLevel.TryGetValue(c, out var pl) ? pl : Terrain(c);   // het terrein van voor de weg (SetLevel legde over water een dam)
-            foreach (var (i, j) in WaterSearch(line, Plain, Step, Inner, k => !Underpass(line[k]) && Land(line[k]) < SeaLevel - 0.05f, k => Land(line[k]), out var hw))   // over het water: een brug
-            { RoadBase[line[i]] = hw[i]; RoadBase[line[j]] = hw[j]; Span(line, i, j); SpanLinks.Add(Key(line[i], line[j])); water++; }
+            var ext = WaterLine(line, out _);   // met het bestaande wegeind waar de lijn recht op aansluit erbij
+            System.Func<int, bool> StepW = k => LineStep(ext[k], ext[k + 1]) && Linked(ext[k], ext[k + 1]);
+            System.Func<int, bool> InnerW = k => { int c = ext[k], p = ext[k - 1], q = ext[k + 1]; var ps = Partners(c); return Plain(c) && ps.Count == 2 && ps.Contains(p) && ps.Contains(q) && Straight(p, c, q); };
+            foreach (var (i, j) in WaterSearch(ext, Plain, StepW, InnerW, k => !Underpass(ext[k]), Land, out var hw))   // over het water: een brug
+            { RoadBase[ext[i]] = hw[i]; RoadBase[ext[j]] = hw[j]; Span(ext, i, j); SpanLinks.Add(Key(ext[i], ext[j])); water++; }
             foreach (var (i, j) in StraightSearch(line, Plain, Step, Inner, Free, out var hs))
             {
                 for (int k = i; k >= 0 && Free(k) && (k == i || hs[k] < Terrain(line[k]) - 0.05f); k--) RoadBase[line[k]] = hs[k];   // de insnijding voor het portaal: tot waar de rechte lijn het terrein raakt

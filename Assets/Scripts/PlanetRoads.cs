@@ -359,7 +359,7 @@ public static partial class PlanetCity
         origin = Planet.Cells[line[0]].dir * (Planet.R + G(line[0])); var mb = new Dictionary<string, MeshBuilder>();
         // waar de lijn een tunnel krijgt (BorePlan) niet over de berg: alleen de stukken ervoor en erna (de koker tekent ShowLevelGhost)
         var parts = new List<List<int>>(); int from = 0;
-        var cuts2 = new List<(int, int)>(); foreach (var t in BorePlan(line, type)) { int x = line.IndexOf(t.a), y = line.IndexOf(t.b); cuts2.Add((Mathf.Min(x, y), Mathf.Max(x, y))); }
+        var cuts2 = new List<(int, int)>(); foreach (var t in BorePlan(line, type)) { int x = line.IndexOf(t.a), y = line.IndexOf(t.b); if (x < 0 && y < 0) { x = 0; y = line.Count - 1; } else if (x < 0 || y < 0) { int z = Mathf.Max(x, y); x = z; y = z * 2 < line.Count ? 0 : line.Count - 1; }   /* een eind buiten de lijn: de brug begint op de bestaande weg (WaterLine) */ cuts2.Add((Mathf.Min(x, y), Mathf.Max(x, y))); }
         cuts2.Sort();
         foreach (var (i, j) in cuts2) { parts.Add(line.GetRange(from, i - from + 1)); from = j; }
         parts.Add(line.GetRange(from, line.Count - from));
