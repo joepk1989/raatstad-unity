@@ -330,7 +330,7 @@ public static partial class PlanetCity
                 Vector3 de = Planet.Cells[e].dir, dO = Planet.Cells[oe].dir; float L = Vector3.Angle(de, dO) * Mathf.Deg2Rad * Planet.R, t = (RoadH.Count > 0 ? FlatL : FlatL * 0.55f) / L;   // nieuwe opbouw: de inrit tot het portaalvlak (FlatL van het hart), want voorbij het eind van een stuk sluit de kegel de uitgraving alweer
                 if (spanNew)
                 {
-                    t = 2f / L; for (float sm = 2f; sm < L * 0.5f; sm += 1f) { float dd = Mathf.Lerp(G(e), G(oe), sm / L) - BaseAt(Vector3.Slerp(de, dO, sm / L).normalized); if (dd > 6f) break; t = sm / L; }
+                    t = 2f / L; for (float sm = 2f; sm < L * 0.5f; sm += 1f) { float ba = BaseAt(Vector3.Slerp(de, dO, sm / L).normalized), dd = Mathf.Lerp(G(e), G(oe), sm / L) - ba; if (dd > 6f || ba < SeaLevel) break; t = sm / L; }   // (over water geen dam: het dek begint op de oever)
                 }
                 Vector3 pe = Vector3.Slerp(de, dO, t).normalized * Planet.R;
                 AddWalkSeg(segs, new Seg { a = de * Planet.R, b = pe, ha = G(e), hb = Mathf.Lerp(G(e), G(oe), t), hw = WalkHW(e), ia = e, ib = e, hardB = !spanNew });   // een tunnel: hard eind op het portaal (de berg blijft staan); een brug: het dek gaat verder

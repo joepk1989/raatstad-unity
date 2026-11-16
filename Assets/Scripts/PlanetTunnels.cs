@@ -42,6 +42,27 @@ public static partial class PlanetCity
     // (ground) en ergens BoreNeed, dan links en rechts daarvan opnieuw. plain: kan een portaal zijn; step: de lijn gaat recht naar de
     // buur; inner: mag de berg in; road: de hoogte van de weg in een portaalvak. Geeft de paren (portaal, portaal) als index in de lijn.
     // span: een dalbrug zoeken in plaats van een tunnel (het terrein ertussen ligt ónder de rechte weg, SpanClear en SpanNeed)
+    // Over het water (Terrein v2): loopt een lijn over de zee, een meer of een rivier (terrein onder het zeeniveau), dan wordt dat stuk
+    // een brug van oever tot oever in plaats van een dam: recht, hooguit SpanMax lang, alleen over vakken die bij deze lijn horen.
+    // De weg ligt op de oevers minstens WaterDeck boven het water, zodat het dek (1,3 m dik) er vrij van blijft. Is het water maar een
+    // vak breed, dan gaat de brug een vak verder door (een lange verbinding moet twee vakken overslaan). wet: ligt vak k van de lijn in
+    // het water; land: de hoogte van de grond daar. Geeft de paren als index in de lijn, h: de hoogte van de weg op de twee oevers.
+    const float WaterDeck = 2f;
+    static List<(int i, int j)> WaterSearch(List<int> line, System.Func<int, bool> plain, System.Func<int, bool> step, System.Func<int, bool> inner, System.Func<int, bool> wet, System.Func<int, float> land, out float[] h)
+    {
+        int n = line.Count; h = new float[n]; var o = new List<(int i, int j)>();
+        for (int k = 1; k < n - 1; k++)
+        {
+            if (!wet(k)) continue; int a = k; while (k + 1 < n && wet(k + 1)) k++;
+            int i = a - 1, j = k + 1; if (j >= n) break; if (wet(i)) continue;
+            if (j - i < 3) { if (j + 1 < n && !wet(j + 1)) j++; else if (i > 0 && !wet(i - 1)) i--; else continue; }
+            if (!plain(line[i]) || !plain(line[j]) || CellDist(line[i], line[j]) > SpanMax) continue;
+            bool ok = true; for (int m = i; m < j && ok; m++) ok = step(m) && (m == i || inner(m));
+            if (!ok) continue;
+            h[i] = Mathf.Max(land(i), SeaLevel + WaterDeck); h[j] = Mathf.Max(land(j), SeaLevel + WaterDeck); o.Add((i, j)); k = j - 1;
+        }
+        return o;
+    }
     // Recht door de berg (Terrein v2): de weg blijft op de rechte lijn tussen de voet van de berg aan beide kanten en klimt niet eerst
     // de flank op. Per berg zoekt dit de langste rechte koorde van voet tot voet die nergens boven het terrein ligt (hooguit BoreGrade
     // steil, alleen over vakken die bij deze lijn horen). Een voet is een plek waar het terrein buiten de berg gewoon doorloopt: komt
@@ -192,6 +213,7 @@ public static partial class PlanetCity
         if (Ground2)   // recht door de berg en van hoog naar laag (StraightSearch en DropSearch, zoals ProfileAll na het leggen)
         {
             System.Func<int, bool> Free = k => { int c = line[k]; if (!IsWalk(c)) return true; if (Underpass(c)) return false; foreach (int p in Partners(c)) if (!line.Contains(p)) return false; return true; };
+            foreach (var (i, j) in WaterSearch(line, Plain, Step, Inner, k => !IsWalk(line[k]) && Terrain(line[k]) < SeaLevel - 0.05f, k => Road(line[k]), out var hw)) Add(i, j, true, hw);   // over het water: een brug
             foreach (var (i, j) in StraightSearch(line, Plain, Step, Inner, Free, out var hr)) Add(i, j, false, hr);
             foreach (var (i, j) in DropSearch(line, Plain, Step, Inner, Free, out var hs)) Add(i, j, true, hs);
         }
