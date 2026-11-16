@@ -204,10 +204,16 @@ public static partial class PlanetCity
             System.Func<int, bool> Free = k => { int c = line[k]; if (!Plain(c)) return false; foreach (int j in Planet.Cells[c].nb) if (Underpass(j)) return false; foreach (int p in Partners(c)) if (!line.Contains(p)) return false; return true; };
             float Land(int c) => preLevel.TryGetValue(c, out var pl) ? pl : Terrain(c);   // het terrein van voor de weg (SetLevel legde over water een dam)
             var ext = WaterLine(line, out _);   // met het bestaande wegeind waar de lijn recht op aansluit erbij
-            System.Func<int, bool> StepW = k => LineStep(ext[k], ext[k + 1]) && Linked(ext[k], ext[k + 1]);
-            System.Func<int, bool> InnerW = k => { int c = ext[k], p = ext[k - 1], q = ext[k + 1]; var ps = Partners(c); return Plain(c) && ps.Count == 2 && ps.Contains(p) && ps.Contains(q) && Straight(p, c, q); };
-            foreach (var (i, j) in WaterSearch(ext, Plain, StepW, InnerW, k => !Underpass(ext[k]), Land, out var hw))   // over het water: een brug
-            { RoadBase[ext[i]] = hw[i]; RoadBase[ext[j]] = hw[j]; Span(ext, i, j); SpanLinks.Add(Key(ext[i], ext[j])); water++; }
+            // (het leggen verbindt een schuine stap naar een bestaand wegeind soms via een buurvak: dat omwegvak hoort bij de lijn en gaat met de brug weg)
+            int Detour(int a, int b) { if (Linked(a, b)) return -1; foreach (int x in Partners(a)) if (Partners(x).Count == 2 && Partners(x).Contains(b) && !ext.Contains(x)) return x; return -1; }
+            System.Func<int, bool> StepW = k => LineStep(ext[k], ext[k + 1]) && (Linked(ext[k], ext[k + 1]) || Detour(ext[k], ext[k + 1]) >= 0);
+            System.Func<int, bool> InnerW = k => { int c = ext[k], p = ext[k - 1], q = ext[k + 1]; if (!Plain(c) || !Straight(p, c, q)) return false; var ps = Partners(c); if (ps.Count != 2) return false; foreach (int x in ps) if (x != p && x != q && x != Detour(p, c) && x != Detour(c, q)) return false; return true; };
+            foreach (var (i, j) in WaterSearch(ext, Plain, StepW, InnerW, k => !Underpass(ext[k]), Land, c => RoadH.TryGetValue(c, out float rv) ? rv : float.NaN, out var hw))   // over het water: een brug (RoadH is hier nog het profiel van voor de lijn: alleen bestaande wegen)
+            {
+                if (!RoadH.ContainsKey(ext[i])) RoadBase[ext[i]] = hw[i]; if (!RoadH.ContainsKey(ext[j])) RoadBase[ext[j]] = hw[j];
+                for (int m = i; m < j; m++) { int x = Detour(ext[m], ext[m + 1]); if (x >= 0) Clear(x); }
+                Span(ext, i, j); SpanLinks.Add(Key(ext[i], ext[j])); water++;
+            }
             foreach (var (i, j) in StraightSearch(line, Plain, Step, Inner, Free, out var hs))
             {
                 for (int k = i; k >= 0 && Free(k) && (k == i || hs[k] < Terrain(line[k]) - 0.05f); k--) RoadBase[line[k]] = hs[k];   // de insnijding voor het portaal: tot waar de rechte lijn het terrein raakt

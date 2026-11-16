@@ -472,6 +472,7 @@ public class WegVoorbeeld : MonoBehaviour
     // de vakhoogte ligt terwijl er iets op staat (zweeft daar iets?), met foto's van de ergste drie en twee overzichten.
     IEnumerator StadNakijken(string mode)
     {
+        string paar = null; { int pi = mode.IndexOf(" paar="); if (pi >= 0) { paar = mode.Substring(pi + 6).Trim(); mode = mode.Substring(0, pi) + " einden"; } } if (mode.Contains(" breed")) { PlanetCity.DragStyle = 1; mode = mode.Replace(" breed", ""); }
         bool einden = mode.EndsWith(" einden"); if (einden) mode = mode.Substring(0, mode.Length - 7); bool schuin = mode.EndsWith(" schuin"); if (schuin) mode = mode.Substring(0, mode.Length - 7); bool brug = mode.EndsWith(" brug"); if (brug) mode = mode.Substring(0, mode.Length - 5);
         string id = mode.Substring(4).Trim(), file = Path.Combine(CityFiles.Dir, id + ".json"); bouw = new System.Text.StringBuilder(id + "\n");
         if (!File.Exists(file)) { File.WriteAllText(Path.Combine(Dir, "stad.txt"), "GEEN BESTAND " + file); File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); yield break; }
@@ -479,7 +480,7 @@ public class WegVoorbeeld : MonoBehaviour
         var sw = System.Diagnostics.Stopwatch.StartNew(); PlanetCity.TouchAll(); PlanetCity.Rebuild(); PlanetCity.RebuildGrid(); long ms = sw.ElapsedMilliseconds; yield return null; yield return null;
         var log = new System.Text.StringBuilder();
         log.Append(id).Append(": laden ").Append(ok ? "gelukt" : "MISLUKT").Append(", ").Append(PlanetCity.Cells.Count).Append(" vakken met inhoud, RoadH ").Append(PlanetCity.RoadH.Count).Append(", tekenen ").Append(ms).AppendLine(" ms");
-        if (brug) { yield return BrugProef(log, schuin, einden); File.WriteAllText(Path.Combine(Dir, "stad.txt"), log.ToString()); File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true; yield break; }
+        if (brug) { yield return BrugProef(log, schuin, einden, paar); File.WriteAllText(Path.Combine(Dir, "stad.txt"), log.ToString()); File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true; yield break; }
         var centers = new List<int>(); var gezakt = new List<(float d, int c)>(); int first = -1;
         foreach (var kv in PlanetCity.Cells)
         {
@@ -505,7 +506,7 @@ public class WegVoorbeeld : MonoBehaviour
     }
     // "stad <id> brug": op een paar plekken een weg recht over het water slepen (zoals de speler: LinePlan, PlaceLine, SetLevel, Reprofile)
     // en opschrijven wat het voorbeeld zegt en wat er komt. Elke proef begint weer bij de opgeslagen stad.
-    IEnumerator BrugProef(System.Text.StringBuilder log, bool schuin, bool einden)
+    IEnumerator BrugProef(System.Text.StringBuilder log, bool schuin, bool einden, string paar = null)
     {
         string snap = PlanetCity.Snapshot(); int done = 0; var used = new List<int>(); int shot = 0;
         int Walk(int c, Vector3 to, int steps)
@@ -520,6 +521,8 @@ public class WegVoorbeeld : MonoBehaviour
             var wl = new List<int>(); for (int i = 0; i < Planet.Cells.Length; i++) if (PlanetCity.Terrain(i) < PlanetCity.SeaLevel - 0.05f) wl.Add(i);
             foreach (int e in ends) { float md = 9999f; foreach (int w in wl) md = Mathf.Min(md, Vector3.Distance(Planet.Cells[e].dir, Planet.Cells[w].dir) * Planet.R); log.Append("  eind ").Append(e).Append(" G ").Append(PlanetCity.G(e).ToString("0.0")).Append(", water op ").Append(md.ToString("0")).Append(" m; andere einden:"); foreach (int f in ends) if (f != e) { float dd = Vector3.Distance(Planet.Cells[e].dir, Planet.Cells[f].dir) * Planet.R; if (dd < 320f) log.Append(' ').Append(f).Append('(').Append(dd.ToString("0")).Append(" m)"); } log.AppendLine(); }
             var pairs = new List<(int a, int b)>();
+            if (paar != null) { var ab = paar.Split('-'); pairs.Add((int.Parse(ab[0]), int.Parse(ab[1]))); }
+            else
             {   // de schuine weg die nu als dam door het water ligt (halve vakken onder het zeeniveau): weghalen en opnieuw slepen tussen de einden die overblijven
                 var seen2 = new HashSet<long>(); var dams = new List<(int a, int b)>();
                 foreach (var kv in PlanetCity.Cells) { int c = kv.Key; if (!PlanetCity.IsRoad(c)) continue; foreach (int q in PlanetCity.Partners(c)) { if (q < c || Vector3.Distance(Planet.Cells[c].dir, Planet.Cells[q].dir) * Planet.R < 20f) continue; bool w = false; foreach (int hx in PlanetCity.Between(c, q)) if (PlanetCity.Terrain(hx) < PlanetCity.SeaLevel - 0.05f) w = true; if (w) dams.Add((c, q)); } }
@@ -538,7 +541,7 @@ public class WegVoorbeeld : MonoBehaviour
                     }
                 }
             }
-            foreach (int e in ends)   // rechtdoor vanaf het wegeind: de eerste weg aan de overkant van het water
+            if (paar == null) foreach (int e in ends)   // rechtdoor vanaf het wegeind: de eerste weg aan de overkant van het water
             {
                 int pr = PlanetCity.Partners(e)[0]; Vector3 dir = (Planet.Cells[e].dir - Planet.Cells[pr].dir).normalized; int c = e; bool wet = false;
                 for (int st = 0; st < 14; st++) { c = Walk(c, dir, 1); if (PlanetCity.Terrain(c) < PlanetCity.SeaLevel - 0.05f) wet = true; if (PlanetCity.IsRoad(c)) { if (wet) pairs.Add((e, c)); break; } }

@@ -49,18 +49,41 @@ public static partial class PlanetCity
     // eind het vak van de bestaande weg waar hij recht op aansluit erbij (WaterLine), zodat ook een korte sleep tussen twee wegeinden
     // tegenover elkaar een brug wordt. can: mag vak k in het water liggen; land: de hoogte van de grond in een vak.
     // Liggen bij een schuine stap alleen de halve vakken in het water en beide vakken droog, dan wordt die ene stap een korte brug.
-    // Geeft de paren als index in de lijn, h: de hoogte van de weg op de twee oevers.
+    // road: de hoogte van een bestaande weg in een vak (NaN: een nieuw vak). Geeft de paren als index in de lijn, h: de hoogte van de weg op de twee landhoofden.
     const float WaterDeck = 2f;
-    static List<(int i, int j)> WaterSearch(List<int> line, System.Func<int, bool> plain, System.Func<int, bool> step, System.Func<int, bool> inner, System.Func<int, bool> can, System.Func<int, float> land, out float[] h)
+    static List<(int i, int j)> WaterSearch(List<int> line, System.Func<int, bool> plain, System.Func<int, bool> step, System.Func<int, bool> inner, System.Func<int, bool> can, System.Func<int, float> land, System.Func<int, float> road, out float[] h)
     {
-        int n = line.Count; h = new float[n]; var o = new List<(int i, int j)>(); var wet = new bool[n];
+        int n = line.Count; var hh = new float[n]; h = hh; var o = new List<(int i, int j)>(); var wet = new bool[n];
         for (int k = 0; k < n; k++) wet[k] = can(k) && land(line[k]) < SeaLevel + 0.05f; var skew = new List<int>();
         for (int k = 0; k + 1 < n; k++)
         {
             if (IsNeighbour(line[k], line[k + 1])) continue; bool w = false;
             foreach (int x in Between(line[k], line[k + 1])) if (land(x) < SeaLevel - 0.05f) w = true;
             if (!w) continue;
-            if (!wet[k] && !wet[k + 1] && plain(line[k]) && plain(line[k + 1]) && step(k)) skew.Add(k);   // beide oevers droog: die ene schuine stap wordt zelf een korte brug   // (is een van de twee zelf nat, dan loopt de brug van het droge vak af al over deze stap)
+            if (!wet[k] && !wet[k + 1] && plain(line[k]) && plain(line[k + 1]) && step(k)) skew.Add(k);   // beide oevers droog: die ene schuine stap wordt zelf een korte brug (is een van de twee zelf nat, dan loopt de brug van het droge vak af al over deze stap)
+        }
+        // de hoogte van de weg op een landhoofd: een bestaande weg houdt zijn hoogte (road), een nieuw vak ligt op de grond en minstens WaterDeck boven het water
+        float Top(int m) { float r = road(line[m]); return float.IsNaN(r) ? Mathf.Max(land(line[m]), SeaLevel + WaterDeck) : r; }
+        // Van hoge oever tot hoge oever: de brug loopt verder door zolang de grond ertussen minstens SpanClear onder de rechte lijn tussen
+        // de twee landhoofden blijft (een lage oever hoort bij de overspanning: anders duikt de weg naar het water en klimt hij erna
+        // weer). De langste die past, hooguit MaxGrade steil en SpanMax lang.
+        void Widen(ref int i, ref int j)
+        {
+            int lo = i, hi = j;
+            while (lo > 0 && step(lo - 1) && inner(lo) && float.IsNaN(road(line[lo]))) lo--;   // (een bestaande weg wordt landhoofd, geen deel van de overspanning)
+            while (hi < n - 1 && step(hi) && inner(hi) && float.IsNaN(road(line[hi]))) hi++;
+            int bi = i, bj = j; float bd = float.MaxValue;
+            for (int a = lo; a <= i; a++) for (int b = hi; b >= j; b--)
+            {
+                if (b - a < 3 && !(a == i && b == j)) continue; if (b - a < bj - bi) break;
+                if (!plain(line[a]) || !plain(line[b])) continue;
+                float dist = CellDist(line[a], line[b]), ha = Top(a), hb = Top(b), sa = 0f, tot = 0f; if (dist > SpanMax || Mathf.Abs(hb - ha) > MaxGrade * dist) continue;
+                for (int m = a; m < b; m++) tot += CellDist(line[m], line[m + 1]);
+                bool ok = true; for (int m = a + 1; m < b && ok; m++) { sa += CellDist(line[m - 1], line[m]); if (land(line[m]) > Mathf.Lerp(ha, hb, sa / tot) - SpanClear) ok = false; }
+                if (!ok && !(a == i && b == j)) continue;
+                float d = Mathf.Abs(hb - ha); if (b - a > bj - bi || d < bd) { bi = a; bj = b; bd = d; }
+            }
+            i = bi; j = bj;
         }
         for (int k = 1; k < n - 1; k++)
         {
@@ -70,9 +93,14 @@ public static partial class PlanetCity
             if (!plain(line[i]) || !plain(line[j]) || CellDist(line[i], line[j]) > SpanMax) continue;
             bool ok = true; for (int m = i; m < j && ok; m++) ok = step(m) && (m == i || inner(m));
             if (!ok) continue;
-            h[i] = Mathf.Max(land(line[i]), SeaLevel + WaterDeck); h[j] = Mathf.Max(land(line[j]), SeaLevel + WaterDeck); o.Add((i, j)); k = j - 1;
+            Widen(ref i, ref j); hh[i] = Top(i); hh[j] = Top(j); o.Add((i, j)); k = Mathf.Max(k, j - 1);
         }
-        foreach (int k in skew) { bool free = true; foreach (var (i, j) in o) if (k >= i && k < j) free = false; if (!free) continue; h[k] = Mathf.Max(land(line[k]), SeaLevel + WaterDeck); h[k + 1] = Mathf.Max(land(line[k + 1]), SeaLevel + WaterDeck); o.Add((k, k + 1)); }
+        foreach (int k in skew)
+        {
+            bool free = true; foreach (var (i, j) in o) if (k >= i && k < j) free = false; if (!free) continue;
+            int a = k, b = k + 1; Widen(ref a, ref b); foreach (var (i, j) in o) if (a < j && b > i) free = false; if (!free) { a = k; b = k + 1; }
+            hh[a] = Top(a); hh[b] = Top(b); o.Add((a, b));
+        }
         return o;
     }
     // de lijn met aan elk eind het vak van de bestaande weg waar hij recht op aansluit (een wegeind dat doorgetrokken wordt); pre: 1 als er vooraan een vak bij kwam
@@ -243,7 +271,7 @@ public static partial class PlanetCity
                 var ext = WaterLine(line, out int pre);
                 System.Func<int, bool> StepW = k => LineStep(ext[k], ext[k + 1]);
                 System.Func<int, bool> InnerW = k => Plain(ext[k]) && Straight(ext[k - 1], ext[k], ext[k + 1]) && (!IsWalk(ext[k]) || Partners(ext[k]).Count == 1);   // nieuw, of een wegeind dat doorgetrokken wordt
-                foreach (var (i, j) in WaterSearch(ext, Plain, StepW, InnerW, k => !IsWalk(ext[k]) || Partners(ext[k]).Count == 1, c => IsWalk(c) ? G(c) : Terrain(c), out var hw))
+                foreach (var (i, j) in WaterSearch(ext, Plain, StepW, InnerW, k => !IsWalk(ext[k]) || Partners(ext[k]).Count == 1, c => Terrain(c), c => IsWalk(c) ? G(c) : float.NaN, out var hw))
                 {
                     int a = ext[i], b = ext[j]; float ha = hw[i], hb = hw[j]; if (a > b) { (a, b) = (b, a); (ha, hb) = (hb, ha); }
                     o.Add((a, b, ha, hb, true)); for (int k = i + 1; k < j; k++) taken.Add(k - pre);
