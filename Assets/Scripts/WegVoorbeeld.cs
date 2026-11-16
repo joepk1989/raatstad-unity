@@ -56,6 +56,7 @@ public class WegVoorbeeld : MonoBehaviour
         if (mode == "terrein") { yield return TerreinTest(home); yield break; }
         if (mode == "dal") { yield return DalTest(home); yield break; }
         if (mode == "mijnstad") { yield return MijnStad(); yield break; }
+        if (mode.StartsWith("stad ")) { yield return StadNakijken(mode); yield break; }
         if (mode.StartsWith("melding")) { yield return Melding(mode); yield break; }
         if (mode == "hoogtetest") { yield return Hoogtetest(); yield break; }
         if (mode == "natuurtest") { yield return Hoogtetest(true); yield break; }
@@ -466,6 +467,40 @@ public class WegVoorbeeld : MonoBehaviour
     }
     // De laatst bewaarde stad van de speler (steden/<id>.json) laden en scannen rond elke bocht, kruising, doodlopend eind en
     // landhoofd op ongelijk terrein (daar sluit het terrein het lastigst aan).
+    // Een opgeslagen stad nakijken ("stad <id>", het bestand in de map steden; alleen lezen, niets wordt bewaard): opnieuw tekenen, een
+    // scan langs de wegen (hooguit 60 plekken, minstens 40 m uit elkaar) en de vakken waar het maaiveld in het midden het verst onder
+    // de vakhoogte ligt terwijl er iets op staat (zweeft daar iets?), met foto's van de ergste drie en twee overzichten.
+    IEnumerator StadNakijken(string mode)
+    {
+        string id = mode.Substring(4).Trim(), file = Path.Combine(CityFiles.Dir, id + ".json"); bouw = new System.Text.StringBuilder(id + "\n");
+        if (!File.Exists(file)) { File.WriteAllText(Path.Combine(Dir, "stad.txt"), "GEEN BESTAND " + file); File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); yield break; }
+        PlanetCity.Ground2 = true; PlanetCity.ClearAll(); bool ok = PlanetCity.Restore(File.ReadAllText(file));
+        var sw = System.Diagnostics.Stopwatch.StartNew(); PlanetCity.TouchAll(); PlanetCity.Rebuild(); PlanetCity.RebuildGrid(); long ms = sw.ElapsedMilliseconds; yield return null; yield return null;
+        var log = new System.Text.StringBuilder();
+        log.Append(id).Append(": laden ").Append(ok ? "gelukt" : "MISLUKT").Append(", ").Append(PlanetCity.Cells.Count).Append(" vakken met inhoud, RoadH ").Append(PlanetCity.RoadH.Count).Append(", tekenen ").Append(ms).AppendLine(" ms");
+        var centers = new List<int>(); var gezakt = new List<(float d, int c)>(); int first = -1;
+        foreach (var kv in PlanetCity.Cells)
+        {
+            int i = kv.Key; if (kv.Value == null || kv.Value.Count == 0) continue; if (first < 0) first = i;
+            if (PlanetCity.IsWalk(i))
+            {
+                if (centers.Count >= 60) continue; bool far = true;
+                foreach (int c in centers) if (Vector3.Distance(Planet.Cells[c].dir, Planet.Cells[i].dir) * Planet.R < 40f) { far = false; break; }
+                if (far) centers.Add(i); continue;
+            }
+            float d = PlanetCity.G(i) - PlanetCity.TerrainAt(Planet.Cells[i].dir); if (d > 0.3f) gezakt.Add((d, i));
+        }
+        gezakt.Sort((x, y) => y.d.CompareTo(x.d));
+        log.Append("vakken met inhoud waar het maaiveld in het midden meer dan 0,3 m onder de vakhoogte ligt: ").Append(gezakt.Count).AppendLine();
+        for (int k = 0; k < Mathf.Min(8, gezakt.Count); k++) log.Append("  vak ").Append(gezakt[k].c).Append(": ").Append(gezakt[k].d.ToString("0.00")).Append(" m; ").AppendLine(Desc(gezakt[k].c));
+        File.WriteAllText(Path.Combine(Dir, "stad.txt"), log.ToString());
+        if (centers.Count > 0) { Hc = centers[0]; yield return Scan(centers[0], 0f, "stad_scan", centers, 24f); log.Append(bouw.ToString()); }
+        for (int k = 0; k < Mathf.Min(3, gezakt.Count); k++) { int c = gezakt[k].c; yield return Shot("stad_gezakt" + k, c, Dh(c, 0.6f), 38f, 22f); }
+        int mid = centers.Count > 0 ? centers[centers.Count / 2] : first;
+        if (mid >= 0) { yield return Shot("stad_overzicht0", mid, Dh(mid, 0.4f), 260f, 50f); yield return Shot("stad_overzicht1", mid, Dh(mid, 2.5f), 120f, 30f); }
+        File.WriteAllText(Path.Combine(Dir, "stad.txt"), log.ToString());
+        File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true;
+    }
     IEnumerator MijnStad()
     {
         var files = new List<FileInfo>(new DirectoryInfo(Path.Combine(Application.persistentDataPath, "steden")).GetFiles("*.json")); files.RemoveAll(f => f.Name.EndsWith(".info.json"));
