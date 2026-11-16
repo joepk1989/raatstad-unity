@@ -1192,8 +1192,6 @@ public class WegVoorbeeld : MonoBehaviour
         }
         log.Append("laden ").Append(ok ? "gelukt" : "MISLUKT").Append(" in ").Append(tl).Append(" ms; RoadH ").Append(PlanetCity.RoadH.Count).Append(", ").Append(diff).AppendLine(" vakken met een andere weghoogte dan voor het opslaan"); log.Append(dd);
         // de schakelaar
-        PlanetCity.Ground2 = false; PlanetCity.Reprofile(); int off = PlanetCity.RoadH.Count;
-        PlanetCity.Ground2 = true; PlanetCity.Reprofile(); log.Append("schakelaar uit: RoadH ").Append(off).Append("; weer aan: RoadH ").Append(PlanetCity.RoadH.Count).AppendLine();
         { PlanetCity.Ground2Tris = 0; var sw1 = System.Diagnostics.Stopwatch.StartNew(); PlanetCity.TouchAll(); PlanetCity.Rebuild(); log.Append("bodem: ").Append(PlanetCity.Ground2Tris).Append(" driehoeken in ").Append(sw1.ElapsedMilliseconds).AppendLine(" ms"); }
         PlanetCity.TouchAll(); PlanetCity.Rebuild(); PlanetCity.Rebuild(); PlanetCity.RebuildGrid(); yield return null; yield return null;
         File.WriteAllText(Path.Combine(Dir, "inspel.txt"), log.ToString());

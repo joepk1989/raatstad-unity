@@ -145,7 +145,6 @@ public static partial class PlanetCity
     public static float LastProfileMs, LastProfileOnlyMs;   // het hele profiel met UpdateCuts, en alleen ProfileAll
     public static void Reprofile(List<int> line = null)
     {
-        if (!Ground2) { if (RoadH.Count > 0) { foreach (var kv in RoadH) { Touch(kv.Key); foreach (int j in Planet.Cells[kv.Key].nb) Touch(j); } RoadH.Clear(); UpdateCuts(); } return; }
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var ls = new List<List<int>>(); if (line != null && line.Count >= 4) ls.Add(line);
         ProfileAll(ls); LastProfileOnlyMs = sw.ElapsedMilliseconds; UpdateCuts(); LastProfileMs = sw.ElapsedMilliseconds;

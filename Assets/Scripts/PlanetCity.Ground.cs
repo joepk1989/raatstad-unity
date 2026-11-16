@@ -164,10 +164,6 @@ public static partial class PlanetCity
                 float kk = Mathf.Pow(Mathf.Clamp01((c.distort - 0.04f) / 0.125f), 1.4f);
                 bool start = System.Array.IndexOf(Planet.Starts, i) >= 0, pole = Planet.IsPole(i), special = pole || pent || start;
                 var mb0 = pole ? PM("ijs") : pent && Dev.Pentagons ? pm : start && Dev.Starts ? sm : Dev.Distort ? ms[Mathf.Clamp(Mathf.RoundToInt(kk * (Steps - 1)), 0, Steps - 1)] : ms[0];   // vervorming en vijfhoeken alleen als ontwikkelaarshulp (Dev)
-                // naden langs de rand (Skirt): bij vakken waar de grond door wegen, geulen of tunnels gesneden wordt, en hun buren; niet
-                // bij een plateau of strook (die hebben een sokkel) en niet naar een vak zonder bodem (gracht, geul onder een brug)
-                bool seam = !Ground2 && !plat && !cut && SeamCell(i) && !StripCut(i); var edgeN = new Vector3[m]; var seamEdge = new bool[m];   // (Terrein v2 deelt de randpunten met de buren: geen naden nodig)
-                if (seam) for (int k = 0; k < m; k++) { edgeN[k] = Vector3.Cross(c.corners[k], c.corners[(k + 1) % m]).normalized; int j = edN[i][k]; seamEdge[k] = j >= 0 && !NoGround(j) && !Quay(j); }
                 if (!cut)
                 {
                     Vector3 mid = c.dir * (Planet.R + hc);
@@ -176,29 +172,11 @@ public static partial class PlanetCity
                     void Put(string tag, Vector3 P0, Vector3 P1, Vector3 P2)   // naar de bodemmesh (met het vak bij elk hoekpunt) of naar het materiaal van de soort
                     {
                         PutTri(tag, P0, P1, P2, c.dir);
-                        if (seam) { Skirt(tag, P0, P1); Skirt(tag, P1, P2); Skirt(tag, P2, P0); }
                     }
                     void PutTri(string tag, Vector3 P0, Vector3 P1, Vector3 P2, Vector3 outw)
                     {
                         if (soil != null && SoilTag(tag) && (tag != null || mb0 == ms[0])) { int v0 = soil.v.Count; BoreTri(soil, P0, P1, P2, outw, bn); for (int q = v0; q < soil.v.Count; q++) soilCell.Add(i); }
                         else BoreTri(tag == null ? mb0 : TB(tag), P0, P1, P2, outw, bn);
-                    }
-                    // Een naad: ligt dit randje van een driehoekje op de rand van het vak, dan hangt er een strook van SkirtD naar beneden (naar
-                    // buiten gekeerd). Sluit het buurvak goed aan, dan zit die strook in de grond; zo niet (een ander aantal snijpunten op de
-                    // gedeelde rand, een andere hoogte) dan dekt hij de kier af in plaats van dat je door de planeet kijkt.
-                    void Skirt(string tag, Vector3 P0, Vector3 P1)
-                    {
-                        Vector3 u0 = P0.normalized, u1 = P1.normalized;
-                        for (int k = 0; k < m; k++)
-                        {
-                            if (!seamEdge[k]) continue; Vector3 nk = edgeN[k];
-                            if (Mathf.Abs(Vector3.Dot(u0, nk)) > 2e-6f || Mathf.Abs(Vector3.Dot(u1, nk)) > 2e-6f) continue;
-                            Vector3 outw = Vector3.Dot(c.dir, nk) > 0f ? -nk : nk;
-                            // effen in de grondkleur (de bodem met textures maakt een loodrechte strook kale aarde: een bruine wand)
-                            float hh = P0.magnitude - Planet.R; var sb2 = TB(tag != null && tag.StartsWith("t") ? tag : "t" + Mathf.Clamp(Mathf.FloorToInt(hh * 3f / 9f), 0, 29));
-                            BoreTri(sb2, P0, P1, P1 - u1 * SkirtD, outw, bn); BoreTri(sb2, P0, P1 - u1 * SkirtD, P0 - u0 * SkirtD, outw, bn);
-                            return;
-                        }
                     }
                     void Emit2(Vector3 P0, Vector3 P1, Vector3 P2, float h0, float h1, float h2, bool steep)   // steep: op de schuine kant van een weg (gras, of aarde als het steiler is dan 40°)
                     {
@@ -212,37 +190,9 @@ public static partial class PlanetCity
                         if (!steep) tag = NatureTag(i, tag, h0, h1, h2, up);   // rots, sneeuw, strand en zeebodem (PlanetNature.cs)
                         Put(tag, P0, P1, P2); rec?.Add(new GTri { tag = tag, a = P0, b = P1, c = P2 });
                     }
-                    if (Ground2)   // Terrein v2: het vak uit de hoogtefunctie, de randpunten gedeeld met de buren (PlanetGround2.cs)
-                    {
-                        Ground2Cell(i, Plateau(i), Emit2, k => { if (!hasDeck) return false; Vector3 dw = (c.corners[k] + c.corners[(k + 1) % m]).normalized * Planet.R - dk.p; return Vector3.Dot(dw, dk.o) - dk.skew * Vector3.Dot(dw, dk.t) < -0.5f; },
-                            (wa, wb, wc, wd, outw) => TB("sokkel").Quad(wa, wb, wc, wd, outw));   // de wanden van sokkels en bakken (ontwerp 8.5): eigen quads, steen
-                        goto Walls;
-                    }
-                    // bij een geul of dijk: het maaiveld zonder geul als vlak, de geul of dijk komt er precies in (ExactGround)
-                    if (fieldCells.Contains(i) && !plat && NearSeg(c.dir, c.radius))   // ook als een weg alleen de rand van het vak raakt (een schuine onderdoorgang)
-                    {
-                        var hb0 = new float[m]; float hcb0 = 0f; for (int k = 0; k < m; k++) { hb0[k] = FieldBase(i, k); hcb0 += hb0[k]; } hcb0 = (levelled.Contains(i) ? hcb0 / m : g) + CenterOfs1(i);   // het gewone terrein, zonder de weg (een bebouwd vak: zijn plateau)
-                        // hetzelfde als de vorige keer (zelfde hoogtes en dezelfde wegen in de buurt): de onthouden driehoekjes, niet opnieuw snijden
-                        long key = FieldKey(i, hcb0, hb0, special);
-                        if (groundCache.TryGetValue(i, out var gc) && gc.key == key) { foreach (var t in gc.tris) Put(t.tag, t.a, t.b, t.c); goto Walls; }   // (de sokkel van een strook komt hieronder nog)
-                        rec = new List<GTri>();
-                        for (int k = 0; k < m; k++) LineGround(c, k, hcb0, hb0[k], hb0[(k + 1) % m], Emit2);
-                        groundCache[i] = (key, rec); rec = null;
-                        goto Walls;
-                    }
-                    var near = (carved.Count > 0 || fillN > 0) && !plat ? CutsNear(c) : null; float[] hbase = null; float hcb = g;
-                    if (near != null && near.Count > 0)
-                    {
-                        hbase = new float[m]; for (int k = 0; k < m; k++) hbase[k] = CornerBase(i, k);
-                        if (IsWalk(i) && !levelled.Contains(i)) { hcb = 0f; foreach (float x in hbase) hcb += x; hcb /= m; }
-                    }
-                    for (int k = 0; k < m; k++)
-                    {
-                        float ha = hk[k], hb = hk[(k + 1) % m]; Vector3 A = c.corners[k] * (Planet.R + ha), B = c.corners[(k + 1) % m] * (Planet.R + hb);
-                        if (hasDeck) { Vector3 dw = (c.corners[k] + c.corners[(k + 1) % m]).normalized * Planet.R - dk.p; if (Vector3.Dot(dw, dk.o) - dk.skew * Vector3.Dot(dw, dk.t) < -0.5f) continue; }   // onder het dek van de brug
-                        if (hbase != null) { ExactGround(c, k, near, hcb, hbase[k], hbase[(k + 1) % m], Emit); continue; }
-                        Emit(mid, A, B, hc, ha, hb);
-                    }
+                    // het vak uit de hoogtefunctie, de randpunten gedeeld met de buren (PlanetGround2.cs)
+                    Ground2Cell(i, Plateau(i), Emit2, k => { if (!hasDeck) return false; Vector3 dw = (c.corners[k] + c.corners[(k + 1) % m]).normalized * Planet.R - dk.p; return Vector3.Dot(dw, dk.o) - dk.skew * Vector3.Dot(dw, dk.t) < -0.5f; },
+                        (wa, wb, wc, wd, outw) => TB("sokkel").Quad(wa, wb, wc, wd, outw));   // de wanden van sokkels en bakken (ontwerp 8.5): eigen quads, steen
                 }
                 if (cut && Underpass(i))   // brugvak: het stuk buiten een portaal is gewoon de geul
                 {
@@ -283,8 +233,7 @@ public static partial class PlanetCity
                             TB("sokkel").Quad(pa * RG, pb * RG, pb * (Planet.R + bb), pa * (Planet.R + ba), (ca + cb) * 0.5f - c.dir);
                             continue;
                         }
-                        if (Ground2)   // Terrein v2: de wand tot op de randpunten die de buur ook tekent (precies aansluitend, geen kier)
-                        {
+                        {   // de wand tot op de randpunten die de buur ook tekent (precies aansluitend, geen kier)
                             var prof = EdgeProfile(i, k); Vector3 ca = c.corners[k], cb = c.corners[(k + 1) % m];
                             Vector3 qa = ca * (Planet.R + CornerBase(i, k)), qb = cb * (Planet.R + CornerBase(i, (k + 1) % m));   // de randpunten liggen op de koorde tussen de hoekpunten (EdgeProfile)
                             for (int t = 0; t + 1 < prof.Count; t++)
@@ -294,26 +243,7 @@ public static partial class PlanetCity
                                 if (ta - ba < 0.01f && tb - bb < 0.01f) continue;
                                 TB("sokkel").Quad(pa * (Planet.R + ta), pb * (Planet.R + tb), pb * (Planet.R + bb), pa * (Planet.R + ba), (ca + cb) * 0.5f - c.dir);
                             }
-                            continue;
                         }
-                        Vector3 a = c.corners[k], b = c.corners[(k + 1) % m];
-                        float ga = CornerH(i, k), gb = CornerH(i, (k + 1) % m);
-                        if (HasField && NearSeg(c.dir, c.radius + 1f))   // naast een weg op een niveau (ook als alleen de rand van het vak erbij komt): de wand tot op het talud (dat kan lager liggen dan het oude maaiveld), in stukjes
-                        {
-                            float ba = CornerBase(i, k), bb = CornerBase(i, (k + 1) % m); const int N = 12;
-                            for (int t = 0; t < N; t++)
-                            {
-                                float t0 = t / (float)N, t1 = (t + 1) / (float)N; Vector3 pa = Vector3.Lerp(a, b, t0).normalized, pb = Vector3.Lerp(a, b, t1).normalized;
-                                float fa = Mathf.Min(Mathf.Lerp(ga, gb, t0), GroundField(pa, Mathf.Lerp(ba, bb, t0))), fb = Mathf.Min(Mathf.Lerp(ga, gb, t1), GroundField(pb, Mathf.Lerp(ba, bb, t1)));
-                                float lo2 = Mathf.Min(fa, fb) - 0.4f;   // iets onder de grond: geen kier waar het talud tussen twee meetpunten knikt if (g - lo2 < 0.01f) continue;
-                                float ta = strip ? GroundField(pa, g) : g, tb = strip ? GroundField(pb, g) : g;   // de bovenkant: het plateau, of waar de weg in het vak steekt de grond daar
-                                if (Mathf.Max(ta, tb) - lo2 < 0.45f) continue;
-                                TB("sokkel").Quad(pa * (Planet.R + ta), pb * (Planet.R + tb), pb * (Planet.R + lo2), pa * (Planet.R + lo2), (a + b) * 0.5f - c.dir);
-                            }
-                            continue;
-                        }
-                        if (g - ga < 0.01f && g - gb < 0.01f) continue;
-                        TB("sokkel").Quad(a * RG, b * RG, b * (Planet.R + gb), a * (Planet.R + ga), (a + b) * 0.5f - c.dir);
                     }
                 if (pole) PoleMarker(PM, c, g, i == Planet.North);
                 if (start && !pole && Dev.Starts)   // startplek (ontwikkelaarshulp) (op een pool staat de poolpaal): lichtblauw vak met een witte paal van 30 m en een vlaggetje

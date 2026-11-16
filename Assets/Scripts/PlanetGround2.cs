@@ -106,9 +106,8 @@ public static partial class PlanetCity
     public static long G2Polys, G2Lines;
     public static string G2Steps() => "lijnen " + G2SwLines.ElapsedMilliseconds + " ms (" + G2Lines + " lijnen), vlakken snijden " + G2SwPlanes.ElapsedMilliseconds + " ms (" + G2Polys + " stukken), samenvoegen " + G2SwMerge.ElapsedMilliseconds + " ms, tekenen " + G2SwPiece.ElapsedMilliseconds + " ms, UseNear " + G2SwNear.ElapsedMilliseconds + " ms";
     public static void G2Reset() { G2Cells = G2Field = G2EdgeNew = G2EdgeHit = G2Polys = G2Lines = G2CacheHit = G2CacheMiss = 0; G2SwField.Reset(); G2SwPlain.Reset(); G2SwEdge.Reset(); G2SwLines.Reset(); G2SwPlanes.Reset(); G2SwMerge.Reset(); G2SwPiece.Reset(); G2SwNear.Reset(); }
-    public static bool Ground2 = true;   // Terrein v2 (standaard aan; uit in de ontwikkelaarsmodus, voor die speelsessie): de bodem van elk vak uit de hoogtefunctie, de randen gedeeld met de buren, wegen met een profiel (RoadH)
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-    static void Ground2Default() { Ground2 = true; }   // bij elke start van Play weer aan (statische velden overleven een herstart zonder domein-herladen)
+    // Terrein v2 is de enige bodem (de oude opbouw en de schakelaar zijn weg, 16 november 2026); deze eigenschap bestaat nog voor tests die hem zetten
+    public static bool Ground2 { get => true; set { } }
 
     // De hoogte van het maaiveld (v2) op punt dir met de gewone terreinhoogte basis daar: de hoogtefunctie langs wegen (alleen in de
     // vakken binnen bereik, field; daarbuiten doet ze toch niets), de hoogste dijk erop, de laagste geul erin (alleen bij vakken waar

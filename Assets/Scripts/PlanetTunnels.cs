@@ -264,7 +264,7 @@ public static partial class PlanetCity
             if (a > b) { (a, b) = (b, a); (ha, hb) = (hb, ha); }   // zoals de tunnel straks getekend wordt: vanaf het kleinste vak
             o.Add((a, b, ha, hb, span)); for (int k = i + 1; k < j; k++) taken.Add(k);
         }
-        if (Ground2)   // recht door de berg en van hoog naar laag (StraightSearch en DropSearch, zoals ProfileAll na het leggen)
+        // recht door de berg en van hoog naar laag (StraightSearch en DropSearch, zoals ProfileAll na het leggen)
         {
             System.Func<int, bool> Free = k => { int c = line[k]; if (!IsWalk(c)) return true; if (Underpass(c)) return false; foreach (int p in Partners(c)) if (!line.Contains(p)) return false; return true; };
             {   // over het water: een brug (met het bestaande wegeind erbij, zoals ProfileAll)
