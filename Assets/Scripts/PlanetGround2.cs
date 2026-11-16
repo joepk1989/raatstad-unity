@@ -128,7 +128,13 @@ public static partial class PlanetCity
         var c = Planet.Cells[i]; int m = c.corners.Length;
         if (levelled.Contains(i)) { float s = 0f; for (int k = 0; k < m; k++) s += CornerBase(i, k); return s / m + CenterOfs1(i); }
         if (IsWalk(i)) return Terrain(i) + CenterOfs1(i);   // nieuwe opbouw: het terrein onder de weg; de weg zelf komt uit de hoogtefunctie
-        return G(i) + CenterOfs1(i);
+        // Op een helling liggen de hoeken van een vak op het laagste van de drie vakken eromheen, dus lager dan het midden: elk vak was
+        // een puntje. Het midden zakt daarom naar het gemiddelde van zijn hoeken (het vlak door de hoeken, de helling vloeit door);
+        // alleen wat een vak boven zijn hoogste buur uitsteekt blijft erbovenop staan (een top, een los opgehoogd vak).
+        float g = G(i), sc = 0f, mx = float.MinValue;
+        for (int k = 0; k < m; k++) sc += CornerBase(i, k);
+        foreach (int j in c.nb) mx = Mathf.Max(mx, Terrain(j));
+        return Mathf.Min(g, sc / m + Mathf.Max(0f, g - mx)) + CenterOfs1(i);
     }
     // Een randpunt: t langs de rand (0 bij hoek k, 1 bij hoek k+1) en de hoogte van het maaiveld daar
     // side: bij een wand staan er twee punten op dezelfde t, side +1 het punt aan de kant van de strook (de binnenkant), -1 aan de kant van het terrein
