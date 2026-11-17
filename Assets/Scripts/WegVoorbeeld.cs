@@ -46,7 +46,7 @@ public class WegVoorbeeld : MonoBehaviour
         PlanetCity.Slot = 9; DayNight.Hour = 12f; DayNight.Speed = 0f;
         PlanetCity.ClearAll(); PlanetCity.DragLevel = 0; PlanetCity.DragUnder = false; PlanetCity.DragOneWay = false;
 
-        int home = At(Planet.South, 1.0f, 160f);
+        int home = At(Planet.North, 1.0f, 160f);   // tests bouwen bij de noordpool: daar opent het spel, dus ze zijn meteen te zien
         float D60 = Mathf.PI / 3f;
         if (mode == "fiets") { yield return Bikes(home); yield break; }
         if (mode == "rotonde") { yield return Roundabouts(home); yield break; }
@@ -625,7 +625,7 @@ public class WegVoorbeeld : MonoBehaviour
     // de AI-bouwer laten bouwen op de heuvel uit zijn testopstelling (AiTest), dan scannen
     IEnumerator AiTerrein()
     {
-        var S0 = Planet.Cells[Planet.South]; Vector3 d0 = S0.east * Mathf.Cos(1f) + S0.north * Mathf.Sin(1f);
+        var S0 = Planet.Cells[Planet.North]; Vector3 d0 = S0.east * Mathf.Cos(1f) + S0.north * Mathf.Sin(1f);
         int start = Planet.Nearest((S0.dir * Mathf.Cos(170f / Planet.R) + d0 * Mathf.Sin(170f / Planet.R)).normalized * Planet.R); var S = Planet.Cells[start]; Hc = start; bouw = new System.Text.StringBuilder();
         for (int i = 0; i < Planet.Cells.Length; i++)
         {
@@ -910,7 +910,7 @@ public class WegVoorbeeld : MonoBehaviour
     }
     IEnumerator Startstad()
     {
-        int st = PlanetCity.FreeStart(Planet.Cells[Planet.South].dir); Hc = st; PlanetCity.StartTown(st);
+        int st = PlanetCity.FreeStart(Planet.Cells[Planet.North].dir); Hc = st; PlanetCity.StartTown(st);
         PlanetCity.Rebuild(); PlanetCity.Rebuild(); yield return null; yield return null;
         int lake = -1, bridge = -1;
         foreach (var kv in PlanetCity.Cells) { if (kv.Value.Count > 0 && kv.Value[0] == "meer" && lake < 0) lake = kv.Key; if (PlanetCity.IsRoad(kv.Key) && PlanetCity.Under.ContainsKey(kv.Key) && bridge < 0) bridge = kv.Key; }
@@ -933,7 +933,7 @@ public class WegVoorbeeld : MonoBehaviour
     IEnumerator Autos()
     {
         PlanetCity.Slot = 9; PlanetCity.ClearAll(); PlanetCity.Rebuild(); DayNight.Hour = 11f; DayNight.Speed = 0f; PlanetLife.CarsOn = false; PlanetLife.PeopleOn = false;
-        int H = At(Planet.South, 1.0f, 160f); Hc = H; Vector3 up = Planet.Cells[H].dir, fw = Dh(H, 0f), rt = Vector3.Cross(up, fw);
+        int H = At(Planet.North, 1.0f, 160f); Hc = H; Vector3 up = Planet.Cells[H].dir, fw = Dh(H, 0f), rt = Vector3.Cross(up, fw);
         var root = new GameObject("Autostudio").transform; var paints = new[] { "#3d5a80", "#d9534f", "#4a90a4", "#d3d8dc", "#7bb356", "#f2f3f5", "#f2c230" };
         CarWheels turner = null;
         for (int k = 0; k < LowPolyCar.Types.Length; k++)
@@ -1134,7 +1134,7 @@ public class WegVoorbeeld : MonoBehaviour
             yield return Shot("ontwerp" + nr + "_eind2", e1, Quaternion.AngleAxis(-120f, Planet.Cells[e1].dir) * Dh(e1, 0f), 30f, 20f); yield return Shot("ontwerp" + nr + "_eind2boven", e1, Dh(e1, 0f), 22f, 65f); yield return Shot("ontwerp" + nr + "_eind1boven", e0, Dh(e0, 0f), 22f, 65f);
             File.WriteAllText(Path.Combine(Dir, "ontwerp" + nr + "_einden.txt"), PlanetCity.Ground2Dump(e0) + "\n" + PlanetCity.Ground2Dump(e1));
         }
-        File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true;
+        File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true; Breng(Hc, "Ontwerptest " + nr);   // de camera naar de test (bij de noordpool), zodat hij meteen te zien is
     }
     // Terrein v2 in het spel: de natuurplaneet, dan de 30 wegen een voor een zoals een speler ze sleept (PlayerRoads: profiel per sleep,
     // met de tijd), dan opslaan en laden (Snapshot, Restore: het profiel komt terug), de schakelaar uit (het profiel weg) en weer aan,
