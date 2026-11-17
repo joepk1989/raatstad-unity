@@ -357,8 +357,8 @@ public static partial class PlanetCity
     // reach (nieuwe opbouw): zo ver naast het stuk kan het talud komen (ComputeReach); 0: FieldReach
     // bak (nieuwe opbouw): altijd een bakstuk, ook waar het terrein zonder wegen gelijk ligt (de weg onder een andere weg door: de dijk van de bovenste)
     struct Seg { public Vector3 a, b; public float ha, hb, hw, reach; public bool capA, capB, wall, tap0, tap1, hardA, hardB, bak; public int ia, ib; }
-    static float SR(Seg q) => q.reach > 0f ? q.reach : FieldReach;
-    static float CR(Cap q) => q.reach > 0f ? q.reach : FieldReach;
+    static float SR(Seg q) => Mathf.Max(q.reach > 0f ? q.reach : FieldReach, Ground3 && !q.wall ? G3Min + 1f : 0f);   // (de nieuwe opzet: de overgang naast de weg is minstens G3Min breed)
+    static float CR(Cap q) => Mathf.Max(q.reach > 0f ? q.reach : FieldReach, Ground3 && !q.wall ? G3Min + 1f : 0f);
     static readonly List<Seg> flats = new List<Seg>();   // gewone wegen bij een weg op een niveau: daaronder de grond op weghoogte
     static float FlatHW(int i) { Dims(StyleOf(i), out _, out float sw); return sw + 0.3f; }   // de weg met stoep, net iets breder   // van hart a naar hart b (wereldpunten), met de weghoogte aan beide einden; cap: daar zit een kop, het stuk stopt op het hart
     static readonly List<Seg> segs = new List<Seg>();
@@ -624,6 +624,7 @@ public static partial class PlanetCity
     static void UseAll() { segsUse = segs; flatsUse = flats; capsUse = caps; }
     static float GroundField(Vector3 dir, float base_, out bool slope, List<Seg> segs, List<Cap> caps)   // slope: het punt ligt op de schuine kant van een weg
     {
+        if (fieldV3) return GroundV3(dir, base_, out slope);   // de nieuwe opzet (PlanetGround3.cs): alleen gewone wegstukken in de buurt
         float h = base_; Vector3 w = dir * Planet.R; slope = false; float roof = float.MaxValue; bool roofSlope = false; float onLevelH = float.MaxValue, lowRoad = float.MaxValue;   // op de weg zelf van een weg op een niveau: de laagste daarvan; en de laagste weg die hier de grond omlaag haalt
         for (int pass = 0; pass < 2; pass++)
         {

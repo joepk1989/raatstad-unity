@@ -15,7 +15,7 @@ public class WegVoorbeeld : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Boot()
     {
-        if (!File.Exists(Flag)) return; mode = File.ReadAllText(Flag).Trim(); File.Delete(Flag); PlanetCity.Ground2 = false; PlanetCity.ProfileFirst = false; for (bool again = true; again;) { again = false; if (mode.EndsWith(" v2")) { PlanetCity.Ground2 = true; mode = mode.Substring(0, mode.Length - 3); again = true; } if (mode.EndsWith(" geennaden")) { mode = mode.Substring(0, mode.Length - 10); again = true; } if (mode.EndsWith(" profiel")) { PlanetCity.ProfileFirst = true; mode = mode.Substring(0, mode.Length - 8); again = true; } }   // "... v2": met Terrein v2; "... geennaden": zonder naden   // tekst "fiets": de fietspaden en de startstad
+        if (!File.Exists(Flag)) return; mode = File.ReadAllText(Flag).Trim(); File.Delete(Flag); PlanetCity.Ground2 = false; PlanetCity.ProfileFirst = false; for (bool again = true; again;) { again = false; if (mode.EndsWith(" stroken")) { mode = mode.Substring(0, mode.Length - 8); again = true; } if (mode.EndsWith(" oudegrond")) { PlanetCity.SetGround3(false); mode = mode.Substring(0, mode.Length - 10); again = true; } if (mode.EndsWith(" v2")) { PlanetCity.Ground2 = true; mode = mode.Substring(0, mode.Length - 3); again = true; } if (mode.EndsWith(" geennaden")) { mode = mode.Substring(0, mode.Length - 10); again = true; } if (mode.EndsWith(" profiel")) { PlanetCity.ProfileFirst = true; mode = mode.Substring(0, mode.Length - 8); again = true; } }   // "... v2": met Terrein v2; "... geennaden": zonder naden   // tekst "fiets": de fietspaden en de startstad
         Application.runInBackground = true;
         new GameObject("Wegvoorbeeld").AddComponent<WegVoorbeeld>();
     }
@@ -1107,7 +1107,7 @@ public class WegVoorbeeld : MonoBehaviour
         }
         PlanetCity.HeightTestNote = PlanetCity.ProfileAll(lines); PlanetCity.UpdateCuts(); PlanetCity.TouchAll();
         PlanetCity.Rebuild(); PlanetCity.Rebuild(); PlanetCity.RebuildGrid(); yield return null; yield return null;
-        bouw.AppendLine(PlanetCity.HeightTestNote);
+        bouw.AppendLine(PlanetCity.HeightTestNote); if (PlanetCity.Ground3) { var wy = new Dictionary<string, int>(); foreach (int cc in new HashSet<int>(centers)) foreach (int j in new List<int>(Planet.Cells[cc].nb) { cc }) { string y = PlanetCity.V3Why(j); if (y.StartsWith("stuk")) y = "stuk met wand, bak of hard eind"; wy[y] = (wy.TryGetValue(y, out int n0) ? n0 : 0) + 1; } bouw.Append("stroken (vakken op en naast de weg): "); foreach (var kv in wy) bouw.Append(kv.Key).Append(" ").Append(kv.Value).Append("; "); bouw.AppendLine(); }
         if (centers.Count > 0) { Hc = centers[centers.Count / 2]; yield return Scan(Hc, 0f, "ontwerp" + nr + "_scan", centers, 22f); }
         if (nr == 12) yield return Boetsel12(home, centers);
         File.WriteAllText(Path.Combine(Dir, "ontwerp" + nr + ".txt"), bouw.ToString());
