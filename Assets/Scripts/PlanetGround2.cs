@@ -105,7 +105,9 @@ public static partial class PlanetCity
     public static readonly System.Diagnostics.Stopwatch G2SwLines = new System.Diagnostics.Stopwatch(), G2SwPlanes = new System.Diagnostics.Stopwatch(), G2SwMerge = new System.Diagnostics.Stopwatch(), G2SwPiece = new System.Diagnostics.Stopwatch(), G2SwNear = new System.Diagnostics.Stopwatch();
     public static long G2Polys, G2Lines;
     public static string G2Steps() => "lijnen " + G2SwLines.ElapsedMilliseconds + " ms (" + G2Lines + " lijnen), vlakken snijden " + G2SwPlanes.ElapsedMilliseconds + " ms (" + G2Polys + " stukken), samenvoegen " + G2SwMerge.ElapsedMilliseconds + " ms, tekenen " + G2SwPiece.ElapsedMilliseconds + " ms, UseNear " + G2SwNear.ElapsedMilliseconds + " ms";
-    public static void G2Reset() { G2Cells = G2Field = G2EdgeNew = G2EdgeHit = G2Polys = G2Lines = G2CacheHit = G2CacheMiss = 0; G2SwField.Reset(); G2SwPlain.Reset(); G2SwEdge.Reset(); G2SwLines.Reset(); G2SwPlanes.Reset(); G2SwMerge.Reset(); G2SwPiece.Reset(); G2SwNear.Reset(); }
+    public static int G2DumpCell = -1; public static System.Text.StringBuilder G2DumpSb;   // voor de test: de stukken van dit vak uitschrijven (vlakke coördinaten en hoogte per hoekpunt)
+    public static long G2ColEdge, G2ColIn, G2CornEdge, G2CornIn; public static long G2Refines, G2Pieces, G2PieceV;   // voor de test: hoe vaak een driehoek onderverdeeld is (niet vlak), hoeveel stukken er getekend zijn en met hoeveel hoekpunten
+    public static void G2Reset() { G2Refines = G2Pieces = G2PieceV = G2ColEdge = G2ColIn = G2CornEdge = G2CornIn = 0; G2Cells = G2Field = G2EdgeNew = G2EdgeHit = G2Polys = G2Lines = G2CacheHit = G2CacheMiss = 0; G2SwField.Reset(); G2SwPlain.Reset(); G2SwEdge.Reset(); G2SwLines.Reset(); G2SwPlanes.Reset(); G2SwMerge.Reset(); G2SwPiece.Reset(); G2SwNear.Reset(); }
     // Terrein v2 is de enige bodem (de oude opbouw en de schakelaar zijn weg, 16 november 2026); deze eigenschap bestaat nog voor tests die hem zetten
     public static bool Ground2 { get => true; set { } }
 
@@ -546,6 +548,29 @@ public static partial class PlanetCity
                 }
                 polys = done;
             }
+            // Aan elkaar rijgen: een buurveelhoek is langs een andere lijn gesneden, dus zijn hoekpunt ligt midden op een zijde van deze
+            // (een T-kruising); op een knik is dat een kier. Elk hoekpunt dat op een zijde van een andere veelhoek ligt komt daar ook in.
+            void Stitch()
+            {
+                var allV = new List<Vector2>(); foreach (var pl in polys) foreach (var v in pl) allV.Add(v);
+                for (int pi = 0; pi < polys.Count; pi++)
+                {
+                    var pl = polys[pi]; var outp = new List<Vector2>();
+                    for (int v = 0; v < pl.Count; v++)
+                    {
+                        Vector2 qa = pl[v], qb = pl[(v + 1) % pl.Count]; outp.Add(qa); Vector2 e = qb - qa; float el2b = e.sqrMagnitude; if (el2b < 1e-8f) continue;
+                        var ins = new List<(float u, Vector2 q)>();
+                        foreach (var w in allV)
+                        {
+                            float u = Vector2.Dot(w - qa, e) / el2b; if (u <= 1e-4f || u >= 1f - 1e-4f) continue;
+                            float off = Mathf.Abs((e.x * (w.y - qa.y) - e.y * (w.x - qa.x))) / Mathf.Sqrt(el2b); if (off > 1e-3f) continue;
+                            bool dup = false; foreach (var x in ins) if (Mathf.Abs(x.u - u) < 1e-5f) { dup = true; break; } if (!dup) ins.Add((u, w));
+                        }
+                        ins.Sort((x, y) => x.u.CompareTo(y.u)); foreach (var x in ins) outp.Add(x.q);
+                    }
+                    polys[pi] = outp;
+                }
+            }
             G2SwPlanes.Stop(); G2Polys += polys.Count; G2SwMerge.Start();
             // Samenvoegen (ontwerp 8.5 punt 3): de snijlijnen zijn oneindige lijnen van alle wegstukken binnen bereik, dus ook waar de
             // hoogtefunctie niet knikt is de grond in repen gesneden (een spinnenweb van dunne driehoeken). Twee veelhoeken met een hele
@@ -623,28 +648,7 @@ public static partial class PlanetCity
                 var keep = new List<List<Vector2>>(); foreach (var pl in P2) if (pl != null) keep.Add(pl); polys = keep;
             }
             G2SwMerge.Stop();
-            // Aan elkaar rijgen: een buurveelhoek is langs een andere lijn gesneden, dus zijn hoekpunt ligt midden op een zijde van deze
-            // (een T-kruising); op een knik is dat een kier. Elk hoekpunt dat op een zijde van een andere veelhoek ligt komt daar ook in.
-            {
-                var allV = new List<Vector2>(); foreach (var pl in polys) foreach (var v in pl) allV.Add(v);
-                for (int pi = 0; pi < polys.Count; pi++)
-                {
-                    var pl = polys[pi]; var outp = new List<Vector2>();
-                    for (int v = 0; v < pl.Count; v++)
-                    {
-                        Vector2 qa = pl[v], qb = pl[(v + 1) % pl.Count]; outp.Add(qa); Vector2 e = qb - qa; float el2b = e.sqrMagnitude; if (el2b < 1e-8f) continue;
-                        var ins = new List<(float u, Vector2 q)>();
-                        foreach (var w in allV)
-                        {
-                            float u = Vector2.Dot(w - qa, e) / el2b; if (u <= 1e-4f || u >= 1f - 1e-4f) continue;
-                            float off = Mathf.Abs((e.x * (w.y - qa.y) - e.y * (w.x - qa.x))) / Mathf.Sqrt(el2b); if (off > 1e-3f) continue;
-                            bool dup = false; foreach (var x in ins) if (Mathf.Abs(x.u - u) < 1e-5f) { dup = true; break; } if (!dup) ins.Add((u, w));
-                        }
-                        ins.Sort((x, y) => x.u.CompareTo(y.u)); foreach (var x in ins) outp.Add(x.q);
-                    }
-                    polys[pi] = outp;
-                }
-            }
+            Stitch();
             // De wandlijnen zijn vlak en de hoogtefunctie leeft op de bol: een punt op een wandlijn ligt millimeters naast de echte sprong.
             // Elk punt binnen 4 cm van een wandlijn (niet op de vakrand: die komen uit het profiel) schuift langs de normaal naar de sprong
             // (bisectie); dezelfde functie van de positie, dus alle kopieën van het punt schuiven gelijk
@@ -663,7 +667,7 @@ public static partial class PlanetCity
                 return q;
             }
             if (wl.Count > 0) foreach (var pl in polys) for (int v = 0; v < pl.Count; v++) pl[v] = SnapWall(pl[v]);
-            G2SwPiece.Start(); foreach (var pl0 in polys) Piece(pl0); G2SwPiece.Stop();
+            G2SwPiece.Start(); G2Pieces += polys.Count; foreach (var pl0 in polys) { G2PieceV += pl0.Count; Piece(pl0); } G2SwPiece.Stop();
             // Aan welke kant van een wand ligt een hoekpunt van deze veelhoek: op een wandlijn van groep g (een strook of kop) hoort het bij
             // de binnenkant (+1 mm) als het midden van de veelhoek binnen alle lijnen van g ligt, anders bij het terrein (-1 mm); een punt dat
             // op geen wandlijn ligt krijgt geen kant. Per hoekpunt, want een veelhoek kan binnen de kop en toch buiten de strook van een arm liggen.
@@ -686,6 +690,7 @@ public static partial class PlanetCity
                 }
                 for (int v = pl.Count - 1; v >= 0 && pl.Count > 3; v--) if ((pl[v].q - pl[(v + pl.Count - 1) % pl.Count].q).sqrMagnitude < 1e-6f) pl.RemoveAt(v);   // dubbele punten (na het snijden)
                 int n = pl.Count; if (n < 3) return; var P = new Vector3[n]; var H = new float[n];
+                if (fieldT || cn) for (int v = 0; v < n; v++) { Vector2 u = pl[v].q - pl[(v + n - 1) % n].q, w = pl[(v + 1) % n].q - pl[v].q; if (Mathf.Abs(u.x * w.y - u.y * w.x) < 1e-3f * u.magnitude * w.magnitude) { if (pl[v].t >= 0f) G2ColEdge++; else G2ColIn++; } else if (pl[v].t >= 0f) G2CornEdge++; else G2CornIn++; }   // (meting: hoekpunten op een rechte lijn, op de vakrand of binnenin)
                 float HOf(int v, float bs) { if (pl[v].t >= 0f) return ProfileAt(prof, pl[v].t, bs, pl[v].t0); float ob = wallBias; wallBias = bs; try { return H2(Dir(pl[v].q), Base(pl[v].q), fieldT, cn); } finally { wallBias = ob; } }
                 Vector3 DOf(int v) => pl[v].t >= 0f ? Vector3.Lerp(D1 * (Planet.R + h1), D2 * (Planet.R + h2), pl[v].t).normalized : Dir(pl[v].q);
                 var bv = new float[n]; var lv = new int[n];
@@ -695,6 +700,7 @@ public static partial class PlanetCity
                     for (int x = 0; x < wl.Count; x++) { if (Mathf.Abs(wl[x].At(pl[v].q)) >= 0.045f) continue; if (lv[v] < 0) { lv[v] = x; bv[v] = -1e-3f; } if (InsideG(wg[x], ctr)) { lv[v] = x; bv[v] = 1e-3f; break; } }
                 }
                 for (int v = 0; v < n; v++) { H[v] = HOf(v, bv[v]); P[v] = DOf(v) * (Planet.R + H[v]); }
+                if (i == G2DumpCell && G2DumpSb != null) { G2DumpSb.Append(k); for (int v = 0; v < n; v++) G2DumpSb.Append(' ').Append(pl[v].q.x.ToString("F3", System.Globalization.CultureInfo.InvariantCulture)).Append(',').Append(pl[v].q.y.ToString("F3", System.Globalization.CultureInfo.InvariantCulture)).Append(',').Append(H[v].ToString("F3", System.Globalization.CultureInfo.InvariantCulture)).Append(',').Append(pl[v].t >= 0f ? 1 : 0); G2DumpSb.AppendLine(); }
                 // de wand (ontwerp 8.5): langs elke zijde van de veelhoek op een wandlijn, aan de kant van de strook, een quad van de eigen hoogte
                 // naar de hoogte van de andere kant (bit-gelijk aan wat de buurveelhoek daar tekent), naar de lage kant gekeerd
                 if (wall != null)
@@ -748,7 +754,7 @@ public static partial class PlanetCity
                 Vector2 m2 = (a + b + cc) / 3f; Vector3 dm = Dir(m2); float ob = wallBias; wallBias = bias; float hm; bool steep; try { hm = H2(dm, Base(m2), fieldT, cn, out steep); } finally { wallBias = ob; }
                 if (depth < 3 && Mathf.Abs(hm - (ha + hb + hc2) / 3f) > 0.06f && (b - a).sqrMagnitude + (cc - a).sqrMagnitude > 0.5f)
                 {
-                    Vector3 Pm = dm * (Planet.R + hm);
+                    Vector3 Pm = dm * (Planet.R + hm); G2Refines++;
                     Refine2(a, b, m2, Pa, Pb, Pm, ha, hb, hm, bias, depth + 1); Refine2(b, cc, m2, Pb, Pc, Pm, hb, hc2, hm, bias, depth + 1); Refine2(cc, a, m2, Pc, Pa, Pm, hc2, ha, hm, bias, depth + 1);
                     return;
                 }
