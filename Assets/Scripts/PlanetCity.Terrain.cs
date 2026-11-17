@@ -357,8 +357,8 @@ public static partial class PlanetCity
     // reach (nieuwe opbouw): zo ver naast het stuk kan het talud komen (ComputeReach); 0: FieldReach
     // bak (nieuwe opbouw): altijd een bakstuk, ook waar het terrein zonder wegen gelijk ligt (de weg onder een andere weg door: de dijk van de bovenste)
     struct Seg { public Vector3 a, b; public float ha, hb, hw, reach; public bool capA, capB, wall, tap0, tap1, hardA, hardB, bak; public int ia, ib; }
-    static float SR(Seg q) => Mathf.Max(q.reach > 0f ? q.reach : FieldReach, Ground3 && !q.wall ? G3Min + 1f : 0f);   // (de nieuwe opzet: de overgang naast de weg is minstens G3Min breed)
-    static float CR(Cap q) => Mathf.Max(q.reach > 0f ? q.reach : FieldReach, Ground3 && !q.wall ? G3Min + 1f : 0f);
+    static float SR(Seg q) => Mathf.Max(q.reach > 0f ? q.reach : FieldReach, Ground3 ? G3Min + 1f : 0f);   // (de nieuwe opzet: de overgang naast de weg is minstens G3Min breed, ook bij een stuk met een keermuur)
+    static float CR(Cap q) => Mathf.Max(q.reach > 0f ? q.reach : FieldReach, Ground3 ? G3Min + 1f : 0f);
     static readonly List<Seg> flats = new List<Seg>();   // gewone wegen bij een weg op een niveau: daaronder de grond op weghoogte
     static float FlatHW(int i) { Dims(StyleOf(i), out _, out float sw); return sw + 0.3f; }   // de weg met stoep, net iets breder   // van hart a naar hart b (wereldpunten), met de weghoogte aan beide einden; cap: daar zit een kop, het stuk stopt op het hart
     static readonly List<Seg> segs = new List<Seg>();

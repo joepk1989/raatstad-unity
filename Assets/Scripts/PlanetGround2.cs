@@ -217,13 +217,32 @@ public static partial class PlanetCity
             if (Mathf.Abs((E.x * (q.y - L1.y) - E.y * (q.x - L1.x)) / el) > 1e-3f) continue; float t = Vector2.Dot(q - L1, E) / el2;
             if (t > 0.01f / el && t < 1f - 0.01f / el) ts.Add(t);
         }
-        ts.Sort(); var pts = new List<EPt>(); Vector3 PA = A * (Planet.R + bA), PB = B * (Planet.R + bB);
+        var pts = new List<EPt>(); Vector3 PA = A * (Planet.R + bA), PB = B * (Planet.R + bB);
+        float HAt(float t) { Vector3 P = Vector3.Lerp(PA, PB, t); return H2(P.normalized, P.magnitude - Planet.R, true, false); }
+        float HAt2(float t, float bias) { float ob = wallBias; wallBias = bias; try { return HAt(t); } finally { wallBias = ob; } }
+        // een keermuur langs de wegrand die deze rand kruist: de echte sprong zoeken (de wandlijn is vlak, de hoogte leeft op de bol) en
+        // daar twee punten op dezelfde plek zetten, eerst de kant van de lagere t (zoals EdgeProfile2 bij de oude wanden)
+        var wallT = new List<(float t, float h0, float h1, int side0)>();
+        foreach (var w in V3WallLins(c, null, null))
+        {
+            float f1 = w.At(L1), f2 = w.At(L2); if ((f1 < 0f) == (f2 < 0f) || Mathf.Abs(f1 - f2) < 1e-6f) continue; float tw = f1 / (f1 - f2);
+            float sinA = Mathf.Abs(w.x * (L2.y - L1.y) - w.y * (L2.x - L1.x)) / (Mathf.Sqrt(w.x * w.x + w.y * w.y) * el), dq = Mathf.Min(0.5f, 0.04f / Mathf.Max(sinA, 0.08f)) / el;
+            float lo = Mathf.Max(0f, tw - dq), hi = Mathf.Min(1f, tw + dq); if (hi - lo < 1e-6f) continue;
+            float d0 = HAt(lo), d1 = HAt(hi); if (Mathf.Abs(d1 - d0) < 0.2f) continue; float mid = (d0 + d1) * 0.5f;
+            for (int it = 0; it < 20; it++) { float m2 = (lo + hi) * 0.5f; if ((HAt(m2) > mid) == (d1 > d0)) hi = m2; else lo = m2; }
+            float ts2 = (lo + hi) * 0.5f; if (ts2 < 1e-3f || ts2 > 1f - 1e-3f) continue;
+            float hA = HAt2(ts2, 1e-3f), hB = HAt2(ts2, -1e-3f); if (Mathf.Abs(hA - hB) < 1e-3f) continue;
+            bool inFirst = Mathf.Abs(d0 - hA) < Mathf.Abs(d0 - hB);
+            ts.RemoveAll(t => t > 1e-3f && t < 1f - 1e-3f && Mathf.Abs(t - ts2) < dq * 1.1f); ts.Add(ts2); wallT.Add((ts2, inFirst ? hA : hB, inFirst ? hB : hA, inFirst ? 1 : -1));
+        }
+        ts.Sort();
         foreach (float t in ts)
         {
-            if (pts.Count > 0 && (t - pts[pts.Count - 1].t) * el < 0.02f) continue;
-            Vector3 P = Vector3.Lerp(PA, PB, t); pts.Add(new EPt { t = t, h = H2(P.normalized, P.magnitude - Planet.R, true, false) });
+            int wi = wallT.FindIndex(x => x.t == t);
+            if (wi < 0) { if (pts.Count > 0 && (t - pts[pts.Count - 1].t) * el < 0.02f) continue; pts.Add(new EPt { t = t, h = HAt(t) }); continue; }
+            var wp = wallT[wi]; pts.Add(new EPt { t = t, h = wp.h0, side = wp.side0 }); pts.Add(new EPt { t = t, h = wp.h1, side = -wp.side0 });
         }
-        if (pts[pts.Count - 1].t < 1f) pts[pts.Count - 1] = new EPt { t = 1f, h = H2(PB.normalized, bB, true, false) };
+        if (pts[pts.Count - 1].t < 1f) { if (pts[pts.Count - 1].side == 0) pts[pts.Count - 1] = new EPt { t = 1f, h = HAt(1f) }; else pts.Add(new EPt { t = 1f, h = HAt(1f) }); }
         return pts;
     }
     static List<EPt> EdgeProfile2(int a, int ka, Planet.Cell c, int m, int k1, Vector3 A, Vector3 B, Vector2 L1, Vector2 L2, bool field, float bA, float bB, float hc0, List<NearCut> near, bool cn)
@@ -513,7 +532,7 @@ public static partial class PlanetCity
             List<Lin> fls = null; G2SwLines.Start(); if (field && !v3) { fls = FieldLines(c, k, hc0, h1, h2, ls, lc); G2Lines += fls.Count; } G2SwLines.Stop();   // (de lijnen snijden pas waar een stuk niet vlak is, zie hieronder)
             bool fieldT = v3 || (field && !(ls.Count == 0 && lc.Count == 0 && flatsUse.Count == 0));   // (geen stuk kan deze driehoek halen: gewoon het terreinvlak, zonder snijden en samenvoegen)
             if (v3) polys = V3Polys(c, k);
-            var wg = new List<int>(); var wnq = new List<bool>(); var wl = fieldT && !v3 ? WallLins(c, ls, lc, wg, wnq) : new List<Lin>(); if (fls != null) foreach (var f in wl) Split(f);   // (een wand is een sprong, daar moet een zijde van een stuk precies op liggen: altijd vooraf snijden)   // de wanden hier (sokkels en bakken), binnenkant negatief; wg: per lijn de strook of kop
+            var wg = new List<int>(); var wnq = new List<bool>(); var wl = v3 ? (V3HasWall(i) ? V3WallLins(c, wg, wnq) : new List<Lin>()) : fieldT ? WallLins(c, ls, lc, wg, wnq) : new List<Lin>(); if (fls != null) foreach (var f in wl) Split(f);   // (een wand is een sprong, daar moet een zijde van een stuk precies op liggen: altijd vooraf snijden)   // de wanden hier (sokkels en bakken), binnenkant negatief; wg: per lijn de strook of kop
             Lin B2 = new Lin { a = hc0, x = ((h1 - hc0) * L2.y - (h2 - hc0) * L1.y) / det, y = ((h2 - hc0) * L1.x - (h1 - hc0) * L2.x) / det };
             if (cn) foreach (var n in near) foreach (var f in new[] { n.sd - Lin.C(-0.01f), n.sd - Lin.C(n.fl), n.sd - Lin.C(n.fl + n.rl), n.sd - Lin.C(n.end), n.t - Lin.C(n.q.hw), n.t - Lin.C(-n.q.hw) }) Split(f);
             var prof = plat ? null : EdgeProfile(i, k);
