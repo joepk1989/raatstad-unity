@@ -106,7 +106,7 @@ public static partial class PlanetCity
     public static long G2Polys, G2Lines;
     public static string G2Steps() => "lijnen " + G2SwLines.ElapsedMilliseconds + " ms (" + G2Lines + " lijnen), vlakken snijden " + G2SwPlanes.ElapsedMilliseconds + " ms (" + G2Polys + " stukken), samenvoegen " + G2SwMerge.ElapsedMilliseconds + " ms, tekenen " + G2SwPiece.ElapsedMilliseconds + " ms, UseNear " + G2SwNear.ElapsedMilliseconds + " ms";
     public static int G2DumpCell = -1; public static System.Text.StringBuilder G2DumpSb;   // voor de test: de stukken van dit vak uitschrijven (vlakke coördinaten en hoogte per hoekpunt)
-    public static long G2ColEdge, G2ColIn, G2CornEdge, G2CornIn; public static long G2Refines, G2Pieces, G2PieceV;   // voor de test: hoe vaak een driehoek onderverdeeld is (niet vlak), hoeveel stukken er getekend zijn en met hoeveel hoekpunten
+    public static long G2NoEar; public static long G2ColEdge, G2ColIn, G2CornEdge, G2CornIn; public static long G2Refines, G2Pieces, G2PieceV;   // voor de test: hoe vaak een driehoek onderverdeeld is (niet vlak), hoeveel stukken er getekend zijn en met hoeveel hoekpunten
     public static void G2Reset() { G2Refines = G2Pieces = G2PieceV = G2ColEdge = G2ColIn = G2CornEdge = G2CornIn = 0; G2Cells = G2Field = G2EdgeNew = G2EdgeHit = G2Polys = G2Lines = G2CacheHit = G2CacheMiss = 0; G2SwField.Reset(); G2SwPlain.Reset(); G2SwEdge.Reset(); G2SwLines.Reset(); G2SwPlanes.Reset(); G2SwMerge.Reset(); G2SwPiece.Reset(); G2SwNear.Reset(); }
     // Terrein v2 is de enige bodem (de oude opbouw en de schakelaar zijn weg, 16 november 2026); deze eigenschap bestaat nog voor tests die hem zetten
     public static bool Ground2 { get => true; set { } }
@@ -786,7 +786,11 @@ public static partial class PlanetCity
                         float ma = MinAng(a, b, cc);
                         if ((del && !bestD) || (del == bestD && ma < bestA)) { bestE = e; bestA = ma; bestD = del; }
                     }
-                    if (bestE < 0) break;   // alles op een lijn: niets te tekenen
+                    if (bestE < 0)   // geen geldig oor (een stuk dat zichzelf net raakt, of alles op een lijn): de rest als waaier, zodat er nooit een gat valt
+                    {
+                        G2NoEar++; for (int e = 1; e + 1 < rn; e++) { int f0 = ring[0], f1 = ring[e], f2 = ring[e + 1]; Vector2 qa = pl[f0].q, qb = pl[f1].q, qc = pl[f2].q; if (Mathf.Abs((qb.x - qa.x) * (qc.y - qa.y) - (qb.y - qa.y) * (qc.x - qa.x)) < 1e-6f) continue; Refine2(qa, qb, qc, P[f0], P[f1], P[f2], H[f0], H[f1], H[f2], 0f, 0); }
+                        ring.Clear(); break;
+                    }
                     int ia = ring[(bestE + rn - 1) % rn], ib = ring[bestE], ic = ring[(bestE + 1) % rn];
                     Refine2(pl[ia].q, pl[ib].q, pl[ic].q, P[ia], P[ib], P[ic], H[ia], H[ib], H[ic], 0f, 0); ring.RemoveAt(bestE);
                 }

@@ -23,6 +23,7 @@ public static partial class PlanetCity
     // G3Min: de breedte van de overgang naast de weg (ongeveer een half vak: dan volgt de grond tussen de zeshoekpunten hem vanzelf)
     // G3Rows: aantal rijen evenwijdig aan de weg in de overgang. 0 (de keuze van 17 november 2026): alleen de wegrand is een snede, geen
     // rijen, dwarslijnen of extra verdeling bij bochten en einden; de grond loopt van de zeshoekpunten glooiend naar de weg.
+    public static bool G3Half;   // (proef) ook halve wegvakken met de nieuwe opzet
     const float G3Row = 2f, G3Min = 8f; const int G3MaxRows = 10; public static int G3Rows = 0;
     static bool fieldV3;   // GroundField rekent met de nieuwe hoogte (gezet door wie het vak kiest: Ground2Cell0, H, EdgeProfile1)
     static readonly Dictionary<int, (int ver, bool v)> v3Cache = new Dictionary<int, (int, bool)>();
@@ -36,11 +37,11 @@ public static partial class PlanetCity
         try
         {
             UseNear(i); var c = Planet.Cells[i];
-            ok = !Plateau(i) && !FlatGround(i) && !IsHalf(i) && NearSeg(c.dir, c.radius) && flatsUse.Count == 0 && (segsUse.Count > 0 || capsUse.Count > 0);
+            ok = !Plateau(i) && !FlatGround(i) && (G3Half || !IsHalf(i)) && NearSeg(c.dir, c.radius) && flatsUse.Count == 0 && (segsUse.Count > 0 || capsUse.Count > 0);
             if (ok) foreach (var q in segsUse) if (q.wall || q.bak || q.hardA || q.hardB) { ok = false; break; }
             if (ok) foreach (var q in capsUse) if (q.wall) { ok = false; break; }
             if (ok && cuts.Count > 0) { var near = CutsNear(c); if (near != null && near.Count > 0) ok = false; }
-            if (ok && (boreNear.ContainsKey(i) || spanNear.ContainsKey(i) || Underpass(i) || levelled.Contains(i))) ok = false;
+            if (ok && (boreNear.ContainsKey(i) || spanNear.ContainsKey(i) || Underpass(i))) ok = false;   // (een wegvak dat meer dan een half niveau van het terrein af ligt telt als 'op een niveau', maar is hier een gewoon stuk zolang het geen wand heeft)
         }
         finally { segsUse = su; flatsUse = fu; capsUse = cu; }
         v3Cache[i] = (fieldVer, ok); return ok;
@@ -55,7 +56,7 @@ public static partial class PlanetCity
             UseNear(i); var c = Planet.Cells[i]; if (Plateau(i)) return "plateau"; if (IsHalf(i)) return "half wegvak"; if (FlatGround(i)) return "vlak"; if (!NearSeg(c.dir, c.radius)) return "buiten bereik"; if (flatsUse.Count > 0) return "vlakke wegstukken " + flatsUse.Count;
             foreach (var q in segsUse) if (q.wall || q.bak || q.hardA || q.hardB) return "stuk " + q.ia + "-" + q.ib + (q.wall ? " wand" : q.bak ? " bak" : " hard eind");
             foreach (var q in capsUse) if (q.wall) return "kop met wand " + q.ic;
-            if (cuts.Count > 0 && CutsNear(c).Count > 0) return "geul"; if (boreNear.ContainsKey(i)) return "tunnel"; if (spanNear.ContainsKey(i)) return "brug"; if (Underpass(i)) return "onderdoorgang"; if (levelled.Contains(i)) return "niveau";
+            if (cuts.Count > 0 && CutsNear(c).Count > 0) return "geul"; if (boreNear.ContainsKey(i)) return "tunnel"; if (spanNear.ContainsKey(i)) return "brug"; if (Underpass(i)) return "onderdoorgang";
             return "ja";
         }
         finally { segsUse = su; flatsUse = fu; capsUse = cu; }
@@ -75,7 +76,7 @@ public static partial class PlanetCity
         foreach (var q in capsUse)
         {
             Vector3 dv = w - q.c; if (dv.sqrMagnitude > 60f * 60f) continue; float hr = q.h + Vector3.Dot(dv, q.g); dv -= dir * Vector3.Dot(dv, dir);
-            float d = dv.magnitude - q.hw; if (d > G3Row * G3MaxRows + 2f) continue;
+            float d = CapDist(q, w) - q.hw; if (d > G3Row * G3MaxRows + 2f) continue;
             g3D.Add(d); g3H.Add(hr); if (d < dmin) dmin = d; if (d <= 0f && hr < inH) inH = hr;
         }
         if (g3D.Count == 0) return base_;
@@ -110,6 +111,15 @@ public static partial class PlanetCity
         }
         void Cut(List<List<Vector2>> ps, Lin f) { for (int x = ps.Count - 1; x >= 0; x--) { var rest = new List<List<Vector2>>(); var a = Keep(ps[x], f, rest); if (a == null || rest.Count == 0) continue; ps[x] = a; ps.AddRange(rest); } }
         var segs = segsUse; Vector3 o3 = c.dir * Planet.R;
+        // eerst de koppen (een doodlopend eind met zijn keerrondje, een bocht, een kruispunt): de zeshoek rond het hart, zijden tegenover de buren
+        foreach (var cp in capsUse)
+        {
+            Vector3 dc = o3 - cp.c; if (dc.magnitude > cp.hw * 1.2f + c.radius * 1.3f) continue;
+            var hp = new List<Lin>(); foreach (var n in cp.n) hp.Add(new Lin { a = Vector3.Dot(dc, n) - cp.hw, x = Vector3.Dot(c.east, n), y = Vector3.Dot(c.north, n) });
+            var next = new List<List<Vector2>>();
+            foreach (var p0 in free) { var cur = p0; foreach (var f in hp) { cur = Keep(cur, f, next); if (cur == null) break; } if (cur != null) outp.Add(cur); }
+            free = next;
+        }
         for (int x = 0; x < segs.Count; x++)
         {
             var q = segs[x]; SegLins(c, q, out Lin T, out Lin S, out float len); if (len < 1e-3f) continue;
@@ -141,19 +151,6 @@ public static partial class PlanetCity
                 for (int j = 1; j < rows; j++) { Cut(claimed, T - Lin.C(q.hw + j * G3Row)); Cut(claimed, T + Lin.C(q.hw + j * G3Row)); }
                 Cut(claimed, S - Lin.C(len * 0.5f));
             }
-            outp.AddRange(claimed);
-        }
-        // een losse kop (een enkel wegvak zonder stuk): een vierkant rooster eromheen
-        foreach (var cp in capsUse)
-        {
-            bool has = false; foreach (var q in segs) if ((q.a - cp.c).sqrMagnitude < 0.01f || (q.b - cp.c).sqrMagnitude < 0.01f) { has = true; break; }
-            if (has) continue; Vector3 dc = o3 - cp.c;
-            Lin X = new Lin { a = Vector3.Dot(dc, c.east), x = 1f }, Y = new Lin { a = Vector3.Dot(dc, c.north), y = 1f }; float R0 = cp.hw, Wc = G3Rows <= 0 ? 0f : G3Min;
-            var hp = new List<Lin> { X - Lin.C(R0 + Wc), Lin.C(-(R0 + Wc)) - X, Y - Lin.C(R0 + Wc), Lin.C(-(R0 + Wc)) - Y };
-            var claimed = new List<List<Vector2>>(); var next = new List<List<Vector2>>();
-            foreach (var p0 in free) { var cur = p0; foreach (var f in hp) { cur = Keep(cur, f, next); if (cur == null) break; } if (cur != null) claimed.Add(cur); }
-            free = next;
-            if (G3Rows > 0) foreach (var f in new[] { X - Lin.C(R0), X + Lin.C(R0), Y - Lin.C(R0), Y + Lin.C(R0), X - Lin.C(R0 + G3Row), X + Lin.C(R0 + G3Row), Y - Lin.C(R0 + G3Row), Y + Lin.C(R0 + G3Row) }) Cut(claimed, f);
             outp.AddRange(claimed);
         }
         outp.AddRange(free); return outp;
