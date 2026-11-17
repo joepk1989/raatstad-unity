@@ -580,7 +580,13 @@ public static partial class PlanetCity
                     var r = new List<Vector2>(na + nb - 2);
                     for (int k = 0; k < na; k++) r.Add(A[(ei + 1 + k) % na]);
                     for (int k = 0; k < nb - 2; k++) r.Add(B[(ej + 2 + k) % nb]);
-                    // punten op een rechte lijn weg, dan moet de rest bol zijn (één draairichting)
+                    // een heen-en-terug (meer dan één zijde gemeen: a, b, a) weg
+                    for (bool again = true; again && r.Count > 3;)
+                    {
+                        again = false;
+                        for (int k = 0; k < r.Count; k++) if (Same(r[(k + r.Count - 1) % r.Count], r[(k + 1) % r.Count])) { int k1 = (k + 1) % r.Count; if (k1 > k) { r.RemoveAt(k1); r.RemoveAt(k); } else { r.RemoveAt(k); r.RemoveAt(k1); } again = true; break; }
+                    }
+                    // punten op een rechte lijn weg; dan moet de rest bol zijn (één draairichting), of zonder wanden een enkelvoudige veelhoek (geen punt twee keer)
                     for (int k = r.Count - 1; k >= 0 && r.Count > 3; k--)
                     {
                         Vector2 u = r[k] - r[(k + r.Count - 1) % r.Count], w = r[(k + 1) % r.Count] - r[k];
@@ -590,8 +596,9 @@ public static partial class PlanetCity
                     for (int k = 0; k < r.Count; k++)
                     {
                         Vector2 u = r[k] - r[(k + r.Count - 1) % r.Count], w = r[(k + 1) % r.Count] - r[k]; float cr = u.x * w.y - u.y * w.x;
-                        if (Mathf.Abs(cr) < 1e-5f) continue; int sn = cr > 0f ? 1 : -1; if (sg == 0) sg = sn; else if (sn != sg) return null;
+                        if (Mathf.Abs(cr) < 1e-5f) continue; int sn = cr > 0f ? 1 : -1; if (sg == 0) sg = sn; else if (sn != sg) { if (wl.Count > 0) return null; sg = 2; break; }
                     }
+                    if (sg == 2) { if (r.Count > 40) return null; for (int x = 0; x < r.Count; x++) for (int y = x + 1; y < r.Count; y++) if (Same(r[x], r[y])) return null; }   // niet bol: alleen als hij zichzelf nergens raakt
                     return r;
                 }
                 for (int pass = 0; pass < 10; pass++)
@@ -700,8 +707,41 @@ public static partial class PlanetCity
                         Vector3 outw = (c.east * w.x + c.north * w.y).normalized; if (la + lb > H[v] + H[v1]) outw = -outw;   // naar de lage kant: het terrein (sokkel) of de strook (bak)
                         wall(P[v], P[v1], DOf(v1) * (Planet.R + lb), DOf(v) * (Planet.R + la), outw);
                     }
-                int r = 0; for (int v = 0; v < n; v++) if (pl[v].t < 0f) { r = v; break; }   // waaieren vanuit een punt dat niet op de rand ligt (anders platte driehoekjes langs de rand)
-                for (int v = 1; v + 1 < n; v++) { int a = (r + v) % n, b = (r + v + 1) % n; Refine2(pl[r].q, pl[a].q, pl[b].q, P[r], P[a], P[b], H[r], H[a], H[b], 0f, 0); }
+                // In driehoeken: geen waaier vanuit één hoekpunt (met de ingevoegde punten op de zijden gaf dat bundels naalddunne driehoeken),
+                // maar steeds het oor afknippen waarvan de omgeschreven cirkel geen ander hoekpunt bevat (Delaunay: de stompst mogelijke
+                // driehoeken voor deze punten); is er geen, dan het oor met de grootste kleinste hoek. Drie punten op een lijn zijn geen oor.
+                var ring = new List<int>(n); for (int v = 0; v < n; v++) ring.Add(v);
+                float area = 0f; for (int v = 0; v < n; v++) { Vector2 a = pl[v].q, b = pl[(v + 1) % n].q; area += a.x * b.y - a.y * b.x; }
+                float orient = area >= 0f ? 1f : -1f;
+                float MinAng(Vector2 a, Vector2 b, Vector2 cc) { Vector2 ab = (b - a).normalized, bc = (cc - b).normalized, ca = (a - cc).normalized; return Mathf.Min(-Vector2.Dot(ab, ca), Mathf.Min(-Vector2.Dot(bc, ab), -Vector2.Dot(ca, bc))); }   // (de grootste cosinus hoort bij de kleinste hoek: kleiner is beter)
+                while (ring.Count > 3)
+                {
+                    int rn = ring.Count, bestE = -1; float bestA = float.MaxValue; bool bestD = false;
+                    for (int e = 0; e < rn; e++)
+                    {
+                        Vector2 a = pl[ring[(e + rn - 1) % rn]].q, b = pl[ring[e]].q, cc = pl[ring[(e + 1) % rn]].q;
+                        float ar = (b.x - a.x) * (cc.y - a.y) - (b.y - a.y) * (cc.x - a.x), ln = Mathf.Max((b - a).sqrMagnitude, Mathf.Max((cc - b).sqrMagnitude, (a - cc).sqrMagnitude));
+                        if (Mathf.Abs(ar) < 1e-4f * ln || ar * orient < 0f) continue;   // op een lijn, of een holle hoek
+                        bool empty = true;   // geen ander punt van de ring in de driehoek of op de nieuwe zijde (een samengevoegd stuk kan hol zijn)
+                        for (int x = 0; x < rn && empty; x++)
+                        {
+                            if (x == e || x == (e + rn - 1) % rn || x == (e + 1) % rn) continue; Vector2 q = pl[ring[x]].q;
+                            float s1 = ((b.x - a.x) * (q.y - a.y) - (b.y - a.y) * (q.x - a.x)) * orient, s2 = ((cc.x - b.x) * (q.y - b.y) - (cc.y - b.y) * (q.x - b.x)) * orient, s3 = ((a.x - cc.x) * (q.y - cc.y) - (a.y - cc.y) * (q.x - cc.x)) * orient;
+                            if (s1 > 1e-5f && s2 > 1e-5f && s3 > -1e-5f) empty = false;
+                        }
+                        if (!empty) continue;
+                        // de omgeschreven cirkel van (a, b, cc): ligt er een ander punt van de ring binnen?
+                        float d = 2f * ar, a2 = a.sqrMagnitude, b2 = b.sqrMagnitude, c2 = cc.sqrMagnitude;
+                        Vector2 o = new Vector2((a2 * (b.y - cc.y) + b2 * (cc.y - a.y) + c2 * (a.y - b.y)) / d, (a2 * (cc.x - b.x) + b2 * (a.x - cc.x) + c2 * (b.x - a.x)) / d); float rr = (a - o).sqrMagnitude * (1f - 1e-4f);
+                        bool del = true; for (int x = 0; x < rn && del; x++) { if (x == e || x == (e + rn - 1) % rn || x == (e + 1) % rn) continue; if ((pl[ring[x]].q - o).sqrMagnitude < rr) del = false; }
+                        float ma = MinAng(a, b, cc);
+                        if ((del && !bestD) || (del == bestD && ma < bestA)) { bestE = e; bestA = ma; bestD = del; }
+                    }
+                    if (bestE < 0) break;   // alles op een lijn: niets te tekenen
+                    int ia = ring[(bestE + rn - 1) % rn], ib = ring[bestE], ic = ring[(bestE + 1) % rn];
+                    Refine2(pl[ia].q, pl[ib].q, pl[ic].q, P[ia], P[ib], P[ic], H[ia], H[ib], H[ic], 0f, 0); ring.RemoveAt(bestE);
+                }
+                if (ring.Count == 3) Refine2(pl[ring[0]].q, pl[ring[1]].q, pl[ring[2]].q, P[ring[0]], P[ring[1]], P[ring[2]], H[ring[0]], H[ring[1]], H[ring[2]], 0f, 0);
             }
             void Refine2(Vector2 a, Vector2 b, Vector2 cc, Vector3 Pa, Vector3 Pb, Vector3 Pc, float ha, float hb, float hc2, float bias, int depth)
             {
