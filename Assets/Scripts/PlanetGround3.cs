@@ -56,7 +56,7 @@ public static partial class PlanetCity
             UseNear(i); var c = Planet.Cells[i]; if (Plateau(i)) return "plateau"; if (IsHalf(i)) return "half wegvak"; if (FlatGround(i)) return "vlak"; if (!NearSeg(c.dir, c.radius)) return "buiten bereik"; if (flatsUse.Count > 0) return "vlakke wegstukken " + flatsUse.Count;
             foreach (var q in segsUse) if (q.wall || q.bak || q.hardA || q.hardB) return "stuk " + q.ia + "-" + q.ib + (q.wall ? " wand" : q.bak ? " bak" : " hard eind");
             foreach (var q in capsUse) if (q.wall) return "kop met wand " + q.ic;
-            if (cuts.Count > 0 && CutsNear(c).Count > 0) return "geul"; if (boreNear.ContainsKey(i)) return "tunnel"; if (spanNear.ContainsKey(i)) return "brug"; if (Underpass(i)) return "onderdoorgang";
+            if (cuts.Count > 0) { var nr = CutsNear(c); if (nr != null && nr.Count > 0) return "geul"; } if (boreNear.ContainsKey(i)) return "tunnel"; if (spanNear.ContainsKey(i)) return "brug"; if (Underpass(i)) return "onderdoorgang";
             return "ja";
         }
         finally { segsUse = su; flatsUse = fu; capsUse = cu; }

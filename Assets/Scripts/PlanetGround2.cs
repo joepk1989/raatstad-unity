@@ -205,7 +205,7 @@ public static partial class PlanetCity
         Topo(); int x = Mathf.Min(i, Mathf.Min(cnA[i][k] < 0 ? i : cnA[i][k], cnB[i][k] < 0 ? i : cnB[i][k])); float bs = CornerBase(i, k); Vector3 d = Planet.Cells[i].corners[k];
         if (!fieldCells.Contains(x)) return bs;
         var su = segsUse; var fu = flatsUse; var cu = capsUse; bool of = fieldV3; var ts0 = triSegs; var tc0 = triCaps; triSegs = null; triCaps = null;
-        try { UseNear(x); fieldV3 = V3Cell(x); UseNear(x); var cx = Planet.Cells[x]; bool cnx = cuts.Count > 0 && CutsNear(cx).Count > 0; return H2(d, bs, NearSeg(cx.dir, cx.radius), cnx); }
+        try { UseNear(x); fieldV3 = V3Cell(x); UseNear(x); var cx = Planet.Cells[x]; var nrx = cuts.Count > 0 ? CutsNear(cx) : null; bool cnx = nrx != null && nrx.Count > 0; return H2(d, bs, NearSeg(cx.dir, cx.radius), cnx); }
         finally { segsUse = su; flatsUse = fu; capsUse = cu; fieldV3 = of; triSegs = ts0; triCaps = tc0; }
     }
     // De randpunten in de nieuwe opzet: de hoekpunten van de stroken van de eigenaar die op de rand liggen, met de hoogte daar
