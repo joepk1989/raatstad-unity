@@ -23,6 +23,10 @@ public static class Dev
     // de laatste waarschuwingen en fouten uit de log in beeld
     public static bool Log { get => Get("log"); set => Set("log", value); }
 
+    // wegen, paden en hun strepen en lantaarns niet tekenen (de laag Weg uit bij elke camera), om het terrein eronder te zien; niet onthouden
+    static bool hideRoads;
+    public static bool HideRoads { get => hideRoads; set { hideRoads = value; foreach (var c in Camera.allCameras) { if (value) c.cullingMask &= ~(1 << Layers.Weg); else c.cullingMask |= 1 << Layers.Weg; } } }
+
     // alles opnieuw tekenen (na een schakelaar die de grond verandert)
     public static void Redraw() { if (!Application.isPlaying) return; PlanetCity.TouchAll(); PlanetCity.Rebuild(); PlanetCity.RebuildGrid(); }
 
@@ -33,7 +37,7 @@ public static class Dev
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     static void Hook()
     {
-        Lines.Clear(); Errors = Warnings = 0;
+        Lines.Clear(); Errors = Warnings = 0; hideRoads = false;
         Application.logMessageReceived -= OnLog; Application.logMessageReceived += OnLog;
     }
     static void OnLog(string msg, string stack, LogType type)

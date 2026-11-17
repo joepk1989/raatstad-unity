@@ -25,6 +25,7 @@ public partial class PlanetBuilder
         l.Add(new MItem { head = true, name = "Terreinproeven (niet onthouden)" });
         l.Add(new MItem { name = "Terrein door wegen", value = On(PlanetCity.RoadShape), on = PlanetCity.RoadShape, sub = "Uit: geen dijken onder wegen; hoger terrein wordt met een talud afgegraven", act = () => { PlanetCity.RoadShape = !PlanetCity.RoadShape; Dev.Redraw(); Say("Terrein door wegen " + On(PlanetCity.RoadShape)); } });
         l.Add(new MItem { name = "Talud langs wegen", value = On(PlanetCity.RoadSlopes), on = PlanetCity.RoadSlopes, sub = "Uit: de kant naast de weg bijna loodrecht in plaats van een schuin talud", act = () => { PlanetCity.RoadSlopes = !PlanetCity.RoadSlopes; Dev.Redraw(); Say("Talud langs wegen " + On(PlanetCity.RoadSlopes)); } });
+        l.Add(new MItem { name = "Wegen verbergen", value = On(Dev.HideRoads), on = Dev.HideRoads, sub = "Wegen en paden niet tekenen: je ziet het terrein eronder", act = () => { Dev.HideRoads = !Dev.HideRoads; Say("Wegen " + (Dev.HideRoads ? "verborgen" : "zichtbaar")); } });
         l.Add(new MItem { head = true, name = "Hulpmiddelen" });
         l.Add(new MItem { name = "Alles opnieuw tekenen", sub = "De hele planeet", act = () => { Dev.Redraw(); Say("Alles opnieuw getekend"); } });
         if (withConsole) l.Add(new MItem { name = "Console", value = "`", sub = "Dezelfde schakelaars in een venster, met de log", act = () => { menuOpen = false; devOpen = true; } });
