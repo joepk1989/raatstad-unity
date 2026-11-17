@@ -102,32 +102,8 @@ public static partial class PlanetCity
     public static void ShowGrid(bool on) { if (grid == null) return; grid.SetActive(on); if (on && gridDirty) RebuildGrid(); }
 
     // De bodem van één deel. Vakken met een meer of een uitgraving krijgen geen bodem (die zit er anders doorheen).
-    struct GTri { public string tag; public Vector3 a, b, c; }
-    static readonly Dictionary<int, (long key, List<GTri> tris)> groundCache = new Dictionary<int, (long, List<GTri>)>();
     static long cutsHash;
-    // alles waar de grond van vak i langs een weg op een niveau van afhangt, als één getal
-    static long FieldKey(int i, float hcb0, float[] hb0, bool special)
-    {
-        long h = 1469598103934665603L;
-        void F(float f) { h = unchecked((h ^ (uint)System.BitConverter.SingleToInt32Bits(f)) * 1099511628211L); }
-        void V(Vector3 v) { F(v.x); F(v.y); F(v.z); }
-        F(i); F(hcb0); foreach (float x in hb0) F(x); F(FieldK); F(special ? 1f : 0f); F((RoadShape ? 1f : 0f) + (RoadSlopes ? 2f : 0f));   // de schakelaars Terrein door wegen en Talud F(carved.Count > 0 && cuts.Count > 0 ? 1f : 0f); h ^= cutsHash;
-        foreach (var q in segsUse) { V(q.a); V(q.b); F(q.ha); F(q.hb); F(q.hw); F(q.capA ? 1f : 0f); F(q.capB ? 1f : 0f); }
-        foreach (var q in flatsUse) { V(q.a); V(q.b); F(q.ha); F(q.hb); F(q.hw); }
-        foreach (var q in capsUse) { V(q.c); F(q.h); F(q.hw); }
-        return h;
-    }
     static void BuildGround(int ch) { try { BuildGround0(ch); } finally { UseAll(); } }   // na het tekenen weer alle wegstukken (UseNear)
-    const float SkirtD = 10f;   // hoe diep een naad langs de rand van een vak naar beneden hangt (Skirt in BuildGround0)
-    public static bool Seams = true;   // de naden aan (uit: om te zien waar het terrein niet aansluit)
-    // vakken waar de grond door wegen, geulen of tunnels gesneden wordt, en hun buren: daar kan een gedeelde rand van twee kanten anders uitvallen
-    static bool SeamCell(int i)
-    {
-        if (!Seams) return false;
-        if (fieldCells.Contains(i) || boreNear.ContainsKey(i) || spanNear.ContainsKey(i) || (carved.Count > 0 && carved.Contains(i)) || IsWalk(i)) return true;
-        foreach (int j in Planet.Cells[i].nb) if (fieldCells.Contains(j) || (carved.Count > 0 && carved.Contains(j)) || IsWalk(j) || Plateau(j)) return true;   // ook naast een weg of een bebouwd vak (een half wegvak ligt soms lager dan de hoek ernaast)
-        return false;
-    }
     // heeft vak j geen eigen bodem (een gracht, uitgraving of de geul onder een brug)? Daar geen naad naartoe.
     static bool NoGround(int j) => (Cells.TryGetValue(j, out var s) && s.Count > 0 && (s[0] == "water" || s[0] == "kuil"))
         || (Under.TryGetValue(j, out var u) && (u == "water" || u == "kuil" || u == "pad" || u == "weg") && !FieldBridge(j));
@@ -167,8 +143,6 @@ public static partial class PlanetCity
                 if (!cut)
                 {
                     Vector3 mid = c.dir * (Planet.R + hc);
-                    void Emit(Vector3 P0, Vector3 P1, Vector3 P2, float h0, float h1, float h2) => Emit2(P0, P1, P2, h0, h1, h2, false);
-                    List<GTri> rec = null;   // de driehoekjes van een vak langs een weg op een niveau, om te onthouden (groundCache)
                     void Put(string tag, Vector3 P0, Vector3 P1, Vector3 P2)   // naar de bodemmesh (met het vak bij elk hoekpunt) of naar het materiaal van de soort
                     {
                         PutTri(tag, P0, P1, P2, c.dir);
@@ -188,7 +162,7 @@ public static partial class PlanetCity
                         else if (!special && (Mathf.Max(h0, Mathf.Max(h1, h2)) > 0.03f || Mathf.Min(h0, Mathf.Min(h1, h2)) < -0.03f))   // verhoogd: kleur naar de hoogte, aarde waar het steiler is dan zo'n 45°
                             tag = up < 0.72f ? "aarde" : "t" + Mathf.Clamp(Mathf.FloorToInt((h0 + h1 + h2) / 9f), 0, 29);
                         if (!steep) tag = NatureTag(i, tag, h0, h1, h2, up);   // rots, sneeuw, strand en zeebodem (PlanetNature.cs)
-                        Put(tag, P0, P1, P2); rec?.Add(new GTri { tag = tag, a = P0, b = P1, c = P2 });
+                        Put(tag, P0, P1, P2);
                     }
                     // het vak uit de hoogtefunctie, de randpunten gedeeld met de buren (PlanetGround2.cs)
                     Ground2Cell(i, Plateau(i), Emit2, k => { if (!hasDeck) return false; Vector3 dw = (c.corners[k] + c.corners[(k + 1) % m]).normalized * Planet.R - dk.p; return Vector3.Dot(dw, dk.o) - dk.skew * Vector3.Dot(dw, dk.t) < -0.5f; },

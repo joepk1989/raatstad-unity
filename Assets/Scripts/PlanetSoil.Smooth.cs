@@ -130,7 +130,7 @@ public static partial class PlanetCity
     }
 
     // mag de bodem van vak i zacht en rond worden? (geen weg, pad, bebouwing, geul, gracht of tunnel)
-    static bool SmoothCell(int i) => i >= 0 && !IsWalk(i) && !Plateau(i) && !fieldCells.Contains(i) && !(RoadH.Count > 0 && RoadH.ContainsKey(i))
+    static bool SmoothCell(int i) => i >= 0 && !IsWalk(i) && !Plateau(i) && !fieldCells.Contains(i) && !(RoadH.ContainsKey(i))
         && !(carved.Count > 0 && carved.Contains(i)) && !(boreNear.Count > 0 && boreNear.ContainsKey(i)) && !Planet.IsPole(i) && !NoGround(i) && !Quay(i);
 
     // Vakken langs een weg of pad (Terrein v2: het veld is in veel kleine stukken gesneden, melding 15): de vorm blijft strak (hij sluit
@@ -141,7 +141,7 @@ public static partial class PlanetCity
     const float FieldCrease = 70f;   // (ruim: een splinter in een talud van een paar centimeter staat steil, maar hoort bij de grond eromheen; het oppervlak weegt)
 
     // waarom vak i strak blijft (voor tests)
-    public static string SmoothWhy(int i) => IsWalk(i) ? "weg" : Plateau(i) ? "plateau" : fieldCells.Contains(i) ? "veld" : RoadH.Count > 0 && RoadH.ContainsKey(i) ? "profiel" : carved.Contains(i) ? "geul" : boreNear.ContainsKey(i) ? "tunnel" : Planet.IsPole(i) ? "pool" : NoGround(i) ? "geengrond" : Quay(i) ? "kade" : "zacht";
+    public static string SmoothWhy(int i) => IsWalk(i) ? "weg" : Plateau(i) ? "plateau" : fieldCells.Contains(i) ? "veld" : RoadH.ContainsKey(i) ? "profiel" : carved.Contains(i) ? "geul" : boreNear.ContainsKey(i) ? "tunnel" : Planet.IsPole(i) ? "pool" : NoGround(i) ? "geengrond" : Quay(i) ? "kade" : "zacht";
 
     // de normaal van vak i: het vlak door de middens van zijn buren (som van de kruisproducten rondom)
     static Vector3 CellNormal(int i)

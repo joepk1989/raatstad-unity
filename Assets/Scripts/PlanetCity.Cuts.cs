@@ -193,7 +193,6 @@ public static partial class PlanetCity
     // test 8). Vroeger een geul (Cut) die niet bij de hoogtefunctie paste: losse driehoeken en tot 2,4 m verschil.
     static void UnderBak()
     {
-        if (RoadH.Count == 0) return;
         foreach (var kv in Under)
         {
             int i = kv.Key; if (!Underpass(i) || !Low.TryGetValue(i, out var lo)) continue; bool road = kv.Value == "weg";
@@ -229,19 +228,6 @@ public static partial class PlanetCity
                     Vector3 bd = Planet.Cells[b].dir, out3 = Tan(bd - Planet.Cells[other].dir, bd);
                     var c = new Cut { p = bd * Planet.R, o = out3, t = road, floor = floor, ground = deck, hw = CutHW }; o.Add(c); side[b] = c;
                 }
-            }
-        }
-        foreach (var kv in Under)
-        {
-            if (!Underpass(kv.Key) || !Low.TryGetValue(kv.Key, out var lo)) continue; int i = kv.Key; var cell = Planet.Cells[i]; Topo();
-            bool road = kv.Value == "weg";
-            if (UnderIsLevelled(i, road) || RoadH.Count > 0) continue;   // wat eronderdoor gaat ligt zelf op een niveau: eigen bak, het betonblok tekent de brug (BridgeBlock); nieuwe opbouw: de bak komt uit de stukken (UnderBak)
-            foreach (var od in Openings(i))
-            {
-                Vector3 rw = SkewFor(i, od), mdir = (cell.dir * Planet.R + od * FlatL).normalized, out3 = Tan(od, mdir), tt = Vector3.Cross(mdir, out3).normalized;
-                float rt = Vector3.Dot(rw, tt), sk = rw == Vector3.zero || Mathf.Abs(rt) < 0.2f ? 0f : Mathf.Clamp(Vector3.Dot(rw, out3) / rt, -1f, 1f);
-                var cutc = new Cut { p = mdir * Planet.R, o = out3, t = tt, floor = lo, ground = G(i), hw = CutHW, skew = sk }; o.Add(cutc);
-                int nbj = OpeningNb(i, od); if (sk != 0f && nbj >= 0) side[nbj] = cutc;
             }
         }
         // Een weg of pad op een ander niveau (Page Up/Down) is een vlak vak op zijn eigen hoogte met keermuren langs de randen naar
@@ -289,20 +275,15 @@ public static partial class PlanetCity
         // Gewone wegen (niet op een niveau) waar het terrein ernaast niet vlak is: ook in de hoogtefunctie, zoals in Cities: Skylines 2.
         // Een weg is breder dan zijn vakken (de stoep in een bocht, een kruispunt, een spits eiland); zonder dit stak daar het terrein of
         // de sokkel van een huis ernaast door de weg heen. Op vlakke grond verandert er niets (en kost het niets).
-        Lap("niveaus"); bool Uneven(int a)
-        {
-            float ga = G(a);
-            foreach (int x in Planet.Cells[a].nb) { if (Mathf.Abs(G(x) - ga) > 0.2f) return true; foreach (int y in Planet.Cells[x].nb) if (Mathf.Abs(G(y) - ga) > 0.2f) return true; }
-            return false;
-        }
+        Lap("niveaus");
         bool PlainRoad(int a) => IsRoad(a) && !levelled.Contains(a) && !Underpass(a) && !carved.Contains(a) && !preCarve.ContainsKey(a) && !IsRot(a);
-        var uneven = new HashSet<int>(); if (RoadField) foreach (var kv in Cells) if (PlainRoad(kv.Key) && (RoadH.Count > 0 || Uneven(kv.Key))) uneven.Add(kv.Key);   // nieuwe opbouw (RoadH): elke weg, het terrein eronder is niet op weghoogte
+        var uneven = new HashSet<int>(); if (RoadField) foreach (var kv in Cells) if (PlainRoad(kv.Key)) uneven.Add(kv.Key);   // nieuwe opbouw (RoadH): elke weg, het terrein eronder is niet op weghoogte
         // De weg wordt in een bocht afgerond (SmoothLine): bij het hart van een bochtvak ligt hij dan op het gemiddelde van de bocht,
         // lager dan het vak zelf als hij daar daalt; de grond rekent met die hoogte (anders lag hij tot een meter boven de stoep)
         float RH(int x)
         {
             var ps = new List<int>(); foreach (int j in Partners(x)) if (IsRoad(j) && !IsBore(x, j)) ps.Add(j);
-            if (RoadH.Count > 0) { int nr = 0; foreach (int j in Partners(x)) if (IsRoad(j)) nr++; if (nr >= 3) return G(x); }   // nieuwe opbouw: een kruispunt op zijn knoophoogte, de kop helt mee (CapSlope)
+            { int nr = 0; foreach (int j in Partners(x)) if (IsRoad(j)) nr++; if (nr >= 3) return G(x); }   // nieuwe opbouw: een kruispunt op zijn knoophoogte, de kop helt mee (CapSlope)
             if (ps.Count >= 3) { float lo = 0f; foreach (int j in ps) lo = Mathf.Min(lo, G(j) - G(x)); return G(x) + lo * 0.6f; }   // een kruising helt naar zijn armen (Frame.H): de kop zo laag als de laagste arm op 8 m
             if (ps.Count != 2 || !Capped(x)) return G(x);
             return Mathf.Min(G(x), (G(ps[0]) + 2f * G(x) + G(ps[1])) * 0.25f);
@@ -317,17 +298,17 @@ public static partial class PlanetCity
                 AddWalkSeg(segs, new Seg { a = ad * Planet.R, b = Planet.Cells[b].dir * Planet.R, ha = RH(a), hb = RH(b), hw = hw, capA = Capped(a), capB = uneven.Contains(b) && Capped(b), ia = a, ib = b });
             }
             // een kruising tekent zijn stoep verder dan de gewone breedte (afgeronde hoeken, een spitse kruising loopt door): de kop ruimer
-            if (Capped(a)) AddCap(a, RH(a), na <= 1 ? hw + HeadExtra(a) : na >= 3 ? hw + 4f : hw, RoadH.Count > 0 && na >= 3 ? CapSlope(a) : Vector3.zero);
+            if (Capped(a)) AddCap(a, RH(a), na <= 1 ? hw + HeadExtra(a) : na >= 3 ? hw + 4f : hw, na >= 3 ? CapSlope(a) : Vector3.zero);
         }
         // Een brug over een dal: van het hart van elk landhoofdvak tot het landhoofd ligt de grond op weghoogte, met het talud ernaast
         // (anders ligt het terrein van de helling over de weg naar de brug); onder het dek blijft het lager (SpanBottom in GroundField).
         Lap("wegen"); foreach (long k in TunnelLinks)   // (ook een tunnel: de weg helt van het portaalvak de berg in)
         {
             int a0 = (int)(k >> 20), b0 = (int)(k & 0xFFFFF); if (!IsBore(a0, b0) || !IsWalk(a0) || !IsWalk(b0)) continue;
-            bool spanNew = RoadH.Count > 0 && SpanLinks.Contains(k);   // nieuwe opbouw: het dek van een dalbrug loopt van hart tot hart; de grond bij het landhoofd hoort bij de weg tot waar het dek 6 m boven het terrein komt (daar begint het echte dek: ontwerp 8.3)
+            bool spanNew = SpanLinks.Contains(k);   // nieuwe opbouw: het dek van een dalbrug loopt van hart tot hart; de grond bij het landhoofd hoort bij de weg tot waar het dek 6 m boven het terrein komt (daar begint het echte dek: ontwerp 8.3)
             foreach (var (e, oe) in new[] { (a0, b0), (b0, a0) })
             {
-                Vector3 de = Planet.Cells[e].dir, dO = Planet.Cells[oe].dir; float L = Vector3.Angle(de, dO) * Mathf.Deg2Rad * Planet.R, t = (RoadH.Count > 0 ? FlatL : FlatL * 0.55f) / L;   // nieuwe opbouw: de inrit tot het portaalvlak (FlatL van het hart), want voorbij het eind van een stuk sluit de kegel de uitgraving alweer
+                Vector3 de = Planet.Cells[e].dir, dO = Planet.Cells[oe].dir; float L = Vector3.Angle(de, dO) * Mathf.Deg2Rad * Planet.R, t = FlatL / L;   // nieuwe opbouw: de inrit tot het portaalvlak (FlatL van het hart), want voorbij het eind van een stuk sluit de kegel de uitgraving alweer
                 if (spanNew)
                 {
                     t = 2f / L; for (float sm = 2f; sm < L * 0.5f; sm += 1f) { Vector3 pm = Vector3.Slerp(de, dO, sm / L).normalized, sd = Vector3.Cross(pm, dO - de).normalized * (8f / Planet.R); float ba = BaseAt(pm), dd = Mathf.Lerp(G(e), G(oe), sm / L) - ba; if (dd > 6f || ba < SeaLevel || BaseAt((pm + sd).normalized) < SeaLevel || BaseAt((pm - sd).normalized) < SeaLevel) break; t = sm / L; }   // (over water geen dam: het dek begint op de oever)
@@ -346,7 +327,7 @@ public static partial class PlanetCity
             var seen = new HashSet<long>();
             foreach (var kv in Cells)
             {
-                int a = kv.Key; if (!fieldCells.Contains(a) || !IsWalk(a) || levelled.Contains(a) || Underpass(a) || (RoadH.Count == 0 && !NearSeg(Planet.Cells[a].dir, Planet.Cells[a].radius))) continue;   // (nieuwe opbouw: het veld is al per stuk bepaald, NearSeg over alle stukken kostte 0,2 s)   // (een vak binnen bereik zit altijd in fieldCells)
+                int a = kv.Key; if (!fieldCells.Contains(a) || !IsWalk(a) || levelled.Contains(a) || Underpass(a)) continue;   // (nieuwe opbouw: het veld is al per stuk bepaald, NearSeg over alle stukken kostte 0,2 s)   // (een vak binnen bereik zit altijd in fieldCells)
                 foreach (int b in Partners(a))
                 {
                     if (!IsWalk(b) || levelled.Contains(b) || IsBore(a, b) || !seen.Add(Key(a, b))) continue;

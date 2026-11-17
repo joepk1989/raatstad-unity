@@ -299,7 +299,7 @@ public static partial class PlanetCity
     static void ResetCellCaches()
     {
         carved.Clear(); preCarve.Clear(); preLevel.Clear(); deckSide.Clear(); partners.Clear(); Style.Clear(); Under.Clear(); Low.Clear(); Bike.Clear();
-        groundChunks.Clear(); lastBuilt.Clear(); groundCache.Clear(); Scorch.Clear(); Terr.Clear(); levelled.Clear(); CenterOfs.Clear(); stripCache.Clear();
+        groundChunks.Clear(); lastBuilt.Clear(); Scorch.Clear(); Terr.Clear(); levelled.Clear(); CenterOfs.Clear(); stripCache.Clear();
         fieldCells.Clear(); nearCache.Clear(); chunks.Clear(); dirty.Clear(); gumSkip.Clear(); edgeMate.Clear(); Rot.Clear(); boreNear.Clear(); FillTowns.Clear();
         cutKeys.Clear(); cutSig = ""; bores.Clear(); modGos.Clear(); modRoot = null;
     }

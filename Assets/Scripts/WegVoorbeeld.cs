@@ -15,7 +15,7 @@ public class WegVoorbeeld : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Boot()
     {
-        if (!File.Exists(Flag)) return; mode = File.ReadAllText(Flag).Trim(); File.Delete(Flag); PlanetCity.Ground2 = false; PlanetCity.Seams = true; PlanetCity.ProfileFirst = false; for (bool again = true; again;) { again = false; if (mode.EndsWith(" v2")) { PlanetCity.Ground2 = true; mode = mode.Substring(0, mode.Length - 3); again = true; } if (mode.EndsWith(" geennaden")) { PlanetCity.Seams = false; mode = mode.Substring(0, mode.Length - 10); again = true; } if (mode.EndsWith(" profiel")) { PlanetCity.ProfileFirst = true; mode = mode.Substring(0, mode.Length - 8); again = true; } }   // "... v2": met Terrein v2; "... geennaden": zonder naden   // tekst "fiets": de fietspaden en de startstad
+        if (!File.Exists(Flag)) return; mode = File.ReadAllText(Flag).Trim(); File.Delete(Flag); PlanetCity.Ground2 = false; PlanetCity.ProfileFirst = false; for (bool again = true; again;) { again = false; if (mode.EndsWith(" v2")) { PlanetCity.Ground2 = true; mode = mode.Substring(0, mode.Length - 3); again = true; } if (mode.EndsWith(" geennaden")) { mode = mode.Substring(0, mode.Length - 10); again = true; } if (mode.EndsWith(" profiel")) { PlanetCity.ProfileFirst = true; mode = mode.Substring(0, mode.Length - 8); again = true; } }   // "... v2": met Terrein v2; "... geennaden": zonder naden   // tekst "fiets": de fietspaden en de startstad
         Application.runInBackground = true;
         new GameObject("Wegvoorbeeld").AddComponent<WegVoorbeeld>();
     }
@@ -65,7 +65,6 @@ public class WegVoorbeeld : MonoBehaviour
         if (mode.StartsWith("ontwerp")) { yield return Ontwerp(home, mode); yield break; }
         if (mode == "starttijd") { yield return StartTijd(); yield break; }   // de startstad met Terrein v2: herbouwtijd per stap en de traagste vakken
         if (mode == "zee") { yield return ZeeTest(home); yield break; }
-        if (mode == "startnaden") { yield return StartNaden(); yield break; }
         if (mode == "aiterrein") { yield return AiTerrein(); yield break; }
         if (mode == "aisteden") { yield return AiSteden(); yield break; }
         if (mode == "verkeer") { yield return Verkeer(home); yield break; }
@@ -240,7 +239,6 @@ public class WegVoorbeeld : MonoBehaviour
         if (t == "weg" && lv != 0) PlanetCity.DragUnder = lv <= -2;
         ok = PlanetCity.PlaceLine(plan, t); PlanetCity.DragUnder = du;
         if (ok > 0) PlanetCity.SetLevel(plan, lv, t);
-        if (ok > 0 && lv == 0) PlanetCity.DipUnder(plan);
         PlanetCity.DragLevel = 0; return ok;
     }
     static string Fp() { var l = new List<long>(PlanetCity.Links); l.Sort(); long h = 17; foreach (long k in l) h = h * 31 + k; return PlanetCity.Links.Count + ":" + h; }
@@ -723,36 +721,6 @@ public class WegVoorbeeld : MonoBehaviour
         File.WriteAllText(Path.Combine(Dir, "zee.txt"), log.ToString());
         yield return Shot("zee", home, Dh(home, 0.5f), 150f, 45f);
         yield return Shot("zee_dam", Go(home, D90, -70f), Dh(home, D90), 45f, 20f);
-        File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true;
-    }
-    // de startstad: het talud langs de verlaagde fietsring met en zonder naden en met en zonder gewone wegen in de hoogtefunctie
-    IEnumerator StartNaden()
-    {
-        int st = PlanetCity.FreeStart(Planet.Cells[Planet.South].dir); Hc = st;
-        foreach (int i in new List<int>(Nearby(st, 220f)))   // golvend terrein, zoals een startstad op een heuvelachtige planeet
-        {
-            Vector3 v = (Planet.Cells[i].dir - Planet.Cells[st].dir) * Planet.R; float x = Vector3.Dot(v, Dh(st, 0f)), y = Vector3.Dot(v, Dh(st, Mathf.PI / 2f));
-            PlanetCity.SetTerr(i, Mathf.Round((4f + 2.5f * Mathf.Sin(x / 33f) + 2f * Mathf.Cos(y / 27f + 0.7f)) * 4f) / 4f);
-        }
-        PlanetCity.StartTown(st);
-        PlanetCity.Rebuild(); PlanetCity.Rebuild(); yield return null; yield return null;
-        var spots = new List<int>();
-        foreach (var kv in new List<KeyValuePair<int, List<string>>>(PlanetCity.Cells)) { }
-        for (int i = 0; i < Planet.Cells.Length && spots.Count < 3; i++)
-        {
-            if (PlanetCity.IsWalk(i) || PlanetCity.Plateau(i) || Vector3.Distance(Planet.Cells[i].dir, Planet.Cells[st].dir) * Planet.R > 120f) continue;
-            bool nearBike = false; foreach (int j in Planet.Cells[i].nb) if (PlanetCity.IsBike(j) && PlanetCity.G(j) < PlanetCity.G(i) - 1f) nearBike = true;
-            if (!nearBike) continue; bool far = true; foreach (int q in spots) if (Vector3.Distance(Planet.Cells[q].dir, Planet.Cells[i].dir) * Planet.R < 60f) far = false; if (far) spots.Add(i);
-        }
-        var log = new System.Text.StringBuilder(); foreach (int q in spots) log.Append(q).Append(": ").AppendLine(Desc(q));
-        string[] names = { "normaal", "zondernaden", "zonderwegveld" };
-        for (int v = 0; v < 3; v++)
-        {
-            PlanetCity.Seams = v != 1; PlanetCity.RoadField = v != 2; PlanetCity.TouchAll(); PlanetCity.Rebuild(); PlanetCity.Rebuild(); yield return null; yield return null;
-            for (int q = 0; q < spots.Count; q++) { int rb = spots[q]; foreach (int j in Planet.Cells[spots[q]].nb) if (PlanetCity.IsBike(j)) rb = j; yield return Shot("startnaad_" + names[v] + q, spots[q], (Planet.Cells[spots[q]].dir - Planet.Cells[rb].dir).normalized, 18f, 10f); }
-        }
-        PlanetCity.Seams = true; PlanetCity.RoadField = true;
-        File.WriteAllText(Path.Combine(Dir, "startnaden.txt"), log.ToString());
         File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true;
     }
     static string Desc(int c)

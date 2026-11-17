@@ -58,29 +58,7 @@ public static partial class PlanetCity
     // Ongelijkvloers op het maaiveld (U, of een pad dat onder een weg door gaat): de lijn duikt alleen bij een kruising onder de
     // andere weg door, als een weg op een niveau (zodat de bak, de koker en het betonblok van het model overpass_path gelden in plaats
     // van de oude portaalgeul): de vakken naast de kruising een niveau lager, de vakken daarnaast een half niveau (de helling)
-    public static void DipUnder(List<int> line)
-    {
-        if (line == null || line.Count < 3) return;
-        var depth = new Dictionary<int, int>();   // index in de lijn → halve niveaus omlaag (2 = een niveau)
-        bool Own(int c) { foreach (int j in Partners(c)) if (!line.Contains(j)) return false; return true; }   // hoort het vak ook bij een andere weg (kruispunt, aansluiting), dan blijft het liggen
-        void Mark(int k, int d) { if (k < 0 || k >= line.Count || Underpass(line[k]) || !Own(line[k])) return; depth[k] = Mathf.Max(depth.TryGetValue(k, out var o) ? o : 0, d); }
-        for (int k = 0; k < line.Count; k++)
-        {
-            int c = line[k];
-            bool cross = Underpass(c) && ((PadUnder(c) && ((k > 0 && IsPath(line[k - 1])) || (k + 1 < line.Count && IsPath(line[k + 1])))) || (k > 0 && k + 1 < line.Count && TunnelLinks.Contains(Key(line[k - 1], line[k + 1]))));
-            if (cross)
-            {
-                Mark(k - 1, 2); Mark(k + 1, 2); Mark(k - 2, 1); Mark(k + 2, 1);
-                Low[c] = Mathf.Min(Low.TryGetValue(c, out var lo) ? lo : G(c), G(c) - LevelH); Touch(c);
-            }
-            if (k > 0 && LowerLinks.Contains(Key(line[k - 1], c))) { Mark(k - 1, 2); Mark(k, 2); Mark(k - 2, 1); Mark(k + 1, 1); }   // schuin onder een weg door
-        }
-        foreach (var kv in depth)
-        {
-            int c = line[kv.Key]; if (!IsWalk(c)) continue; float b = PadGround(c) ?? G(c);
-            LevelTerr(c, b - kv.Value * StepH); Touch(c); foreach (int j in Partners(c)) Touch(j);
-        }
-    }
+    public static void DipUnder(List<int> line) { }   // (oud; tests en code van andere sessies roepen hem nog aan) een kruising op het maaiveld regelt het wegprofiel
     public static void SetLevel(List<int> line, int lv, string type)
     {
         if (line == null) return; float carry = float.NaN; bool road = type == "weg";

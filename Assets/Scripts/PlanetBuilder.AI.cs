@@ -132,10 +132,10 @@ public partial class PlanetBuilder
             else if (m.line != null && m.type == "weg" && m.line.Exists(PlanetCity.IsRot))   // tot het midden van een rotonde gesleept: de soort weg van de rotonde zelf blijft wat hij was
             {
                 var keep = new Dictionary<int, byte>(); foreach (int c in m.line) if (PlanetCity.IsRot(c)) keep[c] = PlanetCity.StyleOf(c);
-                ok = PlanetCity.PlaceLine(m.line, m.type); if (ok > 0) { PlanetCity.SetLevel(m.line, 0, m.type); PlanetCity.DipUnder(m.line); PlanetCity.BoreLine(m.line); }
+                ok = PlanetCity.PlaceLine(m.line, m.type); if (ok > 0) { PlanetCity.SetLevel(m.line, 0, m.type); PlanetCity.ProfileNewLine = m.line; }   /* tunnels en bruggen zoekt het wegprofiel (Changed) */
                 foreach (var kv in keep) { if (kv.Value == 0) PlanetCity.Style.Remove(kv.Key); else PlanetCity.Style[kv.Key] = kv.Value; PlanetCity.Touch(kv.Key); }
             }
-            else if (m.line != null) { ok = PlanetCity.PlaceLine(m.line, m.type); if (ok > 0) { PlanetCity.SetLevel(m.line, 0, m.type); PlanetCity.DipUnder(m.line); PlanetCity.BoreLine(m.line); } }
+            else if (m.line != null) { ok = PlanetCity.PlaceLine(m.line, m.type); if (ok > 0) { PlanetCity.SetLevel(m.line, 0, m.type); PlanetCity.ProfileNewLine = m.line; }   /* tunnels en bruggen zoekt het wegprofiel (Changed) */ }
             else if (m.type == "gum") { if (PlanetCity.Clear(m.cell)) ok = 1; else err = "Dat kon niet weg"; }   // bomen kappen of een eigen stukje opruimen, zoals rechts klikken
             else { err = PlanetCity.Place(m.cell, m.type); if (err == null) ok = 1; }
         }
@@ -148,7 +148,7 @@ public partial class PlanetBuilder
             if (aiTempo < 3) Changed();
             else   // Turbo: zoals Changed, maar de stad niet bij elke zet bewaren (dat kost op een grote planeet veel tijd), wel om de 20 zetten en bij Stop
             {
-                Sounds.After(hoverPoint); PlanetCity.UserEdit(); beautyVer++; PlanetCity.RebuildSoon(at); rebuilding = true; RebuildTick(0f); beautyT = -99f;
+                PlanetCity.Reprofile(PlanetCity.ProfileNewLine); PlanetCity.ProfileNewLine = null; Sounds.After(hoverPoint); PlanetCity.UserEdit(); beautyVer++; PlanetCity.RebuildSoon(at); rebuilding = true; RebuildTick(0f); beautyT = -99f;
                 if ((PlanetAI.Moves + 1) % 20 == 0) PlanetCity.Save(); else aiUnsaved = true;
             }
             hasHover = hh; hover = hv; hoverPoint = hp;
