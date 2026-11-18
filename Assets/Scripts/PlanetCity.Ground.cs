@@ -219,7 +219,7 @@ public static partial class PlanetCity
                             }
                         }
                     }
-                if (pole) PoleMarker(PM, c, g, i == Planet.North);
+                if (pole) { PoleMarker(PM, c, g); made.Add(PoleHolo.Make(groundRoot, c, g, i == Planet.North)); }   // het ijs, en hoog erboven de letter als hologram (PoleHolo.cs)
                 if (start && !pole && Dev.Starts)   // startplek (ontwikkelaarshulp) (op een pool staat de poolpaal): lichtblauw vak met een witte paal van 30 m en een vlaggetje
                 {
                     Vector3 top = c.dir * (RG + 30f);
@@ -289,8 +289,6 @@ public static partial class PlanetCity
         }
     }
 
-    // Poolmarkering: ijswit vak met een rood-wit gestreepte paal van 40 m, een gouden knop en een vlag met N (noord) of Z (zuid) die naar het oosten wappert
-    const float PoleH = 40f;
     // kleuren van het terrein (zoals TC0-TC3 in de webversie): gras, dieper groen omhoog, grijsgroen boven de 16 m, aarde op steile flanken
     static Color TerrColor(string k)
     {
@@ -303,47 +301,10 @@ public static partial class PlanetCity
         return Color.Lerp(Color.Lerp(c0, c1, Mathf.SmoothStep(0f, 1f, h / 5f)), c3, Mathf.SmoothStep(0f, 1f, (h - 16f) / 12f) * 0.6f);
     }
 
-    static void PoleMarker(System.Func<string, MeshBuilder> M, Planet.Cell c, float g, bool north)
+    // Poolmarkering: een ijswit vak met een lage ijsrand; de N of Z zweeft er hoog boven als hologram (PoleHolo.cs)
+    static void PoleMarker(System.Func<string, MeshBuilder> M, Planet.Cell c, float g)
     {
-        Vector3 o = c.dir * (Planet.R + g), u = c.dir, e = c.east, n = c.north;
-        System.Func<float, float, Vector3> ring = (ang, r) => e * (Mathf.Cos(ang) * r) + n * (Mathf.Sin(ang) * r);
-        // voet: een lage ijsrand rondom
         for (int k = 0; k < c.corners.Length; k++) { Vector3 a = c.corners[k], b = c.corners[(k + 1) % c.corners.Length], am = (a + b) * 0.5f, ai = Vector3.Lerp(a, c.dir, 0.08f), bi = Vector3.Lerp(b, c.dir, 0.08f); M("ijs").Quad(a * (Planet.R + g), b * (Planet.R + g), bi * ((Planet.R + g) + 0.25f), ai * ((Planet.R + g) + 0.25f), am - c.dir); }
-        // paal: zeshoekig, in tien banden rood en wit
-        const float r0 = 0.45f; const int Bands = 10;
-        for (int s = 0; s < Bands; s++)
-        {
-            float y0 = s * PoleH / Bands, y1 = (s + 1) * PoleH / Bands; var mb = M(s % 2 == 0 ? "rood" : "wit");
-            for (int k = 0; k < 6; k++) { float a0 = k * Mathf.PI / 3f, a1 = (k + 1) * Mathf.PI / 3f; Vector3 p0 = ring(a0, r0), p1 = ring(a1, r0); mb.Quad(o + p0 + u * y0, o + p1 + u * y0, o + p1 + u * y1, o + p0 + u * y1, p0 + p1); }
-        }
-        // gouden knop: twee zeshoekige punten tegen elkaar
-        Vector3 kc = o + u * (PoleH + 0.8f);
-        for (int k = 0; k < 6; k++) { float a0 = k * Mathf.PI / 3f, a1 = (k + 1) * Mathf.PI / 3f; Vector3 p0 = kc + ring(a0, 0.9f), p1 = kc + ring(a1, 0.9f); M("goud").Tri(p0, p1, kc + u * 0.9f, (p0 + p1) * 0.5f - kc + u * 0.5f); M("goud").Tri(p0, p1, kc - u * 0.9f, (p0 + p1) * 0.5f - kc - u * 0.5f); }
-        // vlag: wit met een grote N (noordpool, blauw) of Z (zuidpool, rood), aan beide kanten leesbaar
-        const float fl = 9f, fh = 6f; float top = PoleH - 0.6f, bot = top - fh;
-        { Vector3 a = o + u * bot + e * r0, b = o + u * bot + e * (r0 + fl), cc = o + u * top + e * (r0 + fl), d = o + u * top + e * r0; M("vlagwit").Quad(a, b, cc, d, n); M("vlagwit").Quad(a, b, cc, d, -n); }
-        // de letter in vlagcoördinaten (x vanaf de paal, y vanaf de onderkant), als vierhoeken
-        float x0 = 2.6f, x1 = 6.4f, yB = 0.9f, yT = 5.1f, sw = 0.85f; var q = new List<Vector2[]>();
-        if (north)
-        {
-            q.Add(new[] { new Vector2(x0, yB), new Vector2(x0 + sw, yB), new Vector2(x0 + sw, yT), new Vector2(x0, yT) });
-            q.Add(new[] { new Vector2(x1 - sw, yB), new Vector2(x1, yB), new Vector2(x1, yT), new Vector2(x1 - sw, yT) });
-            q.Add(new[] { new Vector2(x1 - sw, yB), new Vector2(x1, yB), new Vector2(x0 + sw, yT), new Vector2(x0, yT) });
-        }
-        else
-        {
-            q.Add(new[] { new Vector2(x0, yT - sw), new Vector2(x1, yT - sw), new Vector2(x1, yT), new Vector2(x0, yT) });
-            q.Add(new[] { new Vector2(x0, yB), new Vector2(x1, yB), new Vector2(x1, yB + sw), new Vector2(x0, yB + sw) });
-            q.Add(new[] { new Vector2(x0, yB + sw), new Vector2(x0 + sw * 1.2f, yB + sw), new Vector2(x1, yT - sw), new Vector2(x1 - sw * 1.2f, yT - sw) });
-        }
-        string lk = north ? "vlagblauw" : "vlagrood";
-        for (int side = -1; side <= 1; side += 2)   // van de noordkant (+n) loopt x naar rechts; van de andere kant gespiegeld, zodat de letter goed leesbaar is
-            foreach (var p4 in q)
-            {
-                var w = new Vector3[4];
-                for (int k = 0; k < 4; k++) { float xx = side > 0 ? p4[k].x : fl - p4[k].x; w[k] = o + u * (bot + p4[k].y) + e * (r0 + xx) + n * (side * 0.04f); }
-                M(lk).Quad(w[0], w[1], w[2], w[3], n * side);
-            }
     }
     static Color PoleColor(string k)
     {

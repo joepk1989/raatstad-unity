@@ -30,6 +30,14 @@ public class WegVoorbeeld : MonoBehaviour
         yield return null; yield return null;
         cam = Camera.main; if (pb != null) pb.enabled = false; PlanetCity.SoilWire = true;   // de terreinlijnen aan bij elke test (de instelling blijft daarna ook in het spel aan)
         if (pb != null) foreach (string f in new[] { "home", "welcome" }) { var fi = typeof(PlanetBuilder).GetField(f, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public); if (fi != null && fi.FieldType == typeof(bool)) fi.SetValue(pb, false); }   // geen startscherm: het voorbeeld bouwt zelf
+        if (mode == "pool")   // het hologram boven de noordpool (PoleHolo.cs), van opzij, van onderaf en van dichtbij
+        {
+            yield return new WaitForSeconds(1.5f); int np = Planet.North; var pc = Planet.Cells[np]; Vector3 hp = pc.dir * (Planet.R + PlanetCity.G(np) + 88f);
+            yield return ShotAt("pool_opzij", hp, pc.east * 95f + pc.dir * 5f);
+            yield return ShotAt("pool_onder", hp, pc.north * 70f - pc.dir * 70f);
+            yield return new WaitForSeconds(2.2f); yield return ShotAt("pool_dichtbij", hp, (pc.east + pc.north) * 32f);
+            File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true; yield break;
+        }
         if (mode == "meten") { yield return MeetHier(); yield break; }
         if (mode == "autos") { yield return Autos(); yield break; }
         if (mode == "kijk")   // wat er standaard geladen wordt: slot, startstad, en het beeld van de camera bij het begin
