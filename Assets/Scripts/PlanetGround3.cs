@@ -25,7 +25,6 @@ public static partial class PlanetCity
     // rijen, dwarslijnen of extra verdeling bij bochten en einden; de grond loopt van de zeshoekpunten glooiend naar de weg.
     public static bool G3Half = true;   // ook halve wegvakken naast een schuine weg met de nieuwe opzet (uit: de oude opzet daar, om te vergelijken)
     const float G3Row = 2f, G3Min = 8f; const int G3MaxRows = 10; public static int G3Rows = 0;
-    const float G3WallLo = 4f, G3WallHi = 6f;   // tussen deze hoogteverschillen groeit de keermuur langs de wegrand van niets tot het hele verschil
     static bool fieldV3;   // GroundField rekent met de nieuwe hoogte (gezet door wie het vak kiest: Ground2Cell0, H, EdgeProfile1)
     static readonly Dictionary<int, (int ver, bool v)> v3Cache = new Dictionary<int, (int, bool)>();
 
@@ -64,7 +63,7 @@ public static partial class PlanetCity
     static readonly List<float> g3D = new List<float>(), g3H = new List<float>();
     static float GroundV3(Vector3 dir, float base_, out bool slope)
     {
-        slope = false; Vector3 w = dir * Planet.R; g3D.Clear(); g3H.Clear(); float dmin = float.MaxValue, inH = float.MaxValue;
+        slope = false; Vector3 w = dir * Planet.R; g3D.Clear(); g3H.Clear(); float dmin = float.MaxValue, inH = float.MaxValue; bool wallNear = false;
         foreach (var q in segsUse)
         {
             Vector3 ab = q.b - q.a; float l2 = ab.sqrMagnitude; if (l2 < 1e-4f) continue; float ur = Vector3.Dot(w - q.a, ab) / l2, u = Mathf.Clamp01(ur);
@@ -76,14 +75,14 @@ public static partial class PlanetCity
                 continue;
             }
             Vector3 dv = w - (q.a + ab * u); if (dv.sqrMagnitude > 60f * 60f) continue; dv -= dir * Vector3.Dot(dv, dir);
-            float d = dv.magnitude - q.hw, hr = Mathf.Lerp(q.ha, q.hb, u); if (d > G3Row * G3MaxRows + 2f) continue;
-            g3D.Add(d); g3H.Add(hr); if (d < dmin) dmin = d; if (d <= wallBias && hr < inH) inH = hr;
+            float d = dv.magnitude - q.hw, hr = Mathf.Lerp(q.ha, q.hb, u); if (d > 60f) continue;
+            g3D.Add(d); g3H.Add(hr); if (d < dmin) { dmin = d; wallNear = q.wall; } if (d <= wallBias && hr < inH) inH = hr;
         }
         foreach (var q in capsUse)
         {
             Vector3 dv = w - q.c; if (dv.sqrMagnitude > 60f * 60f) continue; float hr = q.h + Vector3.Dot(dv, q.g); dv -= dir * Vector3.Dot(dv, dir);
-            float d = CapDist(q, w) - q.hw; if (d > G3Row * G3MaxRows + 2f) continue;
-            g3D.Add(d); g3H.Add(hr); if (d < dmin) dmin = d; if (d <= wallBias && hr < inH) inH = hr;
+            float d = CapDist(q, w) - q.hw; if (d > 60f) continue;
+            g3D.Add(d); g3H.Add(hr); if (d < dmin) { dmin = d; wallNear = q.wall; } if (d <= wallBias && hr < inH) inH = hr;
         }
         if (g3D.Count == 0) return base_;
         float road;
@@ -97,27 +96,21 @@ public static partial class PlanetCity
         float t = road - 0.05f;   // 5 cm onder het wegdek
         if (!RoadShape && t > base_) return base_;   // terrein door wegen uit: niets ophogen
         if (dmin <= wallBias) return t;
-        // Naast de weg. Tot G3WallLo hoogteverschil loopt de grond glooiend naar de weg; daarboven blijft het terrein steeds meer staan
-        // zoals het is, en vanaf G3WallHi helemaal: dan staat er een keermuur strak langs de wegrand (de sprong op de wegrand).
-        float dz = Mathf.Abs(base_ - t), kw = Mathf.Clamp01((dz - G3WallLo) / (G3WallHi - G3WallLo));
-        float W = Mathf.Max(RoadSlopes ? G3Min : 0.6f, Mathf.Min(dz, G3WallHi) / FK), un = Mathf.Max(0f, dmin) / W;
-        float bl = un >= 1f ? base_ : Mathf.Lerp(t, base_, un);
-        slope = un < 1f && dz > 0.4f; return Mathf.Lerp(bl, base_, kw);
+        // Naast de weg: een talud dat glooiend begint (het hoogteverschil over G3Min) en hooguit zo steil is als het talud (FK, 1 op 1,5),
+        // tot het het terrein raakt; bij een dijk tilt het de grond op, bij een insnijding graaft het af. Alleen waar het profiel een sokkel
+        // of bak maakt (meer dan 6 m van het terrein, SplitWalls: q.wall) blijft het terrein staan en staat er een keermuur langs de wegrand.
+        if (wallNear) return base_;
+        float dz = Mathf.Abs(base_ - t), k2 = Mathf.Min(RoadSlopes ? FK : 8f, Mathf.Max(dz / (RoadSlopes ? G3Min : 0.6f), 0.02f)), dd = Mathf.Max(0f, dmin);
+        float h = base_ < t ? Mathf.Max(base_, t - dd * k2) : Mathf.Min(base_, t + dd * k2);
+        slope = Mathf.Abs(h - base_) > 0.05f && dz > 0.4f; return h;
     }
 
-    // Kan er in vak i een keermuur langs de wegrand staan: ergens op het vak (hart en hoeken) ligt het terrein meer dan G3WallLo - 0,5 van de weg af
+    // Kan er in vak i een keermuur langs de wegrand staan: een stuk of kop met een sokkel of bak (q.wall), of een hard eind (tunnelportaal) in de buurt
     static readonly Dictionary<int, (int ver, bool v)> v3WallCache = new Dictionary<int, (int, bool)>();
     static bool V3HasWall(int i)
     {
         if (v3WallCache.TryGetValue(i, out var e) && e.ver == fieldVer) return e.v;
-        var c = Planet.Cells[i]; int m = c.corners.Length; bool any = false; foreach (var q in segsUse) if (q.hardA || q.hardB) { any = true; break; }
-        for (int k = -1; k < m && !any; k++)
-        {
-            Vector3 d = k < 0 ? c.dir : c.corners[k]; float bs = k < 0 ? Center2(i) : CornerBase(i, k), near = float.MaxValue, hr = 0f; Vector3 w = d * Planet.R;
-            foreach (var q in segsUse) { Vector3 ab = q.b - q.a; float l2 = ab.sqrMagnitude; if (l2 < 1e-4f) continue; float u = Mathf.Clamp01(Vector3.Dot(w - q.a, ab) / l2), dd = (w - (q.a + ab * u)).magnitude - q.hw; if (dd < near) { near = dd; hr = Mathf.Lerp(q.ha, q.hb, u); } }
-            foreach (var q in capsUse) { float dd = (w - q.c).magnitude - q.hw; if (dd < near) { near = dd; hr = q.h; } }
-            if (near < c.radius * 2.5f && Mathf.Abs(bs - hr) > G3WallLo - 0.5f - near * 0.5f) any = true;   // (hoe verder van de weg, hoe meer het terrein nog kan veranderen voor het de wegrand haalt)
-        }
+        bool any = false; foreach (var q in segsUse) if (q.wall || q.hardA || q.hardB) { any = true; break; } if (!any) foreach (var q in capsUse) if (q.wall) { any = true; break; }
         v3WallCache[i] = (fieldVer, any); return any;
     }
     // De wandlijnen van vak c in de nieuwe opzet: de twee wegranden van elk stuk en de zijden van elke kop, zo gericht dat de weg negatief is;
