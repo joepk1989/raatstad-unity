@@ -50,7 +50,7 @@ public static partial class PlanetCity
     // tegenover elkaar een brug wordt. can: mag vak k in het water liggen; land: de hoogte van de grond in een vak.
     // Liggen bij een schuine stap alleen de halve vakken in het water en beide vakken droog, dan wordt die ene stap een korte brug.
     // road: de hoogte van een bestaande weg in een vak (NaN: een nieuw vak). Geeft de paren als index in de lijn, h: de hoogte van de weg op de twee landhoofden.
-    const float WaterDeck = 2f;
+    const float WaterDeck = 3.5f;   // de weg op een landhoofd minstens zo hoog boven het water: het dek (1,3 m dik) blijft er ruim 2 m boven (met 2 m lag een brug als een dam op het water, melding 25)
     static List<(int i, int j)> WaterSearch(List<int> line, System.Func<int, bool> plain, System.Func<int, bool> step, System.Func<int, bool> inner, System.Func<int, bool> can, System.Func<int, float> land, System.Func<int, float> road, out float[] h)
     {
         int n = line.Count; var hh = new float[n]; h = hh; var o = new List<(int i, int j)>(); var wet = new bool[n];
@@ -63,7 +63,7 @@ public static partial class PlanetCity
             if (!wet[k] && !wet[k + 1] && plain(line[k]) && plain(line[k + 1]) && step(k)) skew.Add(k);   // beide oevers droog: die ene schuine stap wordt zelf een korte brug (is een van de twee zelf nat, dan loopt de brug van het droge vak af al over deze stap)
         }
         // de hoogte van de weg op een landhoofd: een bestaande weg houdt zijn hoogte (road), een nieuw vak ligt op de grond en minstens WaterDeck boven het water
-        float Top(int m) { float r = road(line[m]); return float.IsNaN(r) ? Mathf.Max(land(line[m]), SeaLevel + WaterDeck) : r; }
+        float Top(int m) { float r = road(line[m]); return Mathf.Max(float.IsNaN(r) ? land(line[m]) : r, SeaLevel + WaterDeck); }   // ook een bestaande weg gaat zo nodig omhoog
         // Van hoge oever tot hoge oever: de brug loopt verder door zolang de grond ertussen minstens SpanClear onder de rechte lijn tussen
         // de twee landhoofden blijft (een lage oever hoort bij de overspanning: anders duikt de weg naar het water en klimt hij erna
         // weer). De langste die past, hooguit MaxGrade steil en SpanMax lang.

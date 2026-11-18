@@ -84,7 +84,7 @@ public static partial class PlanetCity
             System.Func<int, bool> InnerW = k => { int c = ext[k], p = ext[k - 1], q = ext[k + 1]; if (!Plain(c) || !Straight(p, c, q)) return false; var ps = Partners(c); if (ps.Count != 2) return false; foreach (int x in ps) if (x != p && x != q && x != Detour(p, c) && x != Detour(c, q)) return false; return true; };
             foreach (var (i, j) in WaterSearch(ext, Plain, StepW, InnerW, k => !Underpass(ext[k]), Land, c => RoadH.TryGetValue(c, out float rv) ? rv : float.NaN, out var hw))   // over het water: een brug (RoadH is hier nog het profiel van voor de lijn: alleen bestaande wegen)
             {
-                if (!RoadH.ContainsKey(ext[i])) RoadBase[ext[i]] = hw[i]; if (!RoadH.ContainsKey(ext[j])) RoadBase[ext[j]] = hw[j];
+                RoadBase[ext[i]] = hw[i]; RoadBase[ext[j]] = hw[j];   // de landhoofden op de hoogte die het voorbeeld liet zien, ook een bestaand wegeind (anders zakte het profiel dat opnieuw van het terrein uitgaat de brug op het water, melding 25)
                 for (int m = i; m < j; m++) { int x = Detour(ext[m], ext[m + 1]); if (x >= 0) Clear(x); }
                 Span(ext, i, j); SpanLinks.Add(Key(ext[i], ext[j])); water++;
             }
