@@ -818,7 +818,7 @@ public static partial class PlanetCity
             void Refine2(Vector2 a, Vector2 b, Vector2 cc, Vector3 Pa, Vector3 Pb, Vector3 Pc, float ha, float hb, float hc2, float bias, int depth)
             {
                 Vector2 m2 = (a + b + cc) / 3f; Vector3 dm = Dir(m2); float ob = wallBias; wallBias = bias; float hm; bool steep; try { hm = H2(dm, Base(m2), fieldT, cn, out steep); } finally { wallBias = ob; }
-                if (!v3 && depth < 3 && Mathf.Abs(hm - (ha + hb + hc2) / 3f) > 0.06f && (b - a).sqrMagnitude + (cc - a).sqrMagnitude > 0.5f)
+                if (depth < 3 && (v3 ? (ha + hb + hc2) / 3f - hm > 0.04f : Mathf.Abs(hm - (ha + hb + hc2) / 3f) > 0.06f) && (b - a).sqrMagnitude + (cc - a).sqrMagnitude > 0.5f)
                 {
                     Vector3 Pm = dm * (Planet.R + hm); G2Refines++;
                     Refine2(a, b, m2, Pa, Pb, Pm, ha, hb, hm, bias, depth + 1); Refine2(b, cc, m2, Pb, Pc, Pm, hb, hc2, hm, bias, depth + 1); Refine2(cc, a, m2, Pc, Pa, Pm, hc2, ha, hm, bias, depth + 1);

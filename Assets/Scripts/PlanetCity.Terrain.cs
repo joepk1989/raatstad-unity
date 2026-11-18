@@ -417,9 +417,10 @@ public static partial class PlanetCity
     // buur. Een kop is sokkel of bak naar d in zijn hart.
     static void SplitWalls()
     {
-        const float Lim = 6f, MinPart = 2f; var outL = new List<Seg>();
+        const float LimFar = 12f, MinPart = 2f; var outL = new List<Seg>();   // Lim: tot 12 m hoogteverschil een talud (dijk of insnijding), daarboven een sokkel of bak met keermuur (was 6 m: een weg op een helling stond op een muur, melding 27)
         foreach (var q in segs)
         {
+            float Lim = BorePortal(q.ia) || BorePortal(q.ib) ? 6f : LimFar;   // bij het landhoofd van een brug of een tunnelportaal blijft het 6 m: daar hoort een sokkel
             Vector3 ab = q.b - q.a; float len = ab.magnitude; if (len < 0.5f) { outL.Add(q); continue; }
             if (q.bak) { var qb = q; qb.wall = true; outL.Add(qb); continue; }
             int n = Mathf.Max(2, Mathf.CeilToInt(len) + 1); var d = new float[n];
@@ -460,7 +461,7 @@ public static partial class PlanetCity
         var wallCaps = new HashSet<int>();
         for (int v = 0; v < caps.Count; v++)
         {
-            bool w = Mathf.Abs(caps[v].h - BaseAt(caps[v].dir)) > Lim;
+            bool w = Mathf.Abs(caps[v].h - BaseAt(caps[v].dir)) > (BorePortal(caps[v].ic) ? 6f : LimFar);
             if (!w) foreach (var q in segs) if (q.wall && ((q.ia == caps[v].ic && AtA(q, q.ia)) || (q.ib == caps[v].ic && AtB(q, q.ib)))) { w = true; break; }
             if (w) wallCaps.Add(caps[v].ic);
         }

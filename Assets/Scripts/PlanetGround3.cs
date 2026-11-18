@@ -75,7 +75,7 @@ public static partial class PlanetCity
                 continue;
             }
             Vector3 dv = w - (q.a + ab * u); if (dv.sqrMagnitude > 60f * 60f) continue; dv -= dir * Vector3.Dot(dv, dir);
-            float d = dv.magnitude - q.hw, hr = Mathf.Lerp(q.ha, q.hb, u); if (d > 60f) continue;
+            float d = dv.magnitude - q.hw, hr = q.ia == q.ib && ur > 1f ? Mathf.LerpUnclamped(q.ha, q.hb, Mathf.Min(ur, 3f)) : Mathf.Lerp(q.ha, q.hb, u); if (d > 60f) continue;   // (voorbij de inrit naar een brugdek daalt of stijgt de grond met het dek mee)
             g3D.Add(d); g3H.Add(hr); if (d < dmin) { dmin = d; wallNear = q.wall; } if (d <= wallBias && hr < inH) inH = hr;
         }
         foreach (var q in capsUse)

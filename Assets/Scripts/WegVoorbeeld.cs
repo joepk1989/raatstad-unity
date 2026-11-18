@@ -479,6 +479,7 @@ public class WegVoorbeeld : MonoBehaviour
     IEnumerator StadNakijken(string mode)
     {
         string paar = null; { int pi = mode.IndexOf(" paar="); if (pi >= 0) { paar = mode.Substring(pi + 6).Trim(); mode = mode.Substring(0, pi) + " einden"; } } if (mode.Contains(" breed")) { PlanetCity.DragStyle = 1; mode = mode.Replace(" breed", ""); }
+        bool helling = mode.EndsWith(" helling"); if (helling) mode = mode.Substring(0, mode.Length - 8);
         bool opslaan = mode.EndsWith(" opslaan"); if (opslaan) mode = mode.Substring(0, mode.Length - 8);
         var lijnen = new List<List<int>>(); while (true) { int li = mode.IndexOf(" lijn="); if (li < 0) break; int le = mode.IndexOf(' ', li + 6); string ls = le < 0 ? mode.Substring(li + 6) : mode.Substring(li + 6, le - li - 6); var ln = new List<int>(); foreach (var ps in ls.Split('.')) ln.Add(int.Parse(ps)); lijnen.Add(ln); mode = mode.Remove(li, (le < 0 ? mode.Length : le) - li); }   // "lijn=a.b.c": die weg opnieuw profileren (zoals na het slepen), niet opslaan
         var fotos = new List<int>(); { int fi = mode.IndexOf(" foto="); if (fi >= 0) { foreach (var ps in mode.Substring(fi + 6).Trim().Split(',')) fotos.Add(int.Parse(ps)); mode = mode.Substring(0, fi); } }
@@ -497,6 +498,39 @@ public class WegVoorbeeld : MonoBehaviour
             var ci = CityFiles.All.Find(cc => cc.id == id); string keepLast = PlayerPrefs.GetString("raatstad-laatste-stad", "");
             bool okS = ci != null && CityFiles.Save(ci, null, PlanetCity.Snapshot()); PlayerPrefs.SetString("raatstad-laatste-stad", keepLast); PlayerPrefs.Save();
             log.Append("opgeslagen in ").Append(id).Append(": ").AppendLine(okS ? "ja" : "NEE");
+        }
+        if (helling)   // "helling": een gewone weg van een berg recht naar beneden slepen, zoals de speler (bij de eerste startvlag van de stad)
+        {
+            // een rechte lijn van 10 vakken op de berg die steeds daalt (hooguit 7 m per vak: geen klif), met het grootste verschil
+            int st = -1, bestEnd = -1; float bestH = 0f, drop = 0f; var bestLine = new List<int>(); int f0 = Planet.Starts[0];
+            foreach (var kv in PlanetCity.Cells) if (PlanetCity.IsWalk(kv.Key)) { f0 = kv.Key; break; }
+            foreach (int s0 in Nearby(f0, 320f))
+            {
+                if (PlanetCity.Cells.ContainsKey(s0) || PlanetCity.Terrain(s0) < 8f) continue;
+                foreach (int nb in Planet.Cells[s0].nb)
+                {
+                    if (nb < 0) continue; Vector3 dir = (Planet.Cells[nb].dir - Planet.Cells[s0].dir).normalized; int c = s0; var path = new List<int> { s0 }; bool ok2 = true;
+                    for (int k = 0; k < 9 && ok2; k++) { Vector3 cd = Planet.Cells[c].dir; int bx = -1; float bd = -2f; foreach (int j in Planet.Cells[c].nb) { if (j < 0) continue; float d = Vector3.Dot((Planet.Cells[j].dir - cd).normalized, dir); if (d > bd) { bd = d; bx = j; } } float dz = PlanetCity.Terrain(c) - PlanetCity.Terrain(bx); if (dz < -0.5f || dz > 7f || PlanetCity.Cells.ContainsKey(bx) || PlanetCity.Wet(bx)) ok2 = false; c = bx; path.Add(c); }
+                    if (!ok2) continue; float dr = PlanetCity.Terrain(s0) - PlanetCity.Terrain(c); if (dr <= drop) continue;
+                    var ln = PlanetCity.LinePlan(s0, c); if (ln == null || ln.Count < 6) continue; drop = dr; st = s0; bestEnd = c; bestLine = ln; bestH = PlanetCity.Terrain(s0);
+                }
+            }
+            if (st < 0) { log.AppendLine("helling: geen geschikte helling gevonden"); File.WriteAllText(Path.Combine(Dir, "stad.txt"), log.ToString()); File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true; yield break; }
+            log.Append("helling: van ").Append(st).Append(" (").Append(bestH.ToString("0.0")).Append(" m) naar ").Append(bestEnd).Append(", ").Append(drop.ToString("0.0")).Append(" m lager, ").Append(bestLine.Count).AppendLine(" vakken");
+            foreach (int c in bestLine) log.Append("   ").Append(c).Append(" terrein ").Append(PlanetCity.Terrain(c).ToString("0.0")).AppendLine();
+            string ps = ""; foreach (var t in PlanetCity.BorePlan(bestLine, "weg")) ps += (t.span ? "brug " : "tunnel ") + t.a + "-" + t.b + " ";
+            log.Append("   voorbeeld: ").AppendLine(ps == "" ? "geen brug of tunnel" : ps);
+            PlanetCity.LastNote = null; int okH = PlanetCity.PlaceLine(bestLine, "weg"); PlanetCity.SetLevel(bestLine, 0, "weg"); PlanetCity.Reprofile(bestLine);
+            log.Append("   gelegd: ").Append(okH).Append(" vakken, melding: ").AppendLine(PlanetCity.LastNote ?? "-");
+            foreach (int c in bestLine) log.Append("   na: ").Append(c).Append(" weg ").Append(PlanetCity.G(c).ToString("0.0")).Append(" terrein ").Append(PlanetCity.Terrain(c).ToString("0.0")).Append(PlanetCity.IsWalk(c) ? "" : " (geen weg)").AppendLine();
+            PlanetCity.TouchAll(); PlanetCity.Rebuild(); PlanetCity.Rebuild(); yield return null; yield return null;
+            int midH = bestLine[bestLine.Count / 2]; var cm = Planet.Cells[midH]; Vector3 along = (Planet.Cells[bestLine[bestLine.Count - 1]].dir - Planet.Cells[bestLine[0]].dir).normalized, side = Vector3.Cross(cm.dir, along).normalized;
+            Vector3 gp = cm.dir * (Planet.R + PlanetCity.G(midH));
+            yield return ShotAt("stad_helling_opzij", gp, side * 85f + cm.dir * 30f);
+            yield return ShotAt("stad_helling_schuin", gp, (side - along).normalized * 70f + cm.dir * 45f);
+            yield return ShotAt("stad_helling_laag", gp, -along * 60f + side * 10f + cm.dir * 8f);
+            bouw = new System.Text.StringBuilder(); Hc = midH; yield return Scan(midH, 0f, "stad_helling_scan", bestLine, 22f); log.Append(bouw.ToString());
+            File.WriteAllText(Path.Combine(Dir, "stad.txt"), log.ToString()); File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true; yield break;
         }
         if (fotos.Count > 0)   // "foto=a,b": van schuin boven en van opzij bij die vakken, met wat daar ligt
         {
