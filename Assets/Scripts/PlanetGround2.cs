@@ -54,6 +54,7 @@ public static partial class PlanetCity
             float c2 = plat ? g : Center2(i), e1 = plat ? g : CornerBase(i, k), e2 = plat ? g : CornerBase(i, k1);
             Vector3 V0 = c.dir * (Planet.R + c2), V1 = c.corners[k] * (Planet.R + e1), V2 = c.corners[k1] * (Planet.R + e2), Nrm = Vector3.Cross(V1 - V0, V2 - V0); float dn = Vector3.Dot(dir, Nrm);
             float basis = Mathf.Abs(dn) < 1e-9f ? c2 : Vector3.Dot(V0, Nrm) / dn - Planet.R;   // het vlak door de drie hoekpunten, zoals de mesh
+            if (G3MeshH && g3Building == 0 && V3Cell(i) && MeshH(i, dir, out float mh)) return mh;   // de schone grond: de hoogte van de driehoek die er echt getekend is (zo staan bomen en dieren op de grond)
             bool o3v = fieldV3; fieldV3 = V3Cell(i); if (fieldV3) UseNear(i); try { return H2(dir, basis, fld, nr != null && nr.Count > 0); } finally { fieldV3 = o3v; }
         }
         // (BuildGround kijkt hier naar FlatGround, niet naar Plateau: een half wegvak of een strook langs een weg volgt de hoogtefunctie)
@@ -460,6 +461,21 @@ public static partial class PlanetCity
             if (!same) { bad++; if (bad <= 12) sb.Append("  rand ").Append(a).Append('-').Append(b).Append(": ").Append(kv.Value.pts.Count).Append(" punten onthouden, ").Append(fr.Count).Append(" nu; ").Append(Desc(a)).Append(" | ").Append(Desc(b)); sb.Append(" veld ").Append(fieldCells.Contains(a)).Append(" geulen ").Append(cuts.Count > 0 ? (CutsNear(ca)?.Count ?? 0) : 0).Append(" G ").Append(G(a).ToString("0.00")).Append(" oud:"); foreach (var x in kv.Value.pts) sb.Append(' ').Append(x.t.ToString("0.000")).Append('=').Append(x.h.ToString("0.00")); sb.Append(" nu:"); foreach (var x in fr) sb.Append(' ').Append(x.t.ToString("0.000")).Append('=').Append(x.h.ToString("0.00")); sb.AppendLine(); }
         }
         return "randen onthouden en nog geldig: " + n + ", anders dan opnieuw berekend: " + bad + (bad > 0 ? " " + sb : "");
+    }
+    // De hoogte van de getekende grond van vak i op richting dir: de straal vanuit het middelpunt door de onthouden driehoeken van het vak
+    // (cellCache, gevuld bij het tekenen). false als het vak (nog) niet onthouden is of de straal geen driehoek raakt.
+    public static bool G3MeshH = true;
+    static bool MeshH(int i, Vector3 dir, out float h)
+    {
+        h = 0f; if (!cellCache.TryGetValue(i, out var e) || e.t == null) return false;
+        foreach (var t in e.t)
+        {
+            Vector3 e1 = t.b - t.a, e2 = t.c - t.a, pv = Vector3.Cross(dir, e2); float det = Vector3.Dot(e1, pv); if (Mathf.Abs(det) < 1e-9f) continue;
+            float inv = 1f / det; Vector3 tv = -t.a; float u = Vector3.Dot(tv, pv) * inv; if (u < -1e-4f || u > 1f + 1e-4f) continue;
+            Vector3 qv = Vector3.Cross(tv, e1); float v = Vector3.Dot(dir, qv) * inv; if (v < -1e-4f || u + v > 1f + 1e-4f) continue;
+            float d = Vector3.Dot(e2, qv) * inv; if (d <= 0f) continue; h = d - Planet.R; return true;
+        }
+        return false;
     }
     struct G2Tri { public Vector3 a, b, c; public float ha, hb, hc; public bool steep; }
     struct G2Wall { public Vector3 a, b, c, d, o; }

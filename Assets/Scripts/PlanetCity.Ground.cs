@@ -103,7 +103,8 @@ public static partial class PlanetCity
 
     // De bodem van één deel. Vakken met een meer of een uitgraving krijgen geen bodem (die zit er anders doorheen).
     static long cutsHash;
-    static void BuildGround(int ch) { try { BuildGround0(ch); } finally { UseAll(); } }   // na het tekenen weer alle wegstukken (UseNear)
+    static int g3Building;   // tijdens het tekenen van de bodem leest H de rekenhoogte, niet de (nog oude) getekende driehoeken (MeshH)
+    static void BuildGround(int ch) { g3Building++; try { BuildGround0(ch); } finally { g3Building--; UseAll(); } }   // na het tekenen weer alle wegstukken (UseNear)
     // heeft vak j geen eigen bodem (een gracht, uitgraving of de geul onder een brug)? Daar geen naad naartoe.
     static bool NoGround(int j) => (Cells.TryGetValue(j, out var s) && s.Count > 0 && (s[0] == "water" || s[0] == "kuil"))
         || (Under.TryGetValue(j, out var u) && (u == "water" || u == "kuil" || u == "pad" || u == "weg") && !FieldBridge(j));
