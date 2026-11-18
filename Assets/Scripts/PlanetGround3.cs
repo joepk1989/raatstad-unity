@@ -23,7 +23,7 @@ public static partial class PlanetCity
     // G3Min: de breedte van de overgang naast de weg (ongeveer een half vak: dan volgt de grond tussen de zeshoekpunten hem vanzelf)
     // G3Rows: aantal rijen evenwijdig aan de weg in de overgang. 0 (de keuze van 17 november 2026): alleen de wegrand is een snede, geen
     // rijen, dwarslijnen of extra verdeling bij bochten en einden; de grond loopt van de zeshoekpunten glooiend naar de weg.
-    public static bool G3Half;   // (proef) ook halve wegvakken met de nieuwe opzet
+    public static bool G3Half = true;   // ook halve wegvakken naast een schuine weg met de nieuwe opzet (uit: de oude opzet daar, om te vergelijken)
     const float G3Row = 2f, G3Min = 8f; const int G3MaxRows = 10; public static int G3Rows = 0;
     const float G3WallLo = 4f, G3WallHi = 6f;   // tussen deze hoogteverschillen groeit de keermuur langs de wegrand van niets tot het hele verschil
     static bool fieldV3;   // GroundField rekent met de nieuwe hoogte (gezet door wie het vak kiest: Ground2Cell0, H, EdgeProfile1)
@@ -39,9 +39,9 @@ public static partial class PlanetCity
         {
             UseNear(i); var c = Planet.Cells[i];
             ok = !Plateau(i) && !FlatGround(i) && (G3Half || !IsHalf(i)) && NearSeg(c.dir, c.radius) && flatsUse.Count == 0 && (segsUse.Count > 0 || capsUse.Count > 0);
-            if (ok) foreach (var q in segsUse) if (q.bak || q.hardA || q.hardB) { ok = false; break; }   // (een stuk met een keermuur telt hier als gewoon stuk: de muur staat strak langs de wegrand, V3WallLins)
+            if (ok) foreach (var q in segsUse) if (q.bak) { ok = false; break; }   // (een stuk met een keermuur telt hier als gewoon stuk: de muur staat strak langs de wegrand, V3WallLins)
             if (ok && cuts.Count > 0) { var near = CutsNear(c); if (near != null && near.Count > 0) ok = false; }
-            if (ok && (boreNear.ContainsKey(i) || spanNear.ContainsKey(i) || Underpass(i))) ok = false;   // (een wegvak dat meer dan een half niveau van het terrein af ligt telt als 'op een niveau', maar is hier een gewoon stuk zolang het geen wand heeft)
+            if (ok && Underpass(i)) ok = false;   // (boven een tunnel of onder een brug mag: de mantel van de tunnel snijdt BoreTri eruit, en onder een dek blijft het terrein liggen)   // (een wegvak dat meer dan een half niveau van het terrein af ligt telt als 'op een niveau', maar is hier een gewoon stuk zolang het geen wand heeft)
         }
         finally { segsUse = su; flatsUse = fu; capsUse = cu; }
         v3Cache[i] = (fieldVer, ok); return ok;
@@ -53,9 +53,9 @@ public static partial class PlanetCity
         if (!Ground3) return "schakelaar uit"; if (!fieldCells.Contains(i)) return "geen veldvak"; var su = segsUse; var fu = flatsUse; var cu = capsUse;
         try
         {
-            UseNear(i); var c = Planet.Cells[i]; if (Plateau(i)) return "plateau"; if (IsHalf(i)) return "half wegvak"; if (FlatGround(i)) return "vlak"; if (!NearSeg(c.dir, c.radius)) return "buiten bereik"; if (flatsUse.Count > 0) return "vlakke wegstukken " + flatsUse.Count;
-            foreach (var q in segsUse) if (q.bak || q.hardA || q.hardB) return "stuk " + q.ia + "-" + q.ib + (q.bak ? " bak" : " hard eind");
-            if (cuts.Count > 0) { var nr = CutsNear(c); if (nr != null && nr.Count > 0) return "geul"; } if (boreNear.ContainsKey(i)) return "tunnel"; if (spanNear.ContainsKey(i)) return "brug"; if (Underpass(i)) return "onderdoorgang";
+            UseNear(i); var c = Planet.Cells[i]; if (Plateau(i)) return "plateau"; if (IsHalf(i) && !G3Half) return "half wegvak"; if (FlatGround(i)) return "vlak"; if (!NearSeg(c.dir, c.radius)) return "buiten bereik"; if (flatsUse.Count > 0) return "vlakke wegstukken " + flatsUse.Count;
+            foreach (var q in segsUse) if (q.bak) return "stuk " + q.ia + "-" + q.ib + " bak";
+            if (cuts.Count > 0) { var nr = CutsNear(c); if (nr != null && nr.Count > 0) return "geul"; } if (Underpass(i)) return "onderdoorgang";
             return "ja";
         }
         finally { segsUse = su; flatsUse = fu; capsUse = cu; }
@@ -67,7 +67,14 @@ public static partial class PlanetCity
         slope = false; Vector3 w = dir * Planet.R; g3D.Clear(); g3H.Clear(); float dmin = float.MaxValue, inH = float.MaxValue;
         foreach (var q in segsUse)
         {
-            Vector3 ab = q.b - q.a; float l2 = ab.sqrMagnitude; if (l2 < 1e-4f) continue; float u = Mathf.Clamp01(Vector3.Dot(w - q.a, ab) / l2);
+            Vector3 ab = q.b - q.a; float l2 = ab.sqrMagnitude; if (l2 < 1e-4f) continue; float ur = Vector3.Dot(w - q.a, ab) / l2, u = Mathf.Clamp01(ur);
+            if ((q.hardA || q.hardB) && ((q.hardA && ur * Mathf.Sqrt(l2) < -wallBias) || (q.hardB && (ur - 1f) * Mathf.Sqrt(l2) > wallBias)))
+            {   // voorbij een hard eind (een tunnelportaal): de berg blijft staan; alleen onder de weg die daar de tunnel in duikt telt zijn hoogte mee
+                // (binnen de zeshoek van een kruispunt lag de grond anders boven de afdalende weg)
+                Vector3 dx = w - (q.a + ab * ur); dx -= dir * Vector3.Dot(dx, dir); float over = (ur < 0f ? -ur : ur - 1f) * Mathf.Sqrt(l2);
+                if (dx.magnitude <= q.hw && over < 14f) { float hx = Mathf.LerpUnclamped(q.ha, q.hb, ur); if (hx < inH) inH = hx; }
+                continue;
+            }
             Vector3 dv = w - (q.a + ab * u); if (dv.sqrMagnitude > 60f * 60f) continue; dv -= dir * Vector3.Dot(dv, dir);
             float d = dv.magnitude - q.hw, hr = Mathf.Lerp(q.ha, q.hb, u); if (d > G3Row * G3MaxRows + 2f) continue;
             g3D.Add(d); g3H.Add(hr); if (d < dmin) dmin = d; if (d <= wallBias && hr < inH) inH = hr;
@@ -103,7 +110,7 @@ public static partial class PlanetCity
     static bool V3HasWall(int i)
     {
         if (v3WallCache.TryGetValue(i, out var e) && e.ver == fieldVer) return e.v;
-        var c = Planet.Cells[i]; int m = c.corners.Length; bool any = false;
+        var c = Planet.Cells[i]; int m = c.corners.Length; bool any = false; foreach (var q in segsUse) if (q.hardA || q.hardB) { any = true; break; }
         for (int k = -1; k < m && !any; k++)
         {
             Vector3 d = k < 0 ? c.dir : c.corners[k]; float bs = k < 0 ? Center2(i) : CornerBase(i, k), near = float.MaxValue, hr = 0f; Vector3 w = d * Planet.R;
@@ -122,7 +129,10 @@ public static partial class PlanetCity
         {
             SegLins(c, q, out Lin T, out Lin S, out float len); if (len < 1e-3f) continue;
             if (Mathf.Abs(T.a) > q.hw + c.radius * 1.3f || S.a < -c.radius * 1.3f - 12f || S.a > len + c.radius * 1.3f + 12f) continue;
-            res.Add(T - Lin.C(q.hw)); grp?.Add(g); noQuad?.Add(false); res.Add(Lin.C(-q.hw) - T); grp?.Add(g); noQuad?.Add(false); g++;
+            res.Add(T - Lin.C(q.hw)); grp?.Add(g); noQuad?.Add(false); res.Add(Lin.C(-q.hw) - T); grp?.Add(g); noQuad?.Add(false);
+            if (q.hardA) { res.Add(Lin.C(0f) - S); grp?.Add(g); noQuad?.Add(true); }   // het harde eind: daar staat het portaal, geen wand
+            if (q.hardB) { res.Add(S - Lin.C(len)); grp?.Add(g); noQuad?.Add(true); }
+            g++;
         }
         foreach (var cp in capsUse)
         {
@@ -154,8 +164,17 @@ public static partial class PlanetCity
             Vector3 dc = o3 - cp.c; if (dc.magnitude > cp.hw * 1.2f + c.radius * 1.3f) continue;
             var hp = new List<Lin>(); foreach (var n in cp.n) hp.Add(new Lin { a = Vector3.Dot(dc, n) - cp.hw, x = Vector3.Dot(c.east, n), y = Vector3.Dot(c.north, n) });
             var next = new List<List<Vector2>>();
-            foreach (var p0 in free) { var cur = p0; foreach (var f in hp) { cur = Keep(cur, f, next); if (cur == null) break; } if (cur != null) outp.Add(cur); }
+            var inCap = new List<List<Vector2>>();
+            foreach (var p0 in free) { var cur = p0; foreach (var f in hp) { cur = Keep(cur, f, next); if (cur == null) break; } if (cur != null) inCap.Add(cur); }
             free = next;
+            // binnen de kop de wegranden van de armen (onder de verharding, dus onzichtbaar): een kruispunt helt naar zijn armen, en zonder
+            // punten daar lag de grond in het midden tot een halve meter boven het wegdek
+            if (inCap.Count > 0) foreach (var q in segs)
+            {
+                if ((q.a - cp.c).sqrMagnitude > 0.01f && (q.b - cp.c).sqrMagnitude > 0.01f) continue; SegLins(c, q, out Lin Tq, out _, out float lq); if (lq < 1e-3f) continue;
+                Cut(inCap, Tq - Lin.C(q.hw)); Cut(inCap, Tq + Lin.C(q.hw));
+            }
+            outp.AddRange(inCap);
         }
         for (int x = 0; x < segs.Count; x++)
         {
@@ -175,6 +194,7 @@ public static partial class PlanetCity
                     nn /= nl; hp.Add(new Lin { a = Vector2.Dot(nn, N), x = -nn.x, y = -nn.y }); any = true;
                 }
                 if (any) continue;
+                if (e == 0 ? q.hardA : q.hardB) { hp.Add(e == 0 ? Lin.C(0f) - S : S - Lin.C(len)); continue; }
                 float capR = q.hw; foreach (var cp in capsUse) if ((cp.c - n3).sqrMagnitude < 0.01f) capR = Mathf.Max(capR, cp.hw);
                 hp.Add(e == 0 ? Lin.C(-(capR + Wr)) - S : S - Lin.C(len + capR + Wr));
             }

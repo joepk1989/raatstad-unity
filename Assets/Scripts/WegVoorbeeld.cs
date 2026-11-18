@@ -28,7 +28,7 @@ public class WegVoorbeeld : MonoBehaviour
         if (Directory.Exists(Dir)) foreach (var f in Directory.GetFiles(Dir)) File.Delete(f); else Directory.CreateDirectory(Dir);
         for (int k = 0; k < 600 && (pb = FindAnyObjectByType<PlanetBuilder>()) == null; k++) yield return null;
         yield return null; yield return null;
-        cam = Camera.main; if (pb != null) pb.enabled = false;
+        cam = Camera.main; if (pb != null) pb.enabled = false; PlanetCity.SoilWire = true;   // de terreinlijnen aan bij elke test (de instelling blijft daarna ook in het spel aan)
         if (pb != null) foreach (string f in new[] { "home", "welcome" }) { var fi = typeof(PlanetBuilder).GetField(f, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public); if (fi != null && fi.FieldType == typeof(bool)) fi.SetValue(pb, false); }   // geen startscherm: het voorbeeld bouwt zelf
         if (mode == "meten") { yield return MeetHier(); yield break; }
         if (mode == "autos") { yield return Autos(); yield break; }
@@ -1118,12 +1118,12 @@ public class WegVoorbeeld : MonoBehaviour
             yield return Shot("ontwerp" + nr + "_schuin", mid, Quaternion.AngleAxis(35f, Planet.Cells[mid].dir) * Dh(mid, 0f), 70f, 30f);
             yield return Shot("ontwerp" + nr + "_laag", centers[Mathf.Min(1, centers.Count - 1)], Dh(mid, 0f), 25f, 8f);
             {   // de stukken van het wegvak op een kwart van de lijn en van zijn buren, voor een tekening
-                int q4 = centers[centers.Count / 4]; var cellsD = new List<int> { q4 }; foreach (int j in Planet.Cells[q4].nb) cellsD.Add(j);
+                int q4 = centers[centers.Count / 4]; var cellsD = new List<int> { q4 }; foreach (int j in Planet.Cells[q4].nb) cellsD.Add(j); if (PlanetCity.G3Half) { cellsD.Clear(); foreach (int cc in new HashSet<int>(centers)) foreach (int j in Planet.Cells[cc].nb) if (PlanetCity.IsHalf(j) && !cellsD.Contains(j)) cellsD.Add(j); }   // (proef: alle halve wegvakken)
                 var dsb = new System.Text.StringBuilder();
                 foreach (int cd in cellsD)
                 {
                     var cc = Planet.Cells[cd]; Vector3 rel = cc.dir * Planet.R - Planet.Cells[q4].dir * Planet.R; var c0 = Planet.Cells[q4];
-                    dsb.Append("vak ").Append(cd).Append(' ').Append(Vector3.Dot(rel, c0.east).ToString("F3", System.Globalization.CultureInfo.InvariantCulture)).Append(' ').Append(Vector3.Dot(rel, c0.north).ToString("F3", System.Globalization.CultureInfo.InvariantCulture)).Append(' ').Append(Vector3.Dot(cc.east, c0.east).ToString("F4", System.Globalization.CultureInfo.InvariantCulture)).Append(' ').Append(Vector3.Dot(cc.east, c0.north).ToString("F4", System.Globalization.CultureInfo.InvariantCulture)).Append(' ').Append(PlanetCity.IsWalk(cd) ? "weg" : "-").AppendLine();
+                    { var cl = Planet.Cells[cd]; dsb.Append("hoeken"); foreach (var lv in cl.local) dsb.Append(' ').Append(lv.x.ToString("F3", System.Globalization.CultureInfo.InvariantCulture)).Append(',').Append(lv.y.ToString("F3", System.Globalization.CultureInfo.InvariantCulture)); dsb.AppendLine(); } dsb.Append("vak ").Append(cd).Append(' ').Append(Vector3.Dot(rel, c0.east).ToString("F3", System.Globalization.CultureInfo.InvariantCulture)).Append(' ').Append(Vector3.Dot(rel, c0.north).ToString("F3", System.Globalization.CultureInfo.InvariantCulture)).Append(' ').Append(Vector3.Dot(cc.east, c0.east).ToString("F4", System.Globalization.CultureInfo.InvariantCulture)).Append(' ').Append(Vector3.Dot(cc.east, c0.north).ToString("F4", System.Globalization.CultureInfo.InvariantCulture)).Append(' ').Append(PlanetCity.IsWalk(cd) ? "weg" : "-").AppendLine();
                     PlanetCity.G2DumpCell = cd; PlanetCity.G2DumpSb = dsb; PlanetCity.Ground2CacheClear(); PlanetCity.Touch(cd); PlanetCity.Rebuild();
                 }
                 PlanetCity.G2DumpCell = -1; PlanetCity.G2DumpSb = null; File.WriteAllText(Path.Combine(Dir, "ontwerp" + nr + "_stukken.txt"), dsb.ToString());
