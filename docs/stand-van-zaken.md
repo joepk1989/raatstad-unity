@@ -7,7 +7,7 @@ Al aanwezig in `Assets/Scripts/`: de planeet (`Planet`, `PlanetBuilder`, `Planet
 
 Erbij gekomen op 25 oktober 2026:
 - Bouwblokken winkel, plein, toren en molen (draaiende `Wieken`), ook in de schoonheidsscore en de praatjes. Bloktypes staan in `Blocks` (`City.cs`), tekenen per blok in `PlanetCity.BuildChunk`.
-- Polen gemarkeerd: `Planet.North`/`South`/`IsPole`, ijswit vak met daarboven, zonder paal, een zwevend hologram: een grote N (blauw) of Z (rood) in een zeshoekige lijst op 75 m hoogte die langzaam draait, deint en zacht flikkert (`PoleHolo.cs`, sinds 18 november 2026; testvlag `pool`); toets N springt ernaartoe (P is pauze, zoals de webversie).
+- Polen gemarkeerd: `Planet.North`/`South`/`IsPole`, gewoon terrein met een smalle oplichtende rand langs de vakgrens, en daarboven, zonder paal, een zwevend hologram: een grote N (blauw) of Z (rood) in een zeshoekige lijst op 75 m hoogte die langzaam draait, deint en zacht flikkert (`PoleHolo.cs`, sinds 18 november 2026; testvlag `pool`); toets N springt ernaartoe (P is pauze, zoals de webversie).
 - Wegprofiel van de webversie: asfalt 10 cm, schuine stoeprand 30 cm, stoep 25 cm; geen stoep over het asfalt van een andere arm, ronde stoephoeken op kruisingen.
 - Terrein (low poly, als `07b-terrein.js`): hoogte per vak −12 tot 90 m in `PlanetCity.Terr`, bebouwde vakken op een sokkel, wegen hellen mee (`Frame.H`, `PlanetCity.SurfaceH`). Boetseren met het gereedschap Terrein (toets 9): ophogen, afgraven, egaliseren, gladstrijken, helling; penseel 1/7/19/37 vakken.
 

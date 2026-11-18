@@ -138,8 +138,8 @@ public static partial class PlanetCity
                 if (cuts.Count > 0) hc = Mathf.Min(hc, Carve(c.dir));
                 bool hasDeck = deckSide.TryGetValue(i, out var dk);
                 float kk = Mathf.Pow(Mathf.Clamp01((c.distort - 0.04f) / 0.125f), 1.4f);
-                bool start = System.Array.IndexOf(Planet.Starts, i) >= 0, pole = Planet.IsPole(i), special = pole || pent || start;
-                var mb0 = pole ? PM("ijs") : pent && Dev.Pentagons ? pm : start && Dev.Starts ? sm : Dev.Distort ? ms[Mathf.Clamp(Mathf.RoundToInt(kk * (Steps - 1)), 0, Steps - 1)] : ms[0];   // vervorming en vijfhoeken alleen als ontwikkelaarshulp (Dev)
+                bool start = System.Array.IndexOf(Planet.Starts, i) >= 0, pole = Planet.IsPole(i), special = pent || (start && !pole);   // (een pool is gewoon terrein: de letter zweeft erboven, PoleHolo)
+                var mb0 = pent && Dev.Pentagons ? pm : start && !pole && Dev.Starts ? sm : Dev.Distort ? ms[Mathf.Clamp(Mathf.RoundToInt(kk * (Steps - 1)), 0, Steps - 1)] : ms[0];   // vervorming en vijfhoeken alleen als ontwikkelaarshulp (Dev)
                 if (!cut)
                 {
                     Vector3 mid = c.dir * (Planet.R + hc);
@@ -219,7 +219,7 @@ public static partial class PlanetCity
                             }
                         }
                     }
-                if (pole) { PoleMarker(PM, c, g); made.Add(PoleHolo.Make(groundRoot, c, g, i == Planet.North)); }   // het ijs, en hoog erboven de letter als hologram (PoleHolo.cs)
+                if (pole) made.Add(PoleHolo.Make(groundRoot, c, g, i == Planet.North));   // hoog boven het vak de letter als hologram (PoleHolo.cs)
                 if (start && !pole && Dev.Starts)   // startplek (ontwikkelaarshulp) (op een pool staat de poolpaal): lichtblauw vak met een witte paal van 30 m en een vlaggetje
                 {
                     Vector3 top = c.dir * (RG + 30f);
@@ -301,11 +301,6 @@ public static partial class PlanetCity
         return Color.Lerp(Color.Lerp(c0, c1, Mathf.SmoothStep(0f, 1f, h / 5f)), c3, Mathf.SmoothStep(0f, 1f, (h - 16f) / 12f) * 0.6f);
     }
 
-    // Poolmarkering: een ijswit vak met een lage ijsrand; de N of Z zweeft er hoog boven als hologram (PoleHolo.cs)
-    static void PoleMarker(System.Func<string, MeshBuilder> M, Planet.Cell c, float g)
-    {
-        for (int k = 0; k < c.corners.Length; k++) { Vector3 a = c.corners[k], b = c.corners[(k + 1) % c.corners.Length], am = (a + b) * 0.5f, ai = Vector3.Lerp(a, c.dir, 0.08f), bi = Vector3.Lerp(b, c.dir, 0.08f); M("ijs").Quad(a * (Planet.R + g), b * (Planet.R + g), bi * ((Planet.R + g) + 0.25f), ai * ((Planet.R + g) + 0.25f), am - c.dir); }
-    }
     static Color PoleColor(string k)
     {
         switch (k)

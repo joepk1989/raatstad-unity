@@ -11,7 +11,8 @@ public class PoleHolo : MonoBehaviour
     const float FrameR = 13f, FrameW = 0.7f;   // de zeshoekige lijst: straal tot de buitenhoek, breedte van de rand
     static Material matN, matZ;
 
-    Vector3 basePos, up; float phase; Material mat; Color col;
+    Vector3 basePos, up, rimPos; Quaternion rimRot; Transform rim; float phase; Material mat; Color col;
+    const float RimW = 0.45f, RimUp = 0.12f;   // breedte van de rand langs de binnenkant van de vakgrens, en hoe ver boven de grond
 
     public static GameObject Make(Transform parent, Planet.Cell c, float ground, bool north)
     {
@@ -23,6 +24,11 @@ public class PoleHolo : MonoBehaviour
         var mr = g.AddComponent<MeshRenderer>(); mr.sharedMaterial = Mat(north);
         mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; mr.receiveShadows = false;
         var h = g.AddComponent<PoleHolo>(); h.basePos = g.transform.position; h.up = up; h.phase = north ? 0f : 1.7f; h.mat = mr.sharedMaterial; h.col = Tint(north);
+        // op de grond: een smalle oplichtende rand langs de vakgrens (geen gekleurd vak), in dezelfde kleur, iets zachter
+        var rg = new GameObject("Pool rand"); rg.transform.SetParent(g.transform, false);   // (zelfde plek en stand als het hologram: de punten van RimMesh staan in zijn coördinaten) rg.layer = Layers.Bodem;
+        rg.AddComponent<MeshFilter>().sharedMesh = RimMesh(c, g.transform);
+        var rr = rg.AddComponent<MeshRenderer>(); rr.sharedMaterial = Mat(north); rr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; rr.receiveShadows = false;
+        h.rim = rg.transform; h.rimPos = rg.transform.position; h.rimRot = rg.transform.rotation;
         return g;
     }
 
@@ -42,6 +48,21 @@ public class PoleHolo : MonoBehaviour
         m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT"); m.SetOverrideTag("RenderType", "Transparent"); m.renderQueue = 3100;
         var c = Tint(north); if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", c); m.color = c;
         return m;
+    }
+
+    // De rand op de grond: per zijde van het vak een smalle strook aan de binnenkant, op de grondhoogte van de hoeken (wereldcoördinaten
+    // omgerekend naar die van het hologram, maar de rand draait en deint niet mee: Update zet hem elke keer terug)
+    static Mesh RimMesh(Planet.Cell c, Transform t)
+    {
+        var mb = new MeshBuilder(); int m = c.corners.Length;
+        Vector3 P(Vector3 d) { d = d.normalized; return t.InverseTransformPoint(d * (Planet.R + PlanetCity.TerrainAt(d) + RimUp)); }
+        Vector3 In(Vector3 corner) => Vector3.Lerp(corner, c.dir, RimW / Mathf.Max(1f, (corner - c.dir).magnitude * Planet.R));
+        for (int k = 0; k < m; k++)
+        {
+            Vector3 a = c.corners[k], b = c.corners[(k + 1) % m];
+            mb.Quad(P(a), P(b), P(In(b)), P(In(a)), t.InverseTransformDirection(c.dir));
+        }
+        return mb.Build();
     }
 
     // De letter (drie balken, zoals op de oude vlag) en de zeshoekige lijst eromheen, als blokken met dikte; x opzij, y omhoog, z de dikte
@@ -86,6 +107,7 @@ public class PoleHolo : MonoBehaviour
         float t = Time.time + phase;
         transform.position = basePos + up * (Mathf.Sin(t * 0.9f) * 1.2f);                 // deinen
         transform.rotation = Quaternion.AngleAxis(Time.deltaTime * 14f, up) * transform.rotation;   // langzaam rond
+        if (rim != null) { rim.position = rimPos; rim.rotation = rimRot; }   // de rand op de grond blijft liggen
         if (mat != null)   // zacht flikkeren, af en toe een korte hapering
         {
             float a = col.a * (0.82f + 0.18f * Mathf.Sin(t * 7.3f)) * (Mathf.Repeat(t, 5.3f) < 0.08f ? 0.35f : 1f);

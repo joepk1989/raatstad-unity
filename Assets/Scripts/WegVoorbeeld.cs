@@ -35,7 +35,7 @@ public class WegVoorbeeld : MonoBehaviour
             yield return new WaitForSeconds(1.5f); int np = Planet.North; var pc = Planet.Cells[np]; Vector3 hp = pc.dir * (Planet.R + PlanetCity.G(np) + 88f);
             yield return ShotAt("pool_opzij", hp, pc.east * 95f + pc.dir * 5f);
             yield return ShotAt("pool_onder", hp, pc.north * 70f - pc.dir * 70f);
-            yield return new WaitForSeconds(2.2f); yield return ShotAt("pool_dichtbij", hp, (pc.east + pc.north) * 32f);
+            yield return new WaitForSeconds(2.2f); yield return ShotAt("pool_dichtbij", hp, (pc.east + pc.north) * 32f); { Vector3 gp = pc.dir * (Planet.R + PlanetCity.G(np) + 45f); yield return ShotAt("pool_grond", gp, pc.east * 190f + pc.dir * 10f); } { Vector3 gp2 = pc.dir * (Planet.R + PlanetCity.G(np)); yield return ShotAt("pool_rand", gp2, pc.east * 30f + pc.north * 12f + pc.dir * 22f); }   // het vak eronder en het hologram erboven
             File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true; yield break;
         }
         if (mode == "meten") { yield return MeetHier(); yield break; }
