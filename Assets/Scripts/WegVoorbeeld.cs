@@ -479,6 +479,7 @@ public class WegVoorbeeld : MonoBehaviour
     IEnumerator StadNakijken(string mode)
     {
         string paar = null; { int pi = mode.IndexOf(" paar="); if (pi >= 0) { paar = mode.Substring(pi + 6).Trim(); mode = mode.Substring(0, pi) + " einden"; } } if (mode.Contains(" breed")) { PlanetCity.DragStyle = 1; mode = mode.Replace(" breed", ""); }
+        bool opslaan = mode.EndsWith(" opslaan"); if (opslaan) mode = mode.Substring(0, mode.Length - 8);
         var lijnen = new List<List<int>>(); while (true) { int li = mode.IndexOf(" lijn="); if (li < 0) break; int le = mode.IndexOf(' ', li + 6); string ls = le < 0 ? mode.Substring(li + 6) : mode.Substring(li + 6, le - li - 6); var ln = new List<int>(); foreach (var ps in ls.Split('.')) ln.Add(int.Parse(ps)); lijnen.Add(ln); mode = mode.Remove(li, (le < 0 ? mode.Length : le) - li); }   // "lijn=a.b.c": die weg opnieuw profileren (zoals na het slepen), niet opslaan
         var fotos = new List<int>(); { int fi = mode.IndexOf(" foto="); if (fi >= 0) { foreach (var ps in mode.Substring(fi + 6).Trim().Split(',')) fotos.Add(int.Parse(ps)); mode = mode.Substring(0, fi); } }
         string mode0 = mode; if (mode.EndsWith(" overwater")) mode = mode.Substring(0, mode.Length - 10);
@@ -491,6 +492,12 @@ public class WegVoorbeeld : MonoBehaviour
         log.Append(id).Append(": laden ").Append(ok ? "gelukt" : "MISLUKT").Append(", ").Append(PlanetCity.Cells.Count).Append(" vakken met inhoud, RoadH ").Append(PlanetCity.RoadH.Count).Append(", tekenen ").Append(ms).AppendLine(" ms");
         foreach (var ln in lijnen) { PlanetCity.LastNote = null; PlanetCity.Reprofile(ln); log.Append("opnieuw geprofileerd: ").Append(string.Join(".", ln)).Append(", melding: ").AppendLine(PlanetCity.LastNote ?? "-"); }
         if (lijnen.Count > 0) { PlanetCity.Rebuild(); PlanetCity.Rebuild(); yield return null; yield return null; }
+        if (opslaan && lijnen.Count > 0)   // "opslaan": de stad met de opnieuw geprofileerde wegen in zijn eigen bestand bewaren (de laatst geopende stad blijft dezelfde)
+        {
+            var ci = CityFiles.All.Find(cc => cc.id == id); string keepLast = PlayerPrefs.GetString("raatstad-laatste-stad", "");
+            bool okS = ci != null && CityFiles.Save(ci, null, PlanetCity.Snapshot()); PlayerPrefs.SetString("raatstad-laatste-stad", keepLast); PlayerPrefs.Save();
+            log.Append("opgeslagen in ").Append(id).Append(": ").AppendLine(okS ? "ja" : "NEE");
+        }
         if (fotos.Count > 0)   // "foto=a,b": van schuin boven en van opzij bij die vakken, met wat daar ligt
         {
             var sb2 = new System.Text.StringBuilder();
@@ -501,7 +508,7 @@ public class WegVoorbeeld : MonoBehaviour
                 sb2.Append("; buren"); foreach (int j in cc.nb) sb2.Append(' ').Append(j).Append('=').Append(PlanetCity.Terrain(j).ToString("0.0")).Append(PlanetCity.Wet(j) ? "nat" : ""); sb2.AppendLine();
                 Vector3 gp = cc.dir * (Planet.R + PlanetCity.G(fc));
                 yield return ShotAt("stad_foto_" + fc + "_boven", gp, cc.north * 35f + cc.dir * 55f);
-                yield return ShotAt("stad_foto_" + fc + "_opzij", gp, cc.east * 45f + cc.dir * 12f);
+                yield return ShotAt("stad_foto_" + fc + "_opzij", gp, cc.east * 45f + cc.dir * 12f); yield return ShotAt("stad_foto_" + fc + "_laag", gp, cc.east * 26f + cc.north * 14f - cc.dir * 2f);
             }
             File.WriteAllText(Path.Combine(Dir, "stad.txt"), log.ToString() + sb2.ToString()); File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true; yield break;
         }
@@ -601,10 +608,11 @@ public class WegVoorbeeld : MonoBehaviour
                 for (int q = 0; q < line.Count; q++) { int c = line[q]; log.Append("   ").Append(c).Append(" terrein ").Append(PlanetCity.Terrain(c).ToString("0.0")).Append(" G ").Append(PlanetCity.G(c).ToString("0.0")).Append(PlanetCity.CanRoad(c, "weg") ? "" : " KAN NIET").Append(PlanetCity.Cells.TryGetValue(c, out var l0) && l0.Count > 0 ? " " + l0[0] : "").Append(q > 0 && Vector3.Distance(Planet.Cells[line[q - 1]].dir, Planet.Cells[c].dir) * Planet.R > 20f ? " (schuine stap)" : "").Append(" partners ").Append(PlanetCity.Partners(c).Count).AppendLine(); }
                 string ps = ""; foreach (var t in PlanetCity.BorePlan(line, "weg")) ps += (t.span ? "brug " : "tunnel ") + t.a + "-" + t.b + " (" + t.ha.ToString("0.0") + " en " + t.hb.ToString("0.0") + ") ";
                 log.Append("   voorbeeld: ").AppendLine(ps == "" ? "geen brug of tunnel" : ps);
+                log.Append("   waterlijn: ").AppendLine(PlanetCity.WaterLineDebug(line)); log.Append("   verbreden: ").AppendLine(PlanetCity.WidenDbg);
                 PlanetCity.LastNote = null; int ok = PlanetCity.PlaceLine(line, "weg"); PlanetCity.SetLevel(line, 0, "weg"); log.Append(PlanetCity.LineDebug(line)); PlanetCity.Reprofile(line);
                 int spans = 0; foreach (long key in PlanetCity.SpanLinks) { int u = (int)(key >> 20), v = (int)(key & 0xFFFFF); if (line.Contains(u) && line.Contains(v)) spans++; }
                 log.Append("   gelegd: ").Append(ok).Append('/').Append(line.Count).Append(" vakken, bruggen op de lijn ").Append(spans).Append(", melding: ").AppendLine(PlanetCity.LastNote ?? "-");
-                if (shot < 3) { PlanetCity.Rebuild(); PlanetCity.Rebuild(); yield return null; yield return null; int mc = line[line.Count / 2]; yield return Shot("stad_einden" + shot, mc, Quaternion.AngleAxis(60f, Planet.Cells[mc].dir) * (Planet.Cells[b].dir - Planet.Cells[a].dir).normalized, 80f, 28f); shot++; }
+                if (paar != null) { PlanetCity.Rebuild(); PlanetCity.Rebuild(); yield return null; yield return null; foreach (int ec in new[] { a, b }) { var ce = Planet.Cells[ec]; Vector3 gp = ce.dir * (Planet.R + PlanetCity.G(ec)); yield return ShotAt("stad_eind_" + ec, gp, ce.east * 26f + ce.north * 14f - ce.dir * 2f); yield return ShotAt("stad_eind_" + ec + "_b", gp, -ce.east * 26f - ce.north * 14f + ce.dir * 1f); } } if (shot < 3) { PlanetCity.Rebuild(); PlanetCity.Rebuild(); yield return null; yield return null; int mc = line[line.Count / 2]; yield return Shot("stad_einden" + shot, mc, Quaternion.AngleAxis(60f, Planet.Cells[mc].dir) * (Planet.Cells[b].dir - Planet.Cells[a].dir).normalized, 80f, 28f); shot++; }
                 PlanetCity.ClearAll(); PlanetCity.Restore(snap); done++; if (done >= 8) break;
             }
             PlanetCity.TouchAll(); PlanetCity.Rebuild(); yield return null; yield break;

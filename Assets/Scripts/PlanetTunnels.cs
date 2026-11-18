@@ -70,9 +70,13 @@ public static partial class PlanetCity
         void Widen(ref int i, ref int j)
         {
             int lo = i, hi = j;
-            while (lo > 0 && step(lo - 1) && inner(lo) && float.IsNaN(road(line[lo]))) lo--;   // (een bestaande weg wordt landhoofd, geen deel van de overspanning)
-            while (hi < n - 1 && step(hi) && inner(hi) && float.IsNaN(road(line[hi]))) hi++;
+            // (een bestaande weg wordt landhoofd, geen deel van de overspanning; behalve als er naast dat vak een lagere weg ligt die er
+            // onderdoor moet: dan loopt de brug door tot het vak erna, melding 25)
+            bool Over(int m, float deck) { if (float.IsNaN(road(line[m]))) return true; deck = Mathf.Max(deck, road(line[m])); foreach (int x in Planet.Cells[line[m]].nb) if (x >= 0 && IsWalk(x) && !line.Contains(x) && G(x) < deck - LevelH + 0.5f) return true; return false; }
+            while (lo > 0 && step(lo - 1) && inner(lo) && Over(lo, Top(j))) lo--;
+            while (hi < n - 1 && step(hi) && inner(hi) && Over(hi, Top(i))) hi++;
             int bi = i, bj = j; float bd = float.MaxValue;
+            WidenDbg = "lo " + lo + " hi " + hi + " i " + i + " j " + j + " n " + n;
             for (int a = lo; a <= i; a++) for (int b = hi; b >= j; b--)
             {
                 if (b - a < 3 && !(a == i && b == j)) continue; if (b - a < bj - bi) break;
@@ -83,7 +87,7 @@ public static partial class PlanetCity
                 if (!ok && !(a == i && b == j)) continue;
                 float d = Mathf.Abs(hb - ha); if (b - a > bj - bi || d < bd) { bi = a; bj = b; bd = d; }
             }
-            i = bi; j = bj;
+            i = bi; j = bj; WidenDbg += " -> " + bi + "-" + bj + " Top " + Top(bi).ToString("0.0") + "/" + Top(bj).ToString("0.0");
         }
         for (int k = 1; k < n - 1; k++)
         {
@@ -104,6 +108,8 @@ public static partial class PlanetCity
         return o;
     }
     // de lijn met aan elk eind het vak van de bestaande weg waar hij recht op aansluit (een wegeind dat doorgetrokken wordt); pre: 1 als er vooraan een vak bij kwam
+    public static string WidenDbg = "";
+    public static string WaterLineDebug(List<int> line) { var e = WaterLine(line, out _); var sb = new System.Text.StringBuilder(string.Join(",", e)); for (int k = 1; k + 1 < e.Count; k++) sb.Append(" | ").Append(e[k]).Append(" recht ").Append(Straight(e[k - 1], e[k], e[k + 1])).Append(" stap ").Append(LineStep(e[k], e[k + 1])); return sb.ToString(); }   // (voor de test)
     static List<int> WaterLine(List<int> line, out int pre)
     {
         var e = new List<int>(line); pre = 0; if (line.Count < 2) return e;
@@ -251,7 +257,7 @@ public static partial class PlanetCity
                 var ext = WaterLine(line, out int pre);
                 System.Func<int, bool> StepW = k => LineStep(ext[k], ext[k + 1]);
                 System.Func<int, bool> InnerW = k => Plain(ext[k]) && Straight(ext[k - 1], ext[k], ext[k + 1]) && (!IsWalk(ext[k]) || Partners(ext[k]).Count == 1);   // nieuw, of een wegeind dat doorgetrokken wordt
-                foreach (var (i, j) in WaterSearch(ext, Plain, StepW, InnerW, k => !IsWalk(ext[k]) || Partners(ext[k]).Count == 1, c => Terrain(c), c => IsWalk(c) ? G(c) : float.NaN, out var hw))
+                foreach (var (i, j) in WaterSearch(ext, Plain, StepW, InnerW, k => !IsWalk(ext[k]) || Partners(ext[k]).Count == 1, c => preLevel.TryGetValue(c, out var pl) ? pl : Terrain(c), c => IsWalk(c) ? G(c) : float.NaN, out var hw))
                 {
                     int a = ext[i], b = ext[j]; float ha = hw[i], hb = hw[j]; if (a > b) { (a, b) = (b, a); (ha, hb) = (hb, ha); }
                     o.Add((a, b, ha, hb, true)); for (int k = i + 1; k < j; k++) taken.Add(k - pre);
