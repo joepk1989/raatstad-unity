@@ -479,6 +479,9 @@ public class WegVoorbeeld : MonoBehaviour
     IEnumerator StadNakijken(string mode)
     {
         string paar = null; { int pi = mode.IndexOf(" paar="); if (pi >= 0) { paar = mode.Substring(pi + 6).Trim(); mode = mode.Substring(0, pi) + " einden"; } } if (mode.Contains(" breed")) { PlanetCity.DragStyle = 1; mode = mode.Replace(" breed", ""); }
+        var lijnen = new List<List<int>>(); while (true) { int li = mode.IndexOf(" lijn="); if (li < 0) break; int le = mode.IndexOf(' ', li + 6); string ls = le < 0 ? mode.Substring(li + 6) : mode.Substring(li + 6, le - li - 6); var ln = new List<int>(); foreach (var ps in ls.Split('.')) ln.Add(int.Parse(ps)); lijnen.Add(ln); mode = mode.Remove(li, (le < 0 ? mode.Length : le) - li); }   // "lijn=a.b.c": die weg opnieuw profileren (zoals na het slepen), niet opslaan
+        var fotos = new List<int>(); { int fi = mode.IndexOf(" foto="); if (fi >= 0) { foreach (var ps in mode.Substring(fi + 6).Trim().Split(',')) fotos.Add(int.Parse(ps)); mode = mode.Substring(0, fi); } }
+        string mode0 = mode; if (mode.EndsWith(" overwater")) mode = mode.Substring(0, mode.Length - 10);
         bool einden = mode.EndsWith(" einden"); if (einden) mode = mode.Substring(0, mode.Length - 7); bool schuin = mode.EndsWith(" schuin"); if (schuin) mode = mode.Substring(0, mode.Length - 7); bool brug = mode.EndsWith(" brug"); if (brug) mode = mode.Substring(0, mode.Length - 5);
         string id = mode.Substring(4).Trim(), file = Path.Combine(CityFiles.Dir, id + ".json"); bouw = new System.Text.StringBuilder(id + "\n");
         if (!File.Exists(file)) { File.WriteAllText(Path.Combine(Dir, "stad.txt"), "GEEN BESTAND " + file); File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); yield break; }
@@ -486,6 +489,41 @@ public class WegVoorbeeld : MonoBehaviour
         var sw = System.Diagnostics.Stopwatch.StartNew(); PlanetCity.TouchAll(); PlanetCity.Rebuild(); PlanetCity.RebuildGrid(); long ms = sw.ElapsedMilliseconds; yield return null; yield return null;
         var log = new System.Text.StringBuilder();
         log.Append(id).Append(": laden ").Append(ok ? "gelukt" : "MISLUKT").Append(", ").Append(PlanetCity.Cells.Count).Append(" vakken met inhoud, RoadH ").Append(PlanetCity.RoadH.Count).Append(", tekenen ").Append(ms).AppendLine(" ms");
+        foreach (var ln in lijnen) { PlanetCity.LastNote = null; PlanetCity.Reprofile(ln); log.Append("opnieuw geprofileerd: ").Append(string.Join(".", ln)).Append(", melding: ").AppendLine(PlanetCity.LastNote ?? "-"); }
+        if (lijnen.Count > 0) { PlanetCity.Rebuild(); PlanetCity.Rebuild(); yield return null; yield return null; }
+        if (fotos.Count > 0)   // "foto=a,b": van schuin boven en van opzij bij die vakken, met wat daar ligt
+        {
+            var sb2 = new System.Text.StringBuilder();
+            foreach (int fc in fotos)
+            {
+                var cc = Planet.Cells[fc]; sb2.Append(fc).Append(": ").Append(Desc(fc)).Append(", terrein ").Append(PlanetCity.Terrain(fc).ToString("0.0")).Append(", nat ").Append(PlanetCity.Wet(fc)).Append(", partners");
+                foreach (int q in PlanetCity.Partners(fc)) sb2.Append(' ').Append(q).Append(PlanetCity.IsSpan(fc, q) ? "(brug)" : PlanetCity.IsBore(fc, q) ? "(tunnel)" : PlanetCity.LowerLinks.Contains(fc < q ? ((long)fc << 20) | (uint)q : ((long)q << 20) | (uint)fc) ? "(onder)" : "");
+                sb2.Append("; buren"); foreach (int j in cc.nb) sb2.Append(' ').Append(j).Append('=').Append(PlanetCity.Terrain(j).ToString("0.0")).Append(PlanetCity.Wet(j) ? "nat" : ""); sb2.AppendLine();
+                Vector3 gp = cc.dir * (Planet.R + PlanetCity.G(fc));
+                yield return ShotAt("stad_foto_" + fc + "_boven", gp, cc.north * 35f + cc.dir * 55f);
+                yield return ShotAt("stad_foto_" + fc + "_opzij", gp, cc.east * 45f + cc.dir * 12f);
+            }
+            File.WriteAllText(Path.Combine(Dir, "stad.txt"), log.ToString() + sb2.ToString()); File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true; yield break;
+        }
+        if (mode0.EndsWith(" overwater"))   // welke wegverbindingen liggen boven water: per verbinding de vakken, hoogtes, en wat ze zijn
+        {
+            var seen = new HashSet<long>(); int nw = 0;
+            foreach (var kv in PlanetCity.Cells)
+            {
+                int a0 = kv.Key; if (!PlanetCity.IsWalk(a0)) continue;
+                foreach (int b0 in PlanetCity.Partners(a0))
+                {
+                    long key = ((long)Mathf.Min(a0, b0) << 20) | (uint)Mathf.Max(a0, b0); if (!seen.Add(key)) continue;
+                    Vector3 da = Planet.Cells[a0].dir, db = Planet.Cells[b0].dir; int wet = 0; var wc = new List<int>();
+                    for (int t = 0; t <= 10; t++) { int x = Planet.Nearest(Vector3.Slerp(da, db, t / 10f) * Planet.R); if (PlanetCity.Terrain(x) < PlanetCity.SeaLevel - 0.05f) { wet++; if (!wc.Contains(x)) wc.Add(x); } }
+                    if (wet == 0) continue; nw++;
+                    log.Append("  ").Append(a0).Append("-").Append(b0).Append(": ").Append(wet).Append("/11 meetpunten boven water (vakken ").Append(string.Join(",", wc)).Append("), weg ").Append(PlanetCity.G(a0).ToString("0.0")).Append(" en ").Append(PlanetCity.G(b0).ToString("0.0"))
+                       .Append(PlanetCity.IsSpan(a0, b0) ? ", BRUG" : PlanetCity.IsBore(a0, b0) ? ", tunnel" : "").Append(", partners ").Append(PlanetCity.Partners(a0).Count).Append("/").Append(PlanetCity.Partners(b0).Count).Append(", ").Append(Desc(a0)).AppendLine();
+                }
+            }
+            log.Insert(0, "verbindingen boven water: " + nw + System.Environment.NewLine);
+            File.WriteAllText(Path.Combine(Dir, "stad.txt"), log.ToString()); File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true; yield break;
+        }
         if (brug) { yield return BrugProef(log, schuin, einden, paar); File.WriteAllText(Path.Combine(Dir, "stad.txt"), log.ToString()); File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true; yield break; }
         var centers = new List<int>(); var gezakt = new List<(float d, int c)>(); int first = -1;
         foreach (var kv in PlanetCity.Cells)
