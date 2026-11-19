@@ -15,7 +15,7 @@ public class WegVoorbeeld : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Boot()
     {
-        if (!File.Exists(Flag)) return; mode = File.ReadAllText(Flag).Trim(); File.Delete(Flag); PlanetCity.G3MeshH = true; PlanetCity.Ground2 = false; PlanetCity.ProfileFirst = false; for (bool again = true; again;) { again = false; if (mode.EndsWith(" stroken")) { mode = mode.Substring(0, mode.Length - 8); again = true; } if (mode.EndsWith(" halfv3")) { PlanetCity.G3Half = true; PlanetCity.SetGround3(true); mode = mode.Substring(0, mode.Length - 7); again = true; } if (mode.EndsWith(" zondermeshh")) { PlanetCity.G3MeshH = false; mode = mode.Substring(0, mode.Length - 11); again = true; } if (mode.EndsWith(" oudegrond")) { PlanetCity.SetGround3(false); mode = mode.Substring(0, mode.Length - 10); again = true; } if (mode.EndsWith(" v2")) { PlanetCity.Ground2 = true; mode = mode.Substring(0, mode.Length - 3); again = true; } if (mode.EndsWith(" geennaden")) { mode = mode.Substring(0, mode.Length - 10); again = true; } if (mode.EndsWith(" profiel")) { PlanetCity.ProfileFirst = true; mode = mode.Substring(0, mode.Length - 8); again = true; } }   // "... v2": met Terrein v2; "... geennaden": zonder naden   // tekst "fiets": de fietspaden en de startstad
+        if (!File.Exists(Flag)) return; mode = File.ReadAllText(Flag).Trim(); File.Delete(Flag); PlanetCity.G3MeshH = true; PlanetCity.G3Hole = !File.Exists(Path.Combine(Application.persistentDataPath, "geengat.txt")); PlanetCity.Ground2 = false; PlanetCity.ProfileFirst = false; for (bool again = true; again;) { again = false; if (mode.EndsWith(" stroken")) { mode = mode.Substring(0, mode.Length - 8); again = true; } if (mode.EndsWith(" halfv3")) { PlanetCity.G3Half = true; PlanetCity.SetGround3(true); mode = mode.Substring(0, mode.Length - 7); again = true; } if (mode.EndsWith(" zondermeshh")) { PlanetCity.G3MeshH = false; mode = mode.Substring(0, mode.Length - 11); again = true; } if (mode.EndsWith(" oudegrond")) { PlanetCity.SetGround3(false); mode = mode.Substring(0, mode.Length - 10); again = true; } if (mode.EndsWith(" v2")) { PlanetCity.Ground2 = true; mode = mode.Substring(0, mode.Length - 3); again = true; } if (mode.EndsWith(" geennaden")) { mode = mode.Substring(0, mode.Length - 10); again = true; } if (mode.EndsWith(" profiel")) { PlanetCity.ProfileFirst = true; mode = mode.Substring(0, mode.Length - 8); again = true; } }   // "... v2": met Terrein v2; "... geennaden": zonder naden   // tekst "fiets": de fietspaden en de startstad
         Application.runInBackground = true;
         new GameObject("Wegvoorbeeld").AddComponent<WegVoorbeeld>();
     }
@@ -479,6 +479,7 @@ public class WegVoorbeeld : MonoBehaviour
     IEnumerator StadNakijken(string mode)
     {
         string paar = null; { int pi = mode.IndexOf(" paar="); if (pi >= 0) { paar = mode.Substring(pi + 6).Trim(); mode = mode.Substring(0, pi) + " einden"; } } if (mode.Contains(" breed")) { PlanetCity.DragStyle = 1; mode = mode.Replace(" breed", ""); }
+        bool berg = mode.EndsWith(" berg"); if (berg) mode = mode.Substring(0, mode.Length - 5);
         bool helling = mode.EndsWith(" helling"); if (helling) mode = mode.Substring(0, mode.Length - 8);
         bool opslaan = mode.EndsWith(" opslaan"); if (opslaan) mode = mode.Substring(0, mode.Length - 8);
         var lijnen = new List<List<int>>(); while (true) { int li = mode.IndexOf(" lijn="); if (li < 0) break; int le = mode.IndexOf(' ', li + 6); string ls = le < 0 ? mode.Substring(li + 6) : mode.Substring(li + 6, le - li - 6); var ln = new List<int>(); foreach (var ps in ls.Split('.')) ln.Add(int.Parse(ps)); lijnen.Add(ln); mode = mode.Remove(li, (le < 0 ? mode.Length : le) - li); }   // "lijn=a.b.c": die weg opnieuw profileren (zoals na het slepen), niet opslaan
@@ -498,6 +499,17 @@ public class WegVoorbeeld : MonoBehaviour
             var ci = CityFiles.All.Find(cc => cc.id == id); string keepLast = PlayerPrefs.GetString("raatstad-laatste-stad", "");
             bool okS = ci != null && CityFiles.Save(ci, null, PlanetCity.Snapshot()); PlayerPrefs.SetString("raatstad-laatste-stad", keepLast); PlayerPrefs.Save();
             log.Append("opgeslagen in ").Append(id).Append(": ").AppendLine(okS ? "ja" : "NEE");
+        }
+        if (berg)   // "berg": het hoogste vak binnen 400 m van de eerste weg: wat er getekend wordt (stukken, onderverdeling, waarom)
+        {
+            int f0 = Planet.Starts[0]; foreach (var kv in PlanetCity.Cells) if (PlanetCity.IsWalk(kv.Key)) { f0 = kv.Key; break; }
+            int top = f0; foreach (int c in Nearby(f0, 400f)) if (PlanetCity.Terrain(c) > PlanetCity.Terrain(top)) top = c;
+            var dsb = new System.Text.StringBuilder(); PlanetCity.G2Reset();
+            foreach (int c in new List<int>(Planet.Cells[top].nb) { top }) { PlanetCity.G2DumpCell = c; PlanetCity.G2DumpSb = dsb; dsb.Append("vak ").Append(c).Append(' ').Append(Desc(c)).Append(" terrein ").Append(PlanetCity.Terrain(c).ToString("0.0")).Append(" schoon ").AppendLine(PlanetCity.V3Why(c)); PlanetCity.Ground2CacheClear(); PlanetCity.Touch(c); PlanetCity.Rebuild(); }
+            PlanetCity.G2DumpCell = -1; PlanetCity.G2DumpSb = null;
+            log.Append("berg: vak ").Append(top).Append(" op ").Append(PlanetCity.Terrain(top).ToString("0.0")).Append(" m; onderverdeeld ").Append(PlanetCity.G2Refines).Append(", stukken ").Append(PlanetCity.G2Pieces).AppendLine().Append(dsb.ToString());
+            var ct = Planet.Cells[top]; Vector3 gp = ct.dir * (Planet.R + PlanetCity.Terrain(top)); yield return ShotAt("stad_berg", gp, ct.east * 60f + ct.dir * 35f);
+            File.WriteAllText(Path.Combine(Dir, "stad.txt"), log.ToString()); File.WriteAllText(Path.Combine(Dir, "klaar.txt"), "klaar"); if (pb != null) pb.enabled = true; yield break;
         }
         if (helling)   // "helling": een gewone weg van een berg recht naar beneden slepen, zoals de speler (bij de eerste startvlag van de stad)
         {

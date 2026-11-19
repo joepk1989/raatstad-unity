@@ -25,6 +25,7 @@ public static partial class PlanetCity
     // rijen, dwarslijnen of extra verdeling bij bochten en einden; de grond loopt van de zeshoekpunten glooiend naar de weg.
     public static bool G3Half = true;   // ook halve wegvakken naast een schuine weg met de nieuwe opzet (uit: de oude opzet daar, om te vergelijken)
     const float G3Row = 2f, G3Min = 8f; const int G3MaxRows = 10; public static int G3Rows = 0;
+    public static bool G3Hole = true;   // de grond onder de weg weglaten (de weg dekt hem af)
     static bool fieldV3;   // GroundField rekent met de nieuwe hoogte (gezet door wie het vak kiest: Ground2Cell0, H, EdgeProfile1)
     static readonly Dictionary<int, (int ver, bool v)> v3Cache = new Dictionary<int, (int, bool)>();
 
@@ -200,6 +201,14 @@ public static partial class PlanetCity
                 Cut(claimed, T - Lin.C(q.hw)); Cut(claimed, T + Lin.C(q.hw));
                 for (int j = 1; j < rows; j++) { Cut(claimed, T - Lin.C(q.hw + j * G3Row)); Cut(claimed, T + Lin.C(q.hw + j * G3Row)); }
                 Cut(claimed, S - Lin.C(len * 0.5f));
+            }
+            // de corridor onder de weg vrij: onder asfalt en stoep (tot 10 cm binnen de stoeprand, daar hangt de rand van de stoep omlaag)
+            // komt geen grond; de weg zelf dekt het af. Alleen de strook tussen stoep en talud (de berm) blijft grond.
+            if (G3Hole && rows == 0 && IsRoad(q.ia) && (q.ia == q.ib || IsRoad(q.ib)))
+            {
+                Dims(StyleOf(q.ia), out _, out float sw); float hole = Mathf.Min(sw, q.hw) - 0.1f;
+                Cut(claimed, T - Lin.C(hole)); Cut(claimed, T + Lin.C(hole));
+                claimed.RemoveAll(pl => { Vector2 ct = Vector2.zero; foreach (var v in pl) ct += v; ct /= pl.Count; float sc = S.At(ct); return Mathf.Abs(T.At(ct)) < hole && sc > 0f && sc < len; });   // (alleen langs het stuk zelf: voorbij een doodlopend eind is geen weg)
             }
             outp.AddRange(claimed);
         }
